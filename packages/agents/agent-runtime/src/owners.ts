@@ -176,7 +176,11 @@ export async function apply(ctx: Context): Promise<void> {
   for (const record of await ctx.sessionQuery.listSessions()) await owners.ensure(record.header.id)
   const global: RemoteAccessRole<'global'> = {
     name: 'account:session-index', resource: 'global',
-    actions: ['session/list', 'session/search', 'session/create', 'session/control'],
+    actions: [
+      'session/list', 'session/search', 'session/create', 'session/control',
+      'agentSidebar/list', 'agentSidebar/createSection', 'agentSidebar/renameSection',
+      'agentSidebar/deleteSection', 'agentSidebar/moveAgent',
+    ],
   }
   const session: RemoteAccessRole<'session'> = {
     name: 'account:own-session', resource: 'session',
