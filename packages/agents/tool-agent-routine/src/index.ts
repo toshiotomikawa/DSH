@@ -66,10 +66,18 @@ function patchOf(args: Record<string, unknown>): RoutinePatch {
 export function apply(ctx: Context): void {
   const engine = (): RoutineEngine => ctx.agentRoutines.engine
   const agentOf = (exec: ToolExecution, given: string | undefined): string => {
-    if (given !== undefined) return given
     const found = exec.agent === undefined ? undefined : ctx.get('agentRoutineBridge')?.agentOfSession?.(exec.agent.id)
     if (found === undefined) throw new RoutineError('agente_obrigatorio', 'informe o agente da rotina em `agent`')
+    if (given !== undefined && given !== found) {
+      throw new RoutineError('agente_nao_autorizado', 'a rotina pertence a outro agente')
+    }
     return found
+  }
+  const owned = (exec: ToolExecution, id: string): void => {
+    const caller = agentOf(exec, undefined)
+    const routine = engine().list().find(item => item.id === id)
+    if (routine === undefined) throw new RoutineError('rotina_inexistente', `rotina "${id}" não existe`)
+    if (routine.agentId !== caller) throw new RoutineError('agente_nao_autorizado', `a rotina "${id}" pertence a outro agente`)
   }
 
   ctx.tools.register(defineTool({
@@ -120,11 +128,13 @@ export function apply(ctx: Context): void {
       remove: { type: 'boolean', description: 'true deletes the routine with its history.' },
     },
     output: { schema: { type: 'object', additionalProperties: true, properties: { id: { type: 'string', required: true } } }, render: (_args, value) => text(value) },
-    execute: args => guarded(async () => {
+    execute: (args, exec) => guarded(async () => {
       if (args.remove === true) {
+        owned(exec, args.id)
         await engine().deleteRoutine(args.id)
         return { id: args.id, removed: true }
       }
+      owned(exec, args.id)
       return plain(await engine().editRoutine(args.id, patchOf(args)))
     }),
   }))
@@ -138,12 +148,14 @@ export function apply(ctx: Context): void {
       history_limit: { type: 'integer', description: 'Executions to show with a routine (default 10).' },
     },
     output: { schema: { type: 'object', additionalProperties: true, properties: {} }, render: (_args, value) => text(value) },
-    execute: args => guarded(() => {
+    execute: (args, exec) => guarded(() => {
+      const caller = agentOf(exec, args.agent)
       if (args.id !== undefined) {
+        owned(exec, args.id)
         const view = engine().view(args.id, args.history_limit ?? 10)
         return plain({ routine: view.routine, nextFireAt: view.nextFireAt, runs: view.runs })
       }
-      return plain({ routines: engine().list(args.agent) })
+      return plain({ routines: engine().list(caller) })
     }),
   }))
 
@@ -153,7 +165,10 @@ export function apply(ctx: Context): void {
       + 'The answer stays in the run, visible through routine_list.',
     parameters: { id: { type: 'string', required: true, description: 'Routine id.' } },
     output: { schema: RUN_OUTPUT, render: (_args, value) => text(value) },
-    execute: args => guarded(async () => plain((await engine().trigger(args.id, { source: 'manual', manual: true })).run)),
+    execute: (args, exec) => guarded(async () => {
+      owned(exec, args.id)
+      return plain((await engine().trigger(args.id, { source: 'manual', manual: true })).run)
+    }),
   }))
 
   ctx.tools.register(defineTool({

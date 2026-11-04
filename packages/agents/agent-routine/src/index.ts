@@ -138,16 +138,26 @@ export class AgentRoutines extends Service {
     const config = this.config
     const domain = await ctx.storageDomain.open(routineDomain)
     const home = process.env.DSH_HOME ?? join(homedir(), '.dsh')
-    const token = await loadToken(config.tokenFile ?? join(home, 'agent-routines.token'))
+    const tokenFile = config.tokenFile ?? join(home, 'agent-routines.token')
+    const token = await loadToken(tokenFile)
     const bridge = (): RoutineBridge | undefined => ctx.get('agentRoutineBridge')
     this.engine = new RoutineEngine({
       store: { routines: domain.table('routines'), runs: domain.table('runs') },
       schedule: scheduleGateway(ctx),
       agents: id => bridge()?.agents(id),
       runner: {
-        // The agent resolver found the agent through the same bridge, so a missing bridge here only means it just left.
-        start: input => (bridge() as RoutineBridge).runner.start(input),
-        cancel: sessionId => bridge()?.runner.cancel(sessionId) ?? Promise.resolve(),
+        // A missing bridge is a visible failure: the run is recorded as failed and the warning explains why.
+        start: (input) => {
+          const current = bridge()
+          /* v8 ignore next -- the bridge that resolved the agent can vanish between admission and launch */
+          if (current === undefined) return Promise.reject(new Error('agent-routine: bridge unavailable'))
+          return current.runner.start(input)
+        },
+        cancel: (sessionId) => {
+          const current = bridge()
+          if (current === undefined) return Promise.reject(new Error('agent-routine: bridge unavailable'))
+          return current.runner.cancel(sessionId)
+        },
       },
       notify: (report) => { ctx.emit('agent-routine/report', report) },
       now: () => Date.now(),
@@ -159,7 +169,7 @@ export class AgentRoutines extends Service {
     const engine = this.engine
     ctx.effect(() => async () => { await domain.close() }, 'agent-routine.domain')
     ctx.effect(
-      () => ctx.webServer.register({ kind: 'exact', path: TRIGGER_PATH, handler: createTriggerHandler(engine, token, (message) => { ctx.logger.warn(message) }) }),
+      () => ctx.webServer.register({ kind: 'exact', path: TRIGGER_PATH, handler: createTriggerHandler(engine, token, (message) => { ctx.logger.warn(message) }, tokenFile) }),
       `agent-routine: ${TRIGGER_PATH}`,
     )
     let reading: Promise<void> = Promise.resolve()

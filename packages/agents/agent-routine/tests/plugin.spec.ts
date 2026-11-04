@@ -166,6 +166,7 @@ describe('plugin wiring', () => {
     await engine.cancel(run.id)
     expect(engine.run(run.id)?.state).toBe('cancelada')
     expect(h.cancelled).toEqual([])
+    expect(warn.mock.calls.some(call => String(call[0]).includes('cancel failed'))).toBe(true)
     const second = await engine.trigger(item.id, { source: 'script' })
     expect(second.run.state).toBe('falha')
     h.state.editResult = { code: 'x' }
@@ -214,7 +215,9 @@ describe('reconciliation, restart and tick', () => {
     h.ctx.emit('schedule/changed' as never)
     await vi.advanceTimersByTimeAsync(10)
     expect(engine.history(item.id)).toHaveLength(1)
-    expect(engine.history(item.id)[0]).toMatchObject({ source: 'agenda', state: 'execucao', sessionId: 'sched-1' })
+    expect(engine.history(item.id)[0]).toMatchObject({ source: 'agenda', state: 'execucao', sessionId: 's-1' })
+    expect(h.started).toEqual([engine.history(item.id)[0]?.id])
+    expect(h.cancelled).toEqual(['sched-1'])
   })
 
   it('ignores pages without records and logs a failing read', async () => {

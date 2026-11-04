@@ -1,4 +1,8 @@
-/** Authenticated local HTTP entry that lets a script ask for one execution of a routine. */
+/**
+ * Authenticated local HTTP entry that lets a script ask for one execution of a routine.
+ * The single token is a local master key: it can trigger any routine whose `scriptEnabled` is true.
+ * Per-agent authorization is future work; the loopback check is the only network restriction.
+ */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
@@ -76,30 +80,43 @@ const STATUS_BY_CODE: Record<string, number> = {
 /**
  * Build the route handler. The token never reaches the engine, the run record or any response.
  * @param target - engine that accepts the run.
- * @param token - secret that callers send as a Bearer credential.
+ * @param token - initial secret that callers send as a Bearer credential.
  * @param warn - sink for internal diagnostics, which never contain request data.
+ * @param tokenFile - optional file re-read on every request so a rotated token takes effect without a restart.
  * @returns the HTTP handler.
  */
 export function createTriggerHandler(
   target: TriggerTarget,
   token: string,
   warn: (message: string) => void,
+  tokenFile?: string,
 ): (request: IncomingMessage, response: ServerResponse) => Promise<void> {
-  const expected = digest(token)
+  let current = token
   return async (request, response) => {
     try {
       if (request.method !== 'POST') {
         response.setHeader('allow', 'POST')
         throw new HttpFailure(405, 'metodo', 'use POST')
       }
+      const peer = request.socket.remoteAddress ?? ''
+      if (peer !== '127.0.0.1' && peer !== '::1' && peer !== '::ffff:127.0.0.1') {
+        throw new HttpFailure(403, 'nao_local', 'o acionamento só é aceito de loopback')
+      }
+      if (tokenFile !== undefined) {
+        try {
+          current = await loadToken(tokenFile)
+        } catch {
+          warn('agent-routine: token file unreadable; keeping the current token')
+        }
+      }
       const header = request.headers.authorization ?? ''
       const given = header.startsWith('Bearer ') ? header.slice(7) : ''
-      if (!timingSafeEqual(digest(given), expected)) throw new HttpFailure(401, 'nao_autorizado', 'credencial ausente ou inválida')
+      if (!timingSafeEqual(digest(given), digest(current))) throw new HttpFailure(401, 'nao_autorizado', 'credencial ausente ou inválida')
       if (!/^application\/json\s*(;|$)/i.test(request.headers['content-type'] ?? '')) {
         throw new HttpFailure(415, 'tipo', 'envie application/json')
       }
       const text = await readBody(request)
-      if (text.includes(token)) throw new HttpFailure(400, 'segredo_no_corpo', 'o corpo não pode conter a credencial')
+      if (text.includes(current)) throw new HttpFailure(400, 'segredo_no_corpo', 'o corpo não pode conter a credencial')
       let body: unknown
       try {
         body = JSON.parse(text)

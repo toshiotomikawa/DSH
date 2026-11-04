@@ -18,7 +18,7 @@ const REPLAY_CAP = 1000
 
 const CLOCK = /^(\d{2}):(\d{2})(?::(\d{2}))?$/
 
-function clock(time: string): { hour: number; minute: number } {
+function clock(time: string): { hour: number; minute: number; second: number } {
   const match = CLOCK.exec(time)
   const hour = Number(match?.[1])
   const minute = Number(match?.[2])
@@ -26,7 +26,7 @@ function clock(time: string): { hour: number; minute: number } {
   if (match === null || hour > 23 || minute > 59 || second > 59) {
     throw new RoutineError('agenda_invalida', `horário "${time}" inválido; use HH:mm`)
   }
-  return { hour, minute }
+  return { hour, minute, second }
 }
 
 /** The scheduler reads HH:mm:ss; routines also accept HH:mm. */
@@ -51,7 +51,8 @@ export function toTiming(spec: ScheduleSpec, timeZone: string): ScheduleTiming {
       if (!Number.isInteger(spec.day) || spec.day < 1 || spec.day > 31) {
         throw new RoutineError('agenda_invalida', 'o dia do mês deve ficar entre 1 e 31')
       }
-      const { hour, minute } = clock(spec.time)
+      const { hour, minute, second } = clock(spec.time)
+      if (second !== 0) throw new RoutineError('agenda_invalida', 'a agenda mensal não aceita segundos; use HH:mm')
       return { kind: 'cron', cron: { expression: `${minute} ${hour} ${spec.day} * *`, time_zone: timeZone } }
     }
     case 'interval': return { kind: 'every', every_seconds: spec.everySeconds }

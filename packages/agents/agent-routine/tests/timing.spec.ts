@@ -37,7 +37,10 @@ describe('criterion 2: calendar on a fake clock', () => {
     expect(codeOf(() => toTiming({ kind: 'monthly', day: 5, time: '9h' }, 'UTC'))).toBe('agenda_invalida')
     expect(codeOf(() => toTiming({ kind: 'monthly', day: 5, time: '10:61' }, 'UTC'))).toBe('agenda_invalida')
     expect(codeOf(() => toTiming({ kind: 'monthly', day: 5, time: '10:10:99' }, 'UTC'))).toBe('agenda_invalida')
-    expect(codeOf(() => toTiming({ kind: 'monthly', day: 5, time: '10:10:10' }, 'UTC'))).toBeUndefined()
+    expect(codeOf(() => toTiming({ kind: 'monthly', day: 5, time: '10:10:10' }, 'UTC'))).toBe('agenda_invalida')
+    expect(toTiming({ kind: 'monthly', day: 5, time: '10:10:00' }, 'UTC')).toEqual({
+      kind: 'cron', cron: { expression: '10 10 5 * *', time_zone: 'UTC' },
+    })
   })
 
   it('reads local times in the saved zone, not in the process zone', () => {

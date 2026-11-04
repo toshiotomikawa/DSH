@@ -397,16 +397,19 @@ export class RoutineEngine {
     return this.serial(async () => {
       const routine = this.routines.get(routineId)
       if (routine?.schedule === undefined) return undefined
-      const known = this.runsOf(routineId).find(run => run.deliveryKey === delivery.messageId)
+      const known = this.runsOf(routineId).find(run => run.deliveryKey === delivery.messageId || run.scheduledAt === delivery.scheduledAt)
       if (known !== undefined) return known
       const spec = routine.schedule
       const planned = Date.parse(delivery.scheduledAt)
+      const seenAt = Date.parse(routine.lastSeenAt)
       const late = Date.parse(delivery.deliveredAt) - planned > this.options.graceSeconds * 1000
-      const missed = late ? occurrencesBetween(spec, routine.timeZone, Date.parse(routine.lastSeenAt), planned - 1) : []
+      // A late delivery while the process kept seeing the clock is a slow flush, not a downtime gap.
+      const downtime = late && Number.isFinite(seenAt) && seenAt < planned
+      const missed = downtime ? occurrencesBetween(spec, routine.timeZone, seenAt, planned - 1) : []
       let outcome: Run
       if (!routine.active) {
         outcome = await this.skipped(routine, delivery, 'rotina_pausada')
-      } else if (late && routine.missedPolicy === 'skip') {
+      } else if (downtime && routine.missedPolicy === 'skip') {
         for (const occurrence of missed) await this.skippedOccurrence(routine, occurrence, 'desligamento')
         outcome = await this.skipped(routine, delivery, 'desligamento')
       } else {
@@ -416,7 +419,8 @@ export class RoutineEngine {
       await this.routines.put(routineId, {
         ...routine,
         lastSeenAt: this.iso(),
-        ...spec.kind === 'once' ? { active: false, consumed: true } : {},
+        // A skipped occurrence (for example a paused one-time routine) is not consumed; a resume may still run it.
+        ...spec.kind === 'once' && outcome.state !== 'pulada' ? { active: false, consumed: true } : {},
       })
       return outcome
     })
@@ -433,27 +437,21 @@ export class RoutineEngine {
 
   private async skippedOccurrence(routine: Routine, occurrence: string, reason: string): Promise<void> {
     const key = `${routine.id}@${occurrence}`
-    if (this.runsOf(routine.id).some(run => run.deliveryKey === key)) return
+    if (this.runsOf(routine.id).some(run => run.deliveryKey === key || run.scheduledAt === occurrence)) return
     await this.accept(routine, {
       source: 'agenda', manual: false, scheduledAt: occurrence, deliveryKey: key, state: 'pulada', reason, endedAt: this.iso(),
     })
   }
 
   private async admitDelivery(routine: Routine, delivery: Delivery): Promise<Run> {
-    const busy = this.runsOf(routine.id).some(run => run.state === 'execucao' || run.state === 'espera_cota')
-    if (busy) {
-      // The scheduler already opened a session; stop it and let the queue start the run when the slot frees.
-      await this.stopSession(delivery.sessionId)
-      return this.accept(routine, {
-        source: 'agenda', manual: false, scheduledAt: delivery.scheduledAt, deliveryKey: delivery.messageId,
-        reason: 'serializada',
-      })
-    }
-    return this.accept(routine, {
+    // The scheduler opened a session for its `new` target; routines own the only execution session,
+    // so stop that one and let the single queue start the run through the runner.
+    await this.stopSession(delivery.sessionId)
+    const run = await this.accept(routine, {
       source: 'agenda', manual: false, scheduledAt: delivery.scheduledAt, deliveryKey: delivery.messageId,
-      state: 'execucao', startedAt: delivery.deliveredAt, sessionId: delivery.sessionId,
-      instruction: routine.instruction, instructionVersion: routine.instructionVersion,
     })
+    await this.drain(routine.id)
+    return this.runs.get(run.id) as Run
   }
 
   /** A calendar or webhook run waits while its routine is paused; a one-time routine pauses itself when it fires, and its run goes on. */
@@ -477,7 +475,11 @@ export class RoutineEngine {
   private async drain(routineId: string): Promise<void> {
     for (;;) {
       const all = this.runsOf(routineId)
-      if (all.some(run => run.state === 'execucao' || run.state === 'espera_cota')) return
+      if (all.some(run => run.state === 'execucao')) return
+      const routine = this.routines.get(routineId)
+      // A waiting automatic run of a paused routine does not hold the slot against an explicit script or manual run.
+      const occupied = all.some(run => run.state === 'espera_cota' && (routine === undefined || !this.blocked(run, routine)))
+      if (occupied) return
       const next = all.filter(run => run.state === 'fila').sort((left, right) => left.seq - right.seq)[0]
       if (next === undefined) return
       await this.admit(next)
@@ -543,7 +545,7 @@ export class RoutineEngine {
   private async apply(run: Run, outcome: Outcome): Promise<void> {
     switch (outcome.kind) {
       case 'completed': {
-        const state = run.noUpdate ? 'sucesso_sem_novidade' : 'sucesso_relato'
+        const state = run.noUpdate && outcome.text.trim() === '' ? 'sucesso_sem_novidade' : 'sucesso_relato'
         const done = await this.finish(run, state, { result: outcome.text })
         if (state === 'sucesso_relato' && !run.manual) await this.notifyOnce(done)
         return
@@ -591,15 +593,15 @@ export class RoutineEngine {
       await this.finish(run, 'pulada', { reason: 'cota' })
       return
     }
-    const delays = this.options.backoffSeconds
-    const wait = outcome.resetAt === undefined
-      ? (delays[Math.min(run.quotaChecks, delays.length - 1)] as number) * 1000
-      : 0
-    const next = outcome.resetAt ?? new Date(this.options.now() + wait).toISOString()
+    const delays = this.options.backoffSeconds.length === 0 ? [300, 900, 3600] : this.options.backoffSeconds
+    const resetMs = outcome.resetAt === undefined ? undefined : Date.parse(outcome.resetAt)
+    const validReset = resetMs !== undefined && Number.isFinite(resetMs) && resetMs > this.options.now()
+    const wait = validReset ? resetMs - this.options.now() : (delays[Math.min(run.quotaChecks, delays.length - 1)] as number) * 1000
+    const next = new Date(validReset ? resetMs : this.options.now() + wait).toISOString()
     const waiting = withFields(run, {
       state: 'espera_cota',
       reason: `cota: ${message}`,
-      eligibleAt: outcome.resetAt,
+      eligibleAt: validReset ? outcome.resetAt : undefined,
       nextCheckAt: next,
       quotaChecks: run.quotaChecks + 1,
       endedAt: undefined,
@@ -662,6 +664,10 @@ export class RoutineEngine {
         const resumed = withFields(run, { state: 'execucao', reason: undefined, nextCheckAt: undefined, eligibleAt: undefined })
         await this.runs.put(run.id, resumed)
         await this.launch(resumed, agent)
+      }
+      // A report whose notification failed is retried once per tick until it is stamped.
+      for (const [, run] of [...this.runs.entries()]) {
+        if (run.state === 'sucesso_relato' && !run.manual && run.notifiedAt === undefined) await this.notifyOnce(run)
       }
       for (const [id, routine] of [...this.routines.entries()]) {
         if (routine.active && routine.trigger === 'schedule' && now - Date.parse(routine.lastSeenAt) >= 60_000) {

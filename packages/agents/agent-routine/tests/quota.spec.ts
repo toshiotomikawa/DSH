@@ -17,20 +17,22 @@ describe('criterion 4: one-time routine and quota', () => {
     const item = await routine(rig, { schedule: { kind: 'once', date: '2026-06-01', time: '13:00' } })
     rig.clock.now = Date.parse('2026-06-01T13:00:00Z')
     const run = await rig.engine.observeDelivery(item.id, delivery('m1', '2026-06-01T13:00:00.000Z'))
-    expect(run).toMatchObject({ state: 'execucao', source: 'agenda', sessionId: 'scheduler-m1' })
+    expect(run).toMatchObject({ state: 'execucao', source: 'agenda', sessionId: 'session-1' })
+    expect(rig.starts).toHaveLength(1)
+    expect(rig.cancels).toEqual(['scheduler-m1'])
     expect(rig.engine.view(item.id).routine).toMatchObject({ active: false, consumed: true })
     await rig.engine.settle((run as { id: string }).id, { kind: 'limit', message: 'cota' })
     expect(rig.engine.run((run as { id: string }).id)).toMatchObject({ state: 'espera_cota', quotaChecks: 1 })
-    expect(rig.starts).toEqual([])
+    expect(rig.starts).toHaveLength(1)
     const restarted = rig.make()
     await restarted.recover()
     rig.clock.now += 299_000
     await restarted.tick()
-    expect(rig.starts).toEqual([])
+    expect(rig.starts).toHaveLength(1)
     rig.clock.now += 2000
     await restarted.tick()
-    expect(rig.starts).toHaveLength(1)
-    expect(restarted.run((run as { id: string }).id)).toMatchObject({ state: 'execucao', sessionId: 'session-1' })
+    expect(rig.starts).toHaveLength(2)
+    expect(restarted.run((run as { id: string }).id)).toMatchObject({ state: 'execucao', sessionId: 'session-2' })
     await restarted.settle((run as { id: string }).id, { kind: 'completed', text: 'ok' })
     expect(restarted.history(item.id)).toHaveLength(1)
     expect(rig.reports).toHaveLength(1)
@@ -184,13 +186,14 @@ describe('criterion 6: missed occurrences', () => {
     const item = await routine(rig, { missedPolicy: 'run-once' })
     rig.clock.now = START_MS + lateBy
     const run = await rig.engine.observeDelivery(item.id, delivery('m1', '2026-06-04T12:00:00.000Z', 10 * 60_000))
-    expect(run).toMatchObject({ state: 'execucao', sessionId: 'scheduler-m1' })
+    expect(run).toMatchObject({ state: 'execucao', sessionId: 'session-1' })
+    expect(rig.starts).toHaveLength(1)
     const suppressed = rig.engine.history(item.id, 50).filter(entry => entry.reason === 'suprimida')
     expect(suppressed).toHaveLength(2)
-    expect(rig.cancels).toEqual([])
+    expect(rig.cancels).toEqual(['scheduler-m1'])
   })
 
-  it('does not record a missed occurrence twice', async () => {
+  it('does not record a missed occurrence twice or run the same occurrence under a new message id (audit 11)', async () => {
     const rig = setup()
     const item = await routine(rig)
     rig.clock.now = START_MS + lateBy
@@ -200,8 +203,15 @@ describe('criterion 6: missed occurrences', () => {
     expect(rig.engine.history(item.id, 50)).toHaveLength(3)
     await rig.store.routines.put(item.id, { ...rig.engine.view(item.id).routine, lastSeenAt: new Date(START_MS).toISOString() })
     const replay = rig.make()
-    await replay.observeDelivery(item.id, delivery('m2', '2026-06-04T12:00:00.000Z', 10 * 60_000))
-    expect(replay.history(item.id, 50).filter(entry => entry.reason === 'desligamento')).toHaveLength(4)
+    const duplicate = await replay.observeDelivery(item.id, delivery('m2', '2026-06-04T12:00:00.000Z', 10 * 60_000))
+    expect(duplicate?.deliveryKey).toBe('m1')
+    expect(replay.history(item.id, 50).filter(entry => entry.reason === 'desligamento')).toHaveLength(3)
+    rig.clock.now += DAY
+    const next = await rig.engine.observeDelivery(item.id, delivery('m3', '2026-06-05T12:00:00.000Z', 10 * 60_000))
+    expect(next).toMatchObject({ state: 'pulada', reason: 'desligamento' })
+    const keys = rig.engine.history(item.id, 50).filter(entry => entry.reason === 'desligamento').map(entry => entry.deliveryKey)
+    expect(keys).toHaveLength(4)
+    expect(new Set(keys).size).toBe(4)
   })
 
   it('keeps the missed-run decision apart from the quota decision', async () => {
@@ -244,10 +254,11 @@ describe('calendar deliveries', () => {
     const first = await rig.engine.observeDelivery(item.id, delivery('m1', '2026-06-02T12:00:00.000Z'))
     rig.clock.now += DAY
     const second = await rig.engine.observeDelivery(item.id, delivery('m2', '2026-06-03T12:00:00.000Z'))
-    expect(second).toMatchObject({ state: 'fila', reason: 'serializada' })
-    expect(rig.cancels).toEqual(['scheduler-m2'])
+    expect(first).toMatchObject({ state: 'execucao', sessionId: 'session-1' })
+    expect(second).toMatchObject({ state: 'fila' })
+    expect(rig.cancels).toEqual(['scheduler-m1', 'scheduler-m2'])
     await rig.engine.settle((first as { id: string }).id, { kind: 'completed', text: 'a' })
-    expect(rig.engine.run((second as { id: string }).id)).toMatchObject({ state: 'execucao', sessionId: 'session-1' })
+    expect(rig.engine.run((second as { id: string }).id)).toMatchObject({ state: 'execucao', sessionId: 'session-2' })
     expect(rig.engine.run((second as { id: string }).id)).not.toHaveProperty('reason')
   })
 })
@@ -264,5 +275,71 @@ describe('recovery after a restart', () => {
     expect(restarted.run(queued.run.id)?.state).toBe('execucao')
     expect(rig.starts).toHaveLength(2)
     expect(rig.reports).toEqual([])
+  })
+})
+
+describe('audit findings 3, 4, 6, 10 and 17', () => {
+  it('runs a slow delivery while the process was alive and still skips a real downtime gap (audit 3)', async () => {
+    const rig = setup()
+    const item = await routine(rig)
+    rig.clock.now = START_MS + 70_000
+    await rig.engine.tick()
+    const slow = await rig.engine.observeDelivery(item.id, delivery('m1', '2026-06-01T12:00:00.000Z', 121_000))
+    expect(slow).toMatchObject({ state: 'execucao', sessionId: 'session-1' })
+    const down = await routine(rig, { name: 'Desligada' })
+    rig.clock.now = START_MS + 3 * DAY
+    const skipped = await rig.engine.observeDelivery(down.id, delivery('m2', '2026-06-04T12:00:00.000Z', 10 * 60_000))
+    expect(skipped).toMatchObject({ state: 'pulada', reason: 'desligamento' })
+  })
+
+  it('lets an explicit script start while a paused routine waits for quota (audit 4)', async () => {
+    const rig = setup()
+    const item = await routine(rig)
+    const hook = await rig.engine.trigger(item.id, { source: 'webhook' })
+    await rig.engine.settle(hook.run.id, { kind: 'limit' })
+    await rig.engine.editRoutine(item.id, { active: false })
+    expect(rig.engine.run(hook.run.id)?.state).toBe('espera_cota')
+    const script = await rig.engine.trigger(item.id, { source: 'script' })
+    expect(script.run.state).toBe('execucao')
+    expect(rig.engine.run(hook.run.id)?.state).toBe('espera_cota')
+    expect(rig.starts).toHaveLength(2)
+  })
+
+  it('uses the backoff instead of a past or invalid reset time (audit 6)', async () => {
+    const rig = setup()
+    const item = await routine(rig)
+    const { run } = await rig.engine.trigger(item.id, { source: 'script' })
+    await rig.engine.settle(run.id, { kind: 'limit', resetAt: new Date(rig.clock.now - 60_000).toISOString() })
+    expect(rig.engine.run(run.id)).toMatchObject({ state: 'espera_cota' })
+    expect(Date.parse(rig.engine.run(run.id)?.nextCheckAt as string) - rig.clock.now).toBe(300_000)
+    expect(rig.engine.run(run.id)?.eligibleAt).toBeUndefined()
+    rig.clock.now += 60_000
+    await rig.engine.tick()
+    expect(rig.engine.run(run.id)?.state).toBe('espera_cota')
+    expect(rig.starts).toHaveLength(1)
+    const other = await routine(rig, { name: 'Inválida' })
+    const second = await rig.engine.trigger(other.id, { source: 'script' })
+    await rig.engine.settle(second.run.id, { kind: 'limit', resetAt: 'nao-e-data' })
+    expect(Date.parse(rig.engine.run(second.run.id)?.nextCheckAt as string) - rig.clock.now).toBe(300_000)
+  })
+
+  it('does not consume a one-time occurrence skipped by pause (audit 10)', async () => {
+    const rig = setup()
+    const item = await routine(rig, { schedule: { kind: 'once', date: '2026-06-01', time: '13:00' }, active: false })
+    rig.clock.now = Date.parse('2026-06-01T13:00:00Z')
+    const skipped = await rig.engine.observeDelivery(item.id, delivery('m1', '2026-06-01T13:00:00.000Z'))
+    expect(skipped).toMatchObject({ state: 'pulada', reason: 'rotina_pausada' })
+    expect(rig.engine.view(item.id).routine).toMatchObject({ active: false, consumed: false })
+    rig.clock.now = Date.parse('2026-06-01T12:59:00Z')
+    expect((await rig.engine.editRoutine(item.id, { active: true })).active).toBe(true)
+  })
+
+  it('falls back to the default backoff when the configured list is empty (audit 17)', async () => {
+    const rig = setup({ backoff: [] })
+    const item = await routine(rig)
+    const { run } = await rig.engine.trigger(item.id, { source: 'script' })
+    await expect(rig.engine.settle(run.id, { kind: 'limit' })).resolves.toBe(true)
+    expect(rig.engine.run(run.id)?.state).toBe('espera_cota')
+    expect(Date.parse(rig.engine.run(run.id)?.nextCheckAt as string) - rig.clock.now).toBe(300_000)
   })
 })

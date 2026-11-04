@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
-import type { Server } from 'node:http'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import type { IncomingMessage, Server, ServerResponse } from 'node:http'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -124,8 +124,7 @@ describe('criterion 7: script entry', () => {
 })
 
 describe('token file', () => {
-  it('creates a random token once and reads it back', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'routine-token-'))
+  it('creates a random token once and reads it back', async () => {    const dir = await mkdtemp(join(tmpdir(), 'routine-token-'))
     dirs.push(dir)
     const path = join(dir, 'sub', 'agent-routines.token')
     const created = await loadToken(path)
@@ -149,5 +148,54 @@ describe('token file', () => {
     const dir = await mkdtemp(join(tmpdir(), 'routine-token-'))
     dirs.push(dir)
     await expect(loadToken(dir)).rejects.toThrow()
+  })
+})
+
+describe('audit findings 7 and 9: token rotation and loopback', () => {
+  it('reloads a rotated token and keeps the current one when the file is unreadable (audit 7)', async () => {
+    const rig = setup()
+    const routine = await rig.engine.createRoutine({ agentId: 'a1', name: 'Worker', instruction: 'x' })
+    const dir = await mkdtemp(join(tmpdir(), 'routine-rotate-'))
+    dirs.push(dir)
+    const file = join(dir, 'token')
+    await writeFile(file, `${TOKEN}\n`)
+    const warnings: string[] = []
+    const handler = createTriggerHandler(rig.engine, TOKEN, (message) => { warnings.push(message) }, file)
+    const server = createServer((request, response) => { void handler(request, response) })
+    await new Promise<void>(done => server.listen(0, '127.0.0.1', done))
+    open.push(server)
+    const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+    expect((await post(url, { routineId: routine.id })).status).toBe(202)
+    await writeFile(file, 'novo-token\n')
+    expect((await post(url, { routineId: routine.id })).status).toBe(401)
+    expect((await post(url, { routineId: routine.id }, { authorization: 'Bearer novo-token' })).status).toBe(202)
+    await rm(file)
+    await mkdir(file)
+    expect((await post(url, { routineId: routine.id }, { authorization: 'Bearer novo-token' })).status).toBe(202)
+    expect(warnings.some(message => message.includes('keeping the current token'))).toBe(true)
+  })
+
+  it('refuses a non-loopback peer before checking the credential (audit 9)', async () => {
+    let status = 0
+    let body = ''
+    const response = {
+      setHeader: () => undefined,
+      writeHead: (code: number) => { status = code },
+      end: (value: string) => { body = value },
+    } as unknown as ServerResponse
+    const request = {
+      method: 'POST',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      socket: { remoteAddress: '10.0.0.7' },
+      async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify({ routineId: 'r' })) },
+    } as unknown as IncomingMessage
+    const handler = createTriggerHandler({ trigger: () => Promise.reject(new Error('unreachable')) }, TOKEN, () => undefined)
+    await handler(request, response)
+    expect(status).toBe(403)
+    expect(body).toContain('nao_local')
+    const missingPeer = { method: 'POST', headers: request.headers, socket: {} } as unknown as IncomingMessage
+    status = 0
+    await handler(missingPeer, response)
+    expect(status).toBe(403)
   })
 })

@@ -143,7 +143,10 @@ export interface ScheduleGateway {
 
 /** Starts and stops sessions for admitted runs. */
 export interface RunnerPort {
-  /** Start the run in a new session; the outcome comes later through `settle`. */
+  /**
+   * Start the run in a new session and return as soon as the session exists; the outcome comes later through
+   * `settle`. Do not wait for the turn to finish here: the engine holds its serial chain during this call.
+   */
   start: (input: { runId: string; agent: AgentInfo; prompt: string }) => Promise<{ sessionId: string }>
   /** Stop a running session. */
   cancel: (sessionId: string) => Promise<void>

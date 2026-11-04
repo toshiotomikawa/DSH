@@ -8,8 +8,11 @@ type Execute = (args: unknown, exec: unknown) => Promise<unknown>
 /** Mount the tools on a fake host that carries a real engine on fake collaborators. */
 function mount(options: { bridge?: boolean } = {}) {
   const rig = setup()
+  rig.agents.set('b2', { id: 'b2', name: 'Beta' })
   const tools = new Map<string, ToolDefinition>()
-  const bridge = options.bridge === false ? undefined : { agentOfSession: (id: string) => (id === 'sess-1' ? 'a1' : undefined) }
+  const bridge = options.bridge === false ? undefined : {
+    agentOfSession: (id: string) => (id === 'sess-1' ? 'a1' : id === 'sess-b' ? 'b2' : undefined),
+  }
   const ctx = {
     agentRoutines: { engine: rig.engine },
     get: (key: string) => (key === 'agentRoutineBridge' ? bridge : undefined),
@@ -49,7 +52,7 @@ describe('routine_create, routine_update and routine_list', () => {
     expect(edited).toMatchObject({ instructionVersion: 2, active: true })
     const listed = await call('routine_list', {}) as { routines: { id: string }[] }
     expect(listed.routines.map(item => item.id)).toEqual([created.id])
-    expect(((await call('routine_list', { agent: 'outro' })) as { routines: unknown[] }).routines).toEqual([])
+    await expect(call('routine_list', { agent: 'outro' })).rejects.toThrow('agente_nao_autorizado')
     const detail = await call('routine_list', { id: created.id, history_limit: 5 }) as { routine: { id: string }; nextFireAt: string; runs: unknown[] }
     expect(detail.routine.id).toBe(created.id)
     expect(detail.nextFireAt).toBeDefined()
@@ -68,6 +71,17 @@ describe('routine_create, routine_update and routine_list', () => {
     expect(rig.engine.list()).toHaveLength(1)
   })
 
+  it('refuses another agent\'s routine for create, update, list and test (audit 5)', async () => {
+    const { call } = mount()
+    const foreign = await call('routine_create', { name: 'B', instruction: 'x', agent: 'b2' }, { agent: { id: 'sess-b' } }) as { id: string }
+    expect(foreign.id).toBeDefined()
+    await expect(call('routine_create', { name: 'X', instruction: 'x', agent: 'b2' })).rejects.toThrow('agente_nao_autorizado')
+    await expect(call('routine_update', { id: foreign.id, name: 'X' })).rejects.toThrow('agente_nao_autorizado')
+    await expect(call('routine_update', { id: foreign.id, remove: true })).rejects.toThrow('agente_nao_autorizado')
+    await expect(call('routine_list', { id: foreign.id })).rejects.toThrow('agente_nao_autorizado')
+    await expect(call('routine_test', { id: foreign.id })).rejects.toThrow('agente_nao_autorizado')
+  })
+
   it('needs the bridge to know the calling agent', async () => {
     const { call } = mount({ bridge: false })
     await expect(call('routine_create', { name: 'W', instruction: 'x' })).rejects.toThrow('agente_obrigatorio')
@@ -75,7 +89,7 @@ describe('routine_create, routine_update and routine_list', () => {
 
   it('shows engine refusals as code and message, and lets other errors through', async () => {
     const { call, rig } = mount()
-    await expect(call('routine_create', { name: 'W', instruction: 'x', agent: 'nada' })).rejects.toThrow('agente_inexistente: ')
+    await expect(call('routine_create', { name: 'W', instruction: 'x', agent: 'nada' })).rejects.toThrow('agente_nao_autorizado')
     await expect(call('routine_update', { id: 'nada', name: 'x' })).rejects.toThrow('rotina_inexistente: ')
     await expect(call('routine_update', { name: 'x' })).rejects.toThrow()
     rig.store.routines.failPuts = 1
@@ -101,7 +115,7 @@ describe('routine_test and routine_no_update', () => {
     await expect(call('routine_no_update', {}, { agent: { id: 'session-1' } })).rejects.toThrow('sem_execucao: ')
     const run = await call('routine_test', { id: created.id }) as { id: string }
     expect(await call('routine_no_update', {}, { agent: { id: 'session-1' } })).toEqual({ runId: run.id })
-    await rig.engine.settle(run.id, { kind: 'completed', text: 'nada' })
+    await rig.engine.settle(run.id, { kind: 'completed', text: '' })
     expect(rig.engine.run(run.id)?.state).toBe('sucesso_sem_novidade')
     await expect(call('routine_no_update', {}, {})).rejects.toThrow('sem_execucao: ')
   })

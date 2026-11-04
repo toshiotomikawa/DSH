@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { refusal, setup } from './harness.ts'
+import { delivery, refusal, setup } from './harness.ts'
 import type { Rig } from './harness.ts'
 import type { Routine } from '../src/types.ts'
 
@@ -189,10 +189,20 @@ describe('criterion 9: report, no update, failure and manual answer', () => {
     const { run } = await rig.engine.trigger(item.id, { source: 'script' })
     const marked = await rig.engine.noUpdate('session-1')
     expect(marked.noUpdate).toBe(true)
-    await rig.engine.settle(run.id, { kind: 'completed', text: 'Nada a relatar.' })
-    expect(rig.engine.run(run.id)).toMatchObject({ state: 'sucesso_sem_novidade', result: 'Nada a relatar.' })
+    await rig.engine.settle(run.id, { kind: 'completed', text: '' })
+    expect(rig.engine.run(run.id)).toMatchObject({ state: 'sucesso_sem_novidade', result: '' })
     expect(rig.reports).toEqual([])
     expect(rig.engine.history(item.id)).toHaveLength(1)
+  })
+
+  it('reports a non-empty answer even when the model marked no update (audit 15)', async () => {
+    const rig = setup()
+    const item = await routine(rig)
+    const { run } = await rig.engine.trigger(item.id, { source: 'script' })
+    await rig.engine.noUpdate('session-1')
+    await rig.engine.settle(run.id, { kind: 'completed', text: 'ERRO: a ferramenta falhou' })
+    expect(rig.engine.run(run.id)).toMatchObject({ state: 'sucesso_relato', result: 'ERRO: a ferramenta falhou' })
+    expect(rig.reports).toHaveLength(1)
   })
 
   it('shows the answer of a manual test even when it said no update', async () => {
@@ -201,7 +211,7 @@ describe('criterion 9: report, no update, failure and manual answer', () => {
     const { run } = await rig.engine.trigger(item.id, { source: 'manual', manual: true })
     await rig.engine.noUpdate('session-1')
     await rig.engine.settle(run.id, { kind: 'completed', text: 'Sem mudanças hoje.' })
-    expect(rig.engine.view(item.id).runs[0]).toMatchObject({ state: 'sucesso_sem_novidade', result: 'Sem mudanças hoje.', manual: true })
+    expect(rig.engine.view(item.id).runs[0]).toMatchObject({ state: 'sucesso_relato', result: 'Sem mudanças hoje.', manual: true })
     expect(rig.reports).toEqual([])
   })
 
@@ -271,5 +281,55 @@ describe('cancelling', () => {
     const second = await rig.engine.trigger(item.id, { source: 'script' })
     await rig.engine.cancel(first.run.id)
     expect(rig.engine.run(second.run.id)?.state).toBe('execucao')
+  })
+})
+
+describe('audit findings 1 and 2: one execution session', () => {
+  it('runs a calendar delivery through the runner and frees the slot on settle', async () => {
+    const rig = setup()
+    const item = await routine(rig)
+    const first = await rig.engine.observeDelivery(item.id, delivery('m1', '2026-06-02T12:00:00.000Z'))
+    expect(first).toMatchObject({ state: 'execucao', source: 'agenda', sessionId: 'session-1' })
+    expect(rig.starts).toHaveLength(1)
+    expect(rig.cancels).toEqual(['scheduler-m1'])
+    await rig.engine.settle((first as { id: string }).id, { kind: 'completed', text: 'ok' })
+    rig.clock.now += 86_400_000
+    const second = await rig.engine.observeDelivery(item.id, delivery('m2', '2026-06-03T12:00:00.000Z'))
+    expect(second).toMatchObject({ state: 'execucao', sessionId: 'session-2' })
+    expect(rig.starts).toHaveLength(2)
+    expect(rig.cancels).toEqual(['scheduler-m1', 'scheduler-m2'])
+  })
+
+  it('queues a second agenda delivery instead of opening a second execution session', async () => {
+    const rig = setup()
+    const item = await routine(rig)
+    const first = await rig.engine.observeDelivery(item.id, delivery('m1', '2026-06-02T12:00:00.000Z'))
+    rig.clock.now += 86_400_000
+    const second = await rig.engine.observeDelivery(item.id, delivery('m2', '2026-06-03T12:00:00.000Z'))
+    expect(first).toMatchObject({ state: 'execucao', sessionId: 'session-1' })
+    expect(second).toMatchObject({ state: 'fila' })
+    expect(rig.starts).toHaveLength(1)
+    expect(rig.cancels).toEqual(['scheduler-m1', 'scheduler-m2'])
+    await rig.engine.settle((first as { id: string }).id, { kind: 'completed', text: 'ok' })
+    expect(rig.engine.run((second as { id: string }).id)).toMatchObject({ state: 'execucao', sessionId: 'session-2' })
+    expect(rig.starts).toHaveLength(2)
+  })
+})
+
+describe('audit finding 12: notification retry', () => {
+  it('retries a failed report once per tick until it is stamped', async () => {
+    const rig = setup()
+    const item = await routine(rig)
+    rig.notifier.fails = true
+    const { run } = await rig.engine.trigger(item.id, { source: 'script' })
+    await rig.engine.settle(run.id, { kind: 'completed', text: 'relato' })
+    expect(rig.engine.run(run.id)?.notifiedAt).toBeUndefined()
+    expect(rig.reports).toEqual([])
+    rig.notifier.fails = false
+    await rig.engine.tick()
+    expect(rig.reports).toHaveLength(1)
+    expect(rig.engine.run(run.id)?.notifiedAt).toBeDefined()
+    await rig.engine.tick()
+    expect(rig.reports).toHaveLength(1)
   })
 })
