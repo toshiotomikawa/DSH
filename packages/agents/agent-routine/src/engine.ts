@@ -260,7 +260,7 @@ export class RoutineEngine {
    * @param limit - number of executions to include.
    * @returns the view.
    */
-  view(id: string, limit = 10): { routine: Routine; nextFireAt?: string; runs: Run[] } {
+  view(id: string, limit: number = 10): { routine: Routine; nextFireAt?: string; runs: Run[] } {
     const routine = this.require(id)
     const spec = routine.active && !routine.consumed ? routine.schedule : undefined
     return {
@@ -288,7 +288,7 @@ export class RoutineEngine {
    * @param limit - maximum number to return.
    * @returns the executions.
    */
-  history(routineId: string, limit = 20): Run[] {
+  history(routineId: string, limit: number = 20): Run[] {
     return this.runsOf(routineId).sort((left, right) => right.seq - left.seq).slice(0, limit)
   }
 

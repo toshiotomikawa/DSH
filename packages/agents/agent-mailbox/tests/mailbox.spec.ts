@@ -9,7 +9,7 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SESSION_FORMAT_VERSION, SessionId, SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 import * as SessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import Storage from '@deepseek-ai/dsh-storage'
@@ -65,7 +65,7 @@ class ScriptedDirectory implements MailboxDirectory {
 }
 
 class TextAdapter extends MockAdapter {
-  requests = 0
+  requestCount = 0
 
   constructor(private readonly body: string = 'ok', private readonly delayMs = 0) {
     super([])
@@ -76,7 +76,7 @@ class TextAdapter extends MockAdapter {
   }
 
   override async *stream(): AsyncIterable<StreamChunk> {
-    this.requests += 1
+    this.requestCount += 1
     if (this.delayMs > 0) await new Promise(resolve => setTimeout(resolve, this.delayMs))
     yield* textResponse(this.body)
   }
@@ -84,7 +84,7 @@ class TextAdapter extends MockAdapter {
 
 class GateAdapter extends MockAdapter {
   hold = true
-  requests = 0
+  requestCount = 0
   private releases: Array<() => void> = []
 
   constructor(private readonly body: string = 'held') {
@@ -96,7 +96,7 @@ class GateAdapter extends MockAdapter {
   }
 
   override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-    this.requests += 1
+    this.requestCount += 1
     if (this.hold) {
       await new Promise<void>((resolve, reject) => {
         if (options.signal?.aborted) {
@@ -168,11 +168,14 @@ async function persistedSession(root: string, id: string, turns: readonly { turn
   const handle = await ctx.sessionPersistence.create({
     version: SESSION_FORMAT_VERSION, id: SessionId(id), createdAt: Date.now(), isSeeded: false,
   })
-  const events = turns.length === 0
-    ? [{ type: 'session/end-seed' as const, seq: 0, time: Date.now(), data: {} }]
-    : turns.flatMap((turn, index) => [
-      { type: 'turn/start' as const, seq: index * 2, time: Date.now(), data: { turn: turn.turn } },
-      ...turn.end === undefined ? [] : [{ type: 'turn/end' as const, seq: index * 2 + 1, time: Date.now(), data: { turn: turn.turn, reason: { kind: turn.end } } }],
+  const events: SessionEvent[] = turns.length === 0
+    ? [{ type: 'session/end-seed', seq: SessionSeq(0), time: Date.now(), data: {} }]
+    : turns.flatMap<SessionEvent>((turn, index) => [
+      { type: 'turn/start', seq: SessionSeq(index * 2), time: Date.now(), data: { turn: turn.turn } },
+      ...turn.end === undefined ? [] : [{
+        type: 'turn/end' as const, seq: SessionSeq(index * 2 + 1), time: Date.now(),
+        data: { turn: turn.turn, reason: turn.end === 'completed' ? { kind: 'completed' as const } : { kind: 'aborted' as const, reason: { kind: 'user' as const } } },
+      }],
     ])
   await handle.append(events)
   await handle.flush()
@@ -273,9 +276,9 @@ describe('agent mailbox', () => {
     expect(secondReceiver).toBeDefined()
     await secondReceiver!.whenIdle()
     await second.ctx.agentMailbox.flush()
-    expect(secondAdapter.requests).toBe(1)
+    expect(secondAdapter.requestCount).toBe(1)
     await second.ctx.agentMailbox.flush()
-    expect(secondAdapter.requests).toBe(1)
+    expect(secondAdapter.requestCount).toBe(1)
     expect(second.ctx.agentMailbox.list(secondSender).find(summary => summary.id === 'b'))
       .toMatchObject({ status: 'ready', queued: false, pending: 1 })
     const delivered = (await storedMessages(root)).find(message => message['id'] === receipt.messageId) as { deliveries: Array<Record<string, unknown>> }
@@ -292,7 +295,7 @@ describe('agent mailbox', () => {
     const thirdReceiver = third.ctx.agents.get(SessionId('b-main'))
     await thirdReceiver!.whenIdle()
     await third.ctx.agentMailbox.flush()
-    expect(thirdAdapter.requests).toBe(1)
+    expect(thirdAdapter.requestCount).toBe(1)
     expect(thirdReceiver!.session.deriveMessages().some(message => JSON.stringify(message.content).includes('resume the target'))).toBe(true)
     await third.ctx.fiber.dispose()
   })
@@ -338,13 +341,13 @@ describe('agent mailbox', () => {
     await vi.waitFor(() => { expect(receiver.status).toBe('running') })
     const second = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'second task' })
     await ctx.agentMailbox.flush()
-    expect(gated.requests).toBe(1)
+    expect(gated.requestCount).toBe(1)
     expect(receiver.status).toBe('running')
     expect(ctx.agentMailbox.list(sender).find(summary => summary.id === 'b')).toMatchObject({ status: 'working', pending: 2 })
     gated.release()
     await receiver.whenIdle()
     await ctx.agentMailbox.flush()
-    expect(gated.requests).toBe(2)
+    expect(gated.requestCount).toBe(2)
     expect(receiver.session.deriveMessages().some(message => JSON.stringify(message.content).includes('second task'))).toBe(true)
     expect(second.deliveries[0]).toEqual({ recipientId: 'b', state: 'queued' })
   })
@@ -618,7 +621,7 @@ describe('agent mailbox', () => {
     const second = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'second-unique' })
     await ctx.agentMailbox.flush()
     await vi.waitFor(() => { expect(receiver.status).toBe('running') })
-    expect(gated.requests).toBe(1)
+    expect(gated.requestCount).toBe(1)
     const before = (await storedMessages(root)).find(message => message['id'] === second.messageId) as { deliveries: Array<Record<string, unknown>> }
     expect(before.deliveries[0]).toMatchObject({ state: 'queued' })
     expect(await ctx.agentMailbox.interrupt(sender, 'b')).toEqual({ interrupted: true })
@@ -626,7 +629,7 @@ describe('agent mailbox', () => {
     await receiver.whenIdle()
     await ctx.agentMailbox.settled()
     await ctx.agentMailbox.flush()
-    expect(gated.requests).toBe(2)
+    expect(gated.requestCount).toBe(2)
     expect(receiver.session.deriveMessages().some(message => JSON.stringify(message.content).includes('second-unique'))).toBe(true)
     await receiver.whenIdle()
     await ctx.agentMailbox.settled()
