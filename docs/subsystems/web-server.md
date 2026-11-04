@@ -152,6 +152,23 @@ admit(request: ConnectionTrustRequest): PeerAdmission
 createPeer(options: { readonly principal: Principal; readonly interactions?: 'answer' | 'none' }): PeerScope
 
 /**
+ * Admit requests by a credentialed account through one trusted source.
+ * Sources are consulted in registration order before the browser credential,
+ * and the first non-owner Principal wins; every account Peer is reused for
+ * its principal until it is revoked.
+ * @param source - maps one trusted HTTP request to the account it proves, or undefined.
+ * @returns asynchronous disposer removing this source.
+ */
+registerPrincipalSource(source: ConnectionPrincipalSource): () => Promise<void>
+
+/**
+ * End every open Peer of one principal, for example after its account is disabled.
+ * @param principal - identity whose Peers are disposed.
+ * @returns after every matching Peer scope is disposed.
+ */
+revokePrincipal(principal: Principal): Promise<void>
+
+/**
  * Claim a physical socket for an API Peer; browser sockets share their owner Peer.
  * @param request - authenticated upgrade request headers.
  * @returns the Peer and idempotent release, or 409 for duplicate API ownership.
