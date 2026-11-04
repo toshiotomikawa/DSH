@@ -43,4 +43,11 @@ describe('the shipped Web composition', () => {
       expect(matching[0]?.disabled).toBeUndefined()
     }
   })
+
+  it('mounts the persistent-agent registry the sidebar reads, on by default', () => {
+    const matching = rows.filter(entry => entry.id === 'fork-agent-registry')
+    expect(matching).toHaveLength(1)
+    expect(matching[0]).toMatchObject({ name: '@deepseek-ai/dsh-agent-registry' })
+    expect(matching[0]?.disabled).toBeUndefined()
+  })
 })

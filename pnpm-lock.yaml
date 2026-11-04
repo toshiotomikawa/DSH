@@ -6603,16 +6603,19 @@ importers:
 
   packages/client/ui-sidebar:
     dependencies:
-      '@deepseek-ai/dsh-agent-registry':
-        specifier: workspace:*
-        version: link:../../agents/agent-registry
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:*
         version: link:../../typert/protocol
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent-registry':
+        specifier: workspace:*
+        version: link:../../agents/agent-registry
       '@deepseek-ai/dsh-api-gateway':
         specifier: workspace:*
         version: link:../../api/gateway

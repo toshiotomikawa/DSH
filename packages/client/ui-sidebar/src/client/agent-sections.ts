@@ -10,7 +10,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface ResourceProtocolMap { 'agent-sidebar': AgentSidebarSnapshot }
 }
 
-/** Attach resource reads and registry commands to the owning plugin's lifetime. */
+/** Attach resource reads and registry commands to the owning plugin's lifetime.
+ * @param ctx - client plugin context with remote services, resources and slots.
+ */
 export function registerAgentSections(ctx: Context): void {
   const api = ctx.remote.agentSidebar
   ctx.effect(() => ctx.resources.register({
