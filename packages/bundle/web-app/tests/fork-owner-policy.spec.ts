@@ -28,4 +28,16 @@ describe('the shipped Web composition', () => {
     expect(row).toMatchObject({ name: '@deepseek-ai/dsh-agent-runtime/owners' })
     expect(row?.disabled).toBeUndefined()
   })
+
+  it('mounts the account entry, admission and administration plugins on by default', () => {
+    for (const [id, plugin] of [
+      ['fork-accounts', 'accounts'],
+      ['fork-account-auth', 'account-auth'],
+      ['fork-account-tools', 'account-tools'],
+    ]) {
+      const row = rows.find(entry => entry.id === id)
+      expect(row).toMatchObject({ name: `@deepseek-ai/dsh-agent-runtime/${plugin}` })
+      expect(row?.disabled).toBeUndefined()
+    }
+  })
 })

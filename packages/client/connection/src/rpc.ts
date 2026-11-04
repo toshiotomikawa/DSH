@@ -175,6 +175,9 @@ export interface HostConnectionFetch {
   register(route: ConnectionFetchRoute): () => Promise<void>
 }
 
+/** One trusted adapter that turns a Host request into a non-owner Principal. */
+export type ConnectionPrincipalSource = (request: ConnectionTrustRequest) => Principal | undefined
+
 /** Host registry for logical RPC channels carried by the current transport. */
 export interface HostConnectionRpc {
   /**
@@ -245,6 +248,23 @@ export interface HostConnectionHandle {
    * @returns a new Peer distinct from every other Peer.
    */
   createPeer(options: { readonly principal: Principal; readonly interactions?: 'answer' | 'none' }): PeerScope
+
+  /**
+   * Admit requests by a credentialed account through one trusted source.
+   * Sources are consulted in registration order before the browser credential,
+   * and the first non-owner Principal wins; every account Peer is reused for
+   * its principal until it is revoked.
+   * @param source - maps one trusted HTTP request to the account it proves, or undefined.
+   * @returns asynchronous disposer removing this source.
+   */
+  registerPrincipalSource(source: ConnectionPrincipalSource): () => Promise<void>
+
+  /**
+   * End every open Peer of one principal, for example after its account is disabled.
+   * @param principal - identity whose Peers are disposed.
+   * @returns after every matching Peer scope is disposed.
+   */
+  revokePrincipal(principal: Principal): Promise<void>
 
   /**
    * Claim a physical socket for an API Peer; browser sockets share their owner Peer.

@@ -414,6 +414,12 @@
       "@deepseek-ai/dsh-native-command/types": ["./packages/util/native-command/src/types.ts"],
       "@deepseek-ai/dsh-message-quotes/client": ["./packages/session/message-quotes/src/client/index.ts"],
       "@deepseek-ai/dsh-ptc-runtime-node/configuration": ["./packages/ptc-runtime/ptc-runtime-node/src/configuration.ts"],
+      // agents: subpath plugins and presets, so Typert and tests resolve them from source.
+      "@deepseek-ai/dsh-agent-runtime/owners": ["./packages/agents/agent-runtime/src/owners"],
+      "@deepseek-ai/dsh-agent-runtime/accounts": ["./packages/agents/agent-runtime/src/accounts"],
+      "@deepseek-ai/dsh-agent-runtime/account-auth": ["./packages/agents/agent-runtime/src/account-auth"],
+      "@deepseek-ai/dsh-agent-runtime/account-tools": ["./packages/agents/agent-runtime/src/account-tools"],
+      "@deepseek-ai/dsh-tool-agent-memory/preset": ["./packages/agents/tool-agent-memory/src/preset.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],
@@ -429,7 +435,6 @@
       "@deepseek-ai/dsh-agent-registry": ["./packages/agents/agent-registry/src"],
       "@deepseek-ai/dsh-agent-routine": ["./packages/agents/agent-routine/src"],
       "@deepseek-ai/dsh-agent-runtime": ["./packages/agents/agent-runtime/src"],
-      "@deepseek-ai/dsh-agent-runtime/owners": ["./packages/agents/agent-runtime/src/owners"],
       "@deepseek-ai/dsh-agent-tool-presentation": ["./packages/core/agent-tool-presentation/src"],
       "@deepseek-ai/dsh-anonymous-user-id": ["./packages/identity/anonymous-user-id/src"],
       "@deepseek-ai/dsh-app-boot": ["./packages/boot/app-boot/src"],

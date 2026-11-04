@@ -42,6 +42,80 @@ Run `pnpm exec vitest run packages/agents`. The Loader test boots the three plug
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxaccounts--accounts"></a>
+
+### `ctx.accounts` — `Accounts`
+
+Account records and the hash-only entry credential of each account.
+
+```ts cordis-catalog
+/**
+ * Create one active account and issue its entry token, which is returned once
+ * and stored only as its SHA-256 hash.
+ * @param displayName - name shown to people; another account may share it.
+ * @param role - administrator or member.
+ * @returns the stored account and the plaintext token, never readable again.
+ */
+async create(displayName: string, role: AccountRole = 'member'): Promise<{ account: Account; token: string }>
+
+/**
+ * Read every account, oldest first.
+ * @returns detached account records without any credential.
+ */
+list(): Account[]
+
+/**
+ * Read one account.
+ * @param id - stable account id.
+ * @returns detached account record.
+ * @throws Error when no such account exists.
+ */
+get(id: string): Account
+
+/**
+ * Stop an active account from authenticating or acting.
+ * @param id - stable account id.
+ * @returns the disabled account.
+ */
+async disable(id: string): Promise<Account>
+
+/**
+ * Admit a disabled account again; its data and its token survive.
+ * @param id - stable account id.
+ * @returns the active account.
+ */
+async reactivate(id: string): Promise<Account>
+
+/**
+ * Archive an account instead of deleting it: the record and its data stay,
+ * and the entry token is destroyed.
+ * @param id - stable account id.
+ * @returns the archived account.
+ */
+async archive(id: string): Promise<Account>
+
+/**
+ * Resolve one presented entry token. Archived and disabled accounts prove nothing.
+ * @param token - plaintext token from the connection.
+ * @returns the active account, or undefined for an unknown, ended, or empty token.
+ */
+authenticate(token: string): Account | undefined
+
+/**
+ * Whether one active account may administer accounts.
+ * @param id - stable account id.
+ * @returns true only for an active administrator.
+ */
+isAdministrator(id: string): boolean
+
+/** Drain the domain before releasing storage.
+ * @returns after storage is closed.
+ */
+async close(): Promise<void>
+```
+
+Source: [`packages/agents/agent-runtime/src/accounts.ts`](../../packages/agents/agent-runtime/src/accounts.ts)
+
 <a id="ctxagentdirectory--mailboxdirectory"></a>
 
 ### `ctx.agentDirectory` — `MailboxDirectory`
@@ -355,6 +429,27 @@ async selection(id: PersistentAgentId): Promise<ModelSelection>
 Types: [Agent](core.md) · [ModelSelection](core.md) · [SessionId](core.md)
 
 Source: [`packages/agents/agent-registry/src/index.ts`](../../packages/agents/agent-registry/src/index.ts)
+
+<a id="accounts-events"></a>
+
+### `accounts/*` events
+
+<a id="accountsended--emit"></a>
+
+#### `accounts/ended` — emit
+
+One account may no longer authenticate or act, so its connections must end.
+
+```ts cordis-catalog
+/**
+ * One account may no longer authenticate or act, so its connections must end.
+ * @param accountId - stable id of the disabled or archived account.
+ * @mode emit
+ */
+'accounts/ended'(accountId: string): void
+```
+
+Source: [`packages/agents/agent-runtime/src/accounts.ts`](../../packages/agents/agent-runtime/src/accounts.ts)
 
 <a id="agent-routine-events"></a>
 
