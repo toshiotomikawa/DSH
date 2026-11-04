@@ -36,6 +36,8 @@ export class MemoryMediaPool {
   readonly media = new Map<string, MemoryMedium>()
   /** Unit name → stamped version; tests may pre-stamp to force `version-mismatch`. */
   readonly versions = new Map<string, number>()
+  /** Unit name → documents the backend reports as damaged on every `loadAll`. */
+  readonly damaged = new Map<string, Array<{ table: string; key: string }>>()
   /**
    * When positive, that many subsequent mutations reject without touching
    * the medium, decrementing per rejection. A missing-key delete is a no-op
@@ -70,13 +72,18 @@ class MemoryKvUnit implements KvUnit {
     }
   }
 
-  async loadAll(): Promise<{ tables: Record<string, Record<string, unknown>>; global: unknown }> {
+  async loadAll(): Promise<{
+    tables: Record<string, Record<string, unknown>>
+    global: unknown
+    damaged?: readonly { table: string; key: string }[]
+  }> {
     this.assertOpen()
     const tables: Record<string, Record<string, unknown>> = {}
     for (const table of this.descriptor.tables) {
       tables[table] = Object.fromEntries(this.medium.tables.get(table) ?? [])
     }
-    return { tables, global: this.medium.global }
+    const damaged = this.pool.damaged.get(this.descriptor.name)
+    return { tables, global: this.medium.global, ...damaged === undefined ? {} : { damaged } }
   }
 
   async putRecord(table: string, key: string, value: unknown): Promise<void> {

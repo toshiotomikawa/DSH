@@ -91,7 +91,7 @@ The domain layer is a single implementation, not an abstracted seam: consumers d
 
 ### Open sequence
 
-`DomainFacility.open(spec)` runs a strict sequence, each step failing the whole call: reject a name already open or still closing (`already-open`); resolve the route (`backend-not-found`); require the `kv` facet (`facet-unsupported`); open the unit (backend `version-mismatch`/`malformed-medium` pass through); load and validate every stored record and the global against the spec's schemas (`invalid-record`); construct the domain. The caller owns the handle; the facility closes any domain left open when it unmounts, and a closed domain's name frees for reopening only after teardown completes.
+`DomainFacility.open(spec)` runs a strict sequence, each step failing the whole call: reject a name already open or still closing (`already-open`); resolve the route (`backend-not-found`); require the `kv` facet (`facet-unsupported`); open the unit (backend `version-mismatch`/`malformed-medium` pass through); load and validate every stored record and the global against the spec's schemas (`invalid-record`); apply the spec's `invalidRecords` policy to a schema failure or a document the backend reports as damaged (default: reject a schema failure and log a damaged document as absent; `backup-and-skip`: move the document aside; `quarantine`: leave it in place and list the key on `Domain.quarantined`); construct the domain. The caller owns the handle; the facility closes any domain left open when it unmounts, and a closed domain's name frees for reopening only after teardown completes.
 
 ### Source map
 

@@ -91,7 +91,7 @@ domain.table('workspaces').update(id, (r) => ({ ...r, path: newPath }))
 
 ### 打开顺序
 
-`DomainFacility.open(spec)` 按严格顺序执行，任一步骤失败都会让整个调用失败：拒绝已打开或仍在关闭的名称（`already-open`）；解析路由（`backend-not-found`）；要求 `kv` 分面（`facet-unsupported`）；打开单元（后端 `version-mismatch`／`malformed-medium` 透传）；加载并根据 spec 的 schema 校验每条已存记录与全局（`invalid-record`）；构造领域。调用方持有句柄；设施会在卸载时关闭任何仍打开的领域，已关闭领域的名称只在资源销毁完成后才能重新打开。
+`DomainFacility.open(spec)` 按严格顺序执行，任一步骤失败都会让整个调用失败：拒绝已打开或仍在关闭的名称（`already-open`）；解析路由（`backend-not-found`）；要求 `kv` 分面（`facet-unsupported`）；打开单元（后端 `version-mismatch`／`malformed-medium` 透传）；加载并根据 spec 的 schema 校验每条已存记录与全局（`invalid-record`）；对 schema 失败或后端报告为损坏的文档应用 spec 的 `invalidRecords` 策略（默认：schema 失败即拒绝，损坏文档记录日志并按缺失处理；`backup-and-skip`：把文档移到一旁；`quarantine`：留在原地并在 `Domain.quarantined` 中列出该键）；构造领域。调用方持有句柄；设施会在卸载时关闭任何仍打开的领域，已关闭领域的名称只在资源销毁完成后才能重新打开。
 
 ### 源码地图
 

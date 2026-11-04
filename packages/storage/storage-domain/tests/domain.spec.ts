@@ -74,6 +74,7 @@ describe('defineDomain', () => {
     expect(() => defineDomain({
       name: 'ok', version: 1, invalidRecords: 'zap' as 'backup-and-skip', tables: {},
     })).toThrow(/invalidRecords/)
+    expect(() => defineDomain({ name: 'ok', version: 1, invalidRecords: 'quarantine', tables: {} })).not.toThrow()
   })
 
   it('rejects an invalid layout and projects the declared one onto the descriptor', () => {
@@ -95,6 +96,7 @@ describe('DomainFacility.open', () => {
     await domain.table('items').put('a', { label: 'first', count: 1 })
     await expect(facility.open(spec)).rejects.toMatchObject({ name: 'DomainError', code: 'already-open' })
     expect(domain.table('items').get('a')).toEqual({ label: 'first', count: 1 })
+    expect(facility.get('demo')).toBe(domain)
   })
 
   it('routes per domain name and fails loud on an unregistered route target', async () => {
@@ -177,6 +179,142 @@ describe('DomainFacility.open', () => {
       code: 'invalid-record',
       detail: { table: 'items', key: 'bad' },
     })
+  })
+
+  it('quarantines a stored record that fails its schema, keeps it in place and lists the key', async () => {
+    const quarantineSpec = defineDomain({
+      name: 'held',
+      version: 1,
+      invalidRecords: 'quarantine',
+      tables: { items: domainTable<string, Item>(itemSchema) },
+    })
+    const pool = new MemoryMediaPool()
+    {
+      const { facility } = await harness({ pool })
+      const domain = await facility.open(quarantineSpec)
+      await domain.table('items').put('good', { label: 'ok', count: 1 })
+      await domain.table('items').put('bad', { label: 'x', count: 2 })
+    }
+    pool.media.get('held')!.tables.get('items')!.set('bad', { label: 'x', count: 'NaN' })
+    const { facility } = await harness({ pool })
+    const domain = await facility.open(quarantineSpec)
+    expect(domain.table('items').get('good')).toEqual({ label: 'ok', count: 1 })
+    expect(domain.table('items').get('bad')).toBeUndefined()
+    expect(domain.quarantined('items')).toEqual(['bad'])
+    // The document is left where it is, so the next open reports it again.
+    expect(pool.media.get('held')!.tables.get('items')!.has('bad')).toBe(true)
+    expect(() => domain.quarantined('absent')).toThrow(/declares no table/)
+  })
+
+  it('quarantines documents the backend reports as damaged and opens the rest', async () => {
+    const quarantineSpec = defineDomain({
+      name: 'held',
+      version: 1,
+      invalidRecords: 'quarantine',
+      tables: { items: domainTable<string, Item>(itemSchema) },
+    })
+    const pool = new MemoryMediaPool()
+    pool.damaged.set('held', [{ table: 'items', key: 'corrupt' }, { table: 'other', key: 'ignored' }])
+    pool.media.set('held', { tables: new Map([['items', new Map([['good', { label: 'ok', count: 1 }]])]]), global: null })
+    const { facility } = await harness({ pool })
+    const domain = await facility.open(quarantineSpec)
+    expect(domain.table('items').get('good')).toEqual({ label: 'ok', count: 1 })
+    expect(domain.quarantined('items')).toEqual(['corrupt'])
+  })
+
+  it('treats damaged documents as absent under the default policy', async () => {
+    const pool = new MemoryMediaPool()
+    pool.damaged.set('demo', [{ table: 'items', key: 'corrupt' }])
+    const { facility } = await harness({ pool })
+    const domain = await facility.open(spec)
+    expect(domain.quarantined('items')).toEqual([])
+  })
+
+  it('backs up a damaged document when the policy asks', async () => {
+    const moved: string[] = []
+    const movable = {
+      kv: {
+        open: async () => ({
+          loadAll: async () => ({ tables: { items: {} }, global: null, damaged: [{ table: 'items', key: 'bad' }] }),
+          putRecord: async () => {},
+          deleteRecord: async () => {},
+          deleteRecords: async () => {},
+          backupRecord: async (table: string, key: string) => {
+            moved.push(`${table}/${key}`)
+            return `${key}.json.bak.1`
+          },
+          setGlobal: async () => {},
+          close: async () => {},
+        }),
+      },
+      close: async () => {},
+    }
+    const salvageSpec = defineDomain({
+      name: 'salvage',
+      version: 1,
+      invalidRecords: 'backup-and-skip',
+      tables: { items: domainTable<string, Item>(itemSchema) },
+    })
+    const backed = await harness({ backend: movable })
+    const salvaged = await backed.facility.open(salvageSpec)
+    expect(salvaged.quarantined('items')).toEqual([])
+    expect(moved).toEqual(['items/bad'])
+
+    // Without a document to move, the declared policy cannot apply: fail loud.
+    const sparse = await harness({ backend: {
+      kv: {
+        open: async () => ({
+          loadAll: async () => ({ tables: { items: {} }, global: null, damaged: [{ table: 'items', key: 'bad' }] }),
+          putRecord: async () => {},
+          deleteRecord: async () => {},
+          deleteRecords: async () => {},
+          setGlobal: async () => {},
+          close: async () => {},
+        }),
+      },
+      close: async () => {},
+    } })
+    await expect(sparse.facility.open(salvageSpec)).rejects.toMatchObject({
+      code: 'invalid-record',
+      detail: { table: 'items', key: 'bad' },
+    })
+  })
+
+  it('backs up a schema-invalid record under backup-and-skip when the backend can move it', async () => {
+    const moved: string[] = []
+    const records = new Map<string, unknown>([
+      ['good', { label: 'ok', count: 1 }],
+      ['bad', { label: 'x', count: 'NaN' }],
+    ])
+    const movable = {
+      kv: {
+        open: async () => ({
+          loadAll: async () => ({ tables: { items: Object.fromEntries(records) }, global: null }),
+          putRecord: async () => {},
+          deleteRecord: async () => {},
+          deleteRecords: async () => {},
+          backupRecord: async (table: string, key: string) => {
+            moved.push(`${table}/${key}`)
+            records.delete(key)
+            return `${key}.json.bak.1`
+          },
+          setGlobal: async () => {},
+          close: async () => {},
+        }),
+      },
+      close: async () => {},
+    }
+    const salvageSpec = defineDomain({
+      name: 'salvage',
+      version: 1,
+      invalidRecords: 'backup-and-skip',
+      tables: { items: domainTable<string, Item>(itemSchema) },
+    })
+    const backed = await harness({ backend: movable })
+    const salvaged = await backed.facility.open(salvageSpec)
+    expect(salvaged.table('items').get('good')).toEqual({ label: 'ok', count: 1 })
+    expect(salvaged.table('items').get('bad')).toBeUndefined()
+    expect(moved).toEqual(['items/bad'])
   })
 
   it('rejects a stored global that fails its schema with the global marker', async () => {
