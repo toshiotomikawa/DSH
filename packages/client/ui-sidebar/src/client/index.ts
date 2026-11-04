@@ -15,6 +15,8 @@ import { createPanelPins } from './panel-pins.ts'
 import { HeaderLeadingControls } from './HeaderLeadingControls.tsx'
 import { SidebarRoot } from './SidebarRoot.tsx'
 import { PanelIcon } from './PanelIcon.tsx'
+import { registerAgentSections } from './agent-sections.ts'
+import agentSidebarRemote from '@deepseek-ai/dsh-client-ui-sidebar/remote'
 import { en, ja, es, fr, de, ru, pt, zh, type SidebarKey } from './locales.ts'
 
 export type {
@@ -51,6 +53,11 @@ export const inject = ['slots', 'layout', 'uiWorkspace', 'locale', 'shortcuts']
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {
+  ctx.inject(['resources', 'remote'], async (scoped) => {
+    const dispose = await scoped.remote.$mount(agentSidebarRemote)
+    scoped.inject(['resources', 'remote', 'remote.agentSidebar'], registerAgentSections)
+    return dispose
+  })
   const workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-sidebar: dictionaries')
   const panels = createSnapshotStore<readonly SidebarPanelMetadata[]>([])
@@ -99,6 +106,7 @@ export function apply(ctx: ClientContext): void {
         'sidebar.toggle.badge': { kind: 'single', scope: 'root' },
         'sidebar.panellist.actions': { kind: 'list', scope: 'root' },
         'sidebar.workspaces': { kind: 'single', scope: 'root', inject: SIDEBAR_SECTION_INJECT },
+        'sidebar.agents': { kind: 'single', scope: 'root' },
         'sidebar.settings': { kind: 'single', scope: 'root' },
         'sidebar.footer.action': { kind: 'list', scope: 'root' },
       },

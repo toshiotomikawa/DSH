@@ -445,6 +445,7 @@ export function SidebarRoot({
             </nav>
           )}
           <div className={css.regionArea}>
+            {renderSlot('sidebar.agents', { wide })}
             {renderSlot('sidebar.workspaces', {
               wide,
               expandSidebar: () => { if (collapsed) toggleSidebar() },

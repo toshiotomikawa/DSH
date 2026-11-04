@@ -37,6 +37,12 @@ When the sidebar is fully hidden, Web shows only the header's sidebar opener. De
 
 The expanded brand row renders `sidebar.brand.mark` and `sidebar.brand.name` as independent single slots; the collapsed rail renders the same mark slot. On Web and Windows desktop, clicking the expanded brand starts a new session; hovering or focusing it shows no tooltip. Without occupants, the shell uses the fish mark and a localized local-build label. A complete build stacks a code badge below the label as `version[-commit][-dirty]`, using `DSH_CLIENT_VERSION`, the optional 7-character `DSH_CLIENT_COMMIT_HASH`, and `DSH_CLIENT_GIT_DIRTY=true`; missing version metadata omits the badge. Clicking the fallback mark or label of such a build copies that badge text instead of starting a session, also on macOS desktop, and a successful write shows a Version copied toast. New Session targets the explicit Workspace used by a scoped action, otherwise the current Session's Workspace, otherwise the most recently active Workspace; when none exists it clears into the blank New Session page. The expanded New Session button displays the effective binding as trailing grey text on keyboard focus regardless of hover capability, and on hover when the device supports it. While the shortcut is visible, the centered icon and label fade before it when space is narrow; CSS reserves the shortcut’s width without measuring the button. Icon-only controls retain tooltips with platform-formatted keycaps, including the resident macOS header control when the sidebar is hidden. All controls expose `aria-keyshortcuts`. While the global access snapshot excludes `session/create`, the brand row stays inert and neither the New Session button nor the window-chrome New Session control renders; the Host still decides every create request.
 
+### Persistent agent sections
+
+The expanded sidebar shows persistent agents owned by the current account, grouped by their registry section, followed by **Ungrouped**. Create and rename a section using a required name of up to 40 characters. Move an agent with its section selector. Deleting a section asks for confirmation and keeps every agent and conversation, moving the agents to Ungrouped. Errors remain visible; Refresh reloads the authoritative roster.
+
+The Host companion reuses the persistent-agent registry and exposes the `agentSidebar` Remote namespace (`list`, `createSection`, `renameSection`, `deleteSection`, `moveAgent`). Account identity comes from the trusted invocation, including the local owner account; requests accept no account id. The projection contains only ids, names, titles and section ids. The browser reads through `ctx.resources` at `dsh-resource://agent-sidebar/<refresh-key>` and mounts the `sidebar.agents` slot only while the resource and Remote services are available. Mutations stay in the registry.
+
 ### Global panel entries
 
 Plugins add an icon component to the root-scoped `sidebar.panellist` list with an `id`, optional `order`, and a string or locale-aware `label`. The same id addresses the component registered in the layout's root-scoped `main` keyed slot; selecting a missing main entry throws without changing the current selection. The label supplies plain visible text, the accessible name, and the collapsed tooltip. Expanded navigation rows are 32px high with a 2px gap; collapsed rail controls remain 36px high with a 12px gap. Each row reads its own selected state through `usePanelInfo`; moving DOM focus to search or a directory picker does not change the displayed panel or its selected row. With no panel registrations, neither the list nor spacing for it is rendered. The shipped composition registers no example panel.
@@ -122,6 +128,8 @@ None; this package neither assembles nor sends a provider request.
 
 <a id="known-limitations-and-deferred-work"></a>
 
+
+Agent sections refresh on mount, successful local edits or the Refresh button; edits from other clients or tools require Refresh. Agent names are displayed for grouping and movement; this feature does not select or start a conversation. Agent-management copy is Portuguese or English, with English fallback in the other locales.
 
 These limits define what the shell owns versus what its occupants own; they are current package constraints.
 

@@ -27,6 +27,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     }
   }
   interface SlotMap {
+    /** Account-owned persistent agents, grouped independently of workspaces. */
+    'sidebar.agents': { kind: 'single'; scope: 'root'; owner: { wide: boolean } }
     /** Non-interactive notification inside the collapsed sidebar expand button. */
     'sidebar.toggle.badge': { kind: 'single'; scope: 'root'; owner: Record<never, never> }
     /**
@@ -236,6 +238,7 @@ export type SidebarRootComponentProps =
     | 'sidebar.toggle.badge'
     | 'sidebar.panellist.actions'
     | 'sidebar.workspaces'
+    | 'sidebar.agents'
     | 'sidebar.settings'
     | 'sidebar.footer.action'
   >

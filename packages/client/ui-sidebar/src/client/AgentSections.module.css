@@ -1,0 +1,11 @@
+.root { padding: 8px; color: inherit; font-size: 12px; }
+.heading { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.heading h3, .heading strong { margin: 6px 0; flex: 1; font-size: inherit; }
+.root button, .root input, .root select { font: inherit; color: inherit; background: var(--fill-tsp-gray-main, transparent); border: 1px solid var(--border-main, #8886); border-radius: 4px; padding: 3px; }
+.root input { width: 100%; box-sizing: border-box; }
+.root button { cursor: pointer; }
+.root button:disabled { cursor: default; opacity: .5; }
+.list { margin: 0; padding: 0; list-style: none; }
+.agent { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
+.agent span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.agent select { max-width: 50%; }

@@ -88,7 +88,7 @@
       "path": "../../client/ui-session/tsconfig.json"
     },
     {
-      "path": "../../client/ui-sidebar/tsconfig.json"
+      "path": "../../client/ui-sidebar/tsconfig.client.json"
     },
     {
       "path": "../../client/ui-sidebar-right/tsconfig.json"

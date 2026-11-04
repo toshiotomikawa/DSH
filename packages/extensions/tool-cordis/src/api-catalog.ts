@@ -548,6 +548,43 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'agentSidebar',
+    summary: 'Thin Remote adapter; the registry owns validation, isolation and persistence.',
+    description: 'Thin Remote adapter; the registry owns validation, isolation and persistence.',
+    methods: [
+      {
+        signature: '@Remote list(signal: AbortSignal): AgentSidebarSnapshot',
+        description: 'List only display fields, never instructions or provider configuration.',
+        parameters: [{ name: 'signal', description: 'carrier cancellation.' }],
+        returns: 'account-scoped agents and sections.',
+      },
+      {
+        signature: '@Remote async createSection(name: string): Promise<void>',
+        description: 'Create a section in the current account.',
+        parameters: [{ name: 'name', description: 'display name, 1 to 40 characters.' }],
+        returns: 'resolves after the registry commits.',
+      },
+      {
+        signature: '@Remote async renameSection(id: string, name: string): Promise<void>',
+        description: 'Rename a section in the current account.',
+        parameters: [{ name: 'id', description: 'visible section id.' }, { name: 'name', description: 'replacement display name.' }],
+        returns: 'resolves after the registry commits.',
+      },
+      {
+        signature: '@Remote async deleteSection(id: string): Promise<void>',
+        description: 'Remove grouping while keeping agents and their conversations.',
+        parameters: [{ name: 'id', description: 'visible section id.' }],
+        returns: 'resolves after the registry commits.',
+      },
+      {
+        signature: '@Remote async moveAgent(id: string, sectionId: string | null): Promise<void>',
+        description: 'Move an agent, or remove its grouping with null.',
+        parameters: [{ name: 'id', description: 'visible agent id.' }, { name: 'sectionId', description: 'visible section id, or null to ungroup.' }],
+        returns: 'resolves after the registry commits.',
+      },
+    ],
+  },
+  {
     key: 'agentTeams',
     summary: 'Agent Teams service backed by the exact live Lead Session log.',
     description: 'Agent Teams service backed by the exact live Lead Session log.',
@@ -5945,6 +5982,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AgentSetupCommit',
     declaration: 'export interface AgentSetupCommit {\n    commit(): void;\n}',
+  },
+  {
+    name: 'AgentSidebarSnapshot',
+    declaration: 'export interface AgentSidebarSnapshot {\n    agents: {\n        id: string;\n        name: string;\n        title: string;\n        sectionId?: string | undefined;\n    }[];\n    sections: {\n        id: string;\n        name: string;\n    }[];\n}',
   },
   {
     name: 'AgentStatus',

@@ -24,7 +24,7 @@
       "path": "../../core/session"
     },
     {
-      "path": "../../client/ui-sidebar"
+      "path": "../../client/ui-sidebar/tsconfig.client.json"
     },
     {
       "path": "../../client/ui-primitives"

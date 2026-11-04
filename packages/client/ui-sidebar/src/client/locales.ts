@@ -1,7 +1,28 @@
+/** English fallback for agent management in locales without dedicated copy. */
+const agentCopy = {
+  'agents.title': 'Agents',
+  'agents.refresh': 'Refresh',
+  'agents.create': 'New section',
+  'agents.name': 'Section name',
+  'agents.save': 'Save',
+  'agents.cancel': 'Cancel',
+  'agents.loading': 'Loading agents…',
+  'agents.empty': 'No agents yet',
+  'agents.ungrouped': 'Ungrouped',
+  'agents.rename': 'Rename {name}',
+  'agents.renameButton': 'Rename',
+  'agents.delete': 'Delete {name}',
+  'agents.deleteButton': 'Delete',
+  'agents.deleteConfirm': 'Delete this section? Its agents will be ungrouped.',
+  'agents.confirm': 'Delete section',
+  'agents.move': 'Move {name} to section',
+} as const
+
 /** `sidebar` namespace dictionaries for shell controls and global panels. */
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  ...agentCopy,
   'panels.unpinTooltip': '从左侧栏取消固定',
   'panels.unpin': '从侧边栏取消固定{name}',
   'session.new': '新会话',
@@ -19,6 +40,7 @@ export type SidebarKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  ...agentCopy,
   'panels.unpinTooltip': 'Unpin from left sidebar',
   'panels.unpin': 'Unpin {name} from sidebar',
   'session.new': 'New Session',
@@ -33,6 +55,7 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  ...agentCopy,
   'panels.unpinTooltip': '左サイドバーから固定解除',
   'panels.unpin': '{name}をサイドバーから固定解除',
   'session.new': '新規セッション',
@@ -47,6 +70,7 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  ...agentCopy,
   'panels.unpinTooltip': 'Desanclar de la barra lateral izquierda',
   'panels.unpin': 'Desfijar {name} de la barra lateral',
   'session.new': 'Nueva sesión',
@@ -61,6 +85,7 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  ...agentCopy,
   'panels.unpinTooltip': "Retirer l'épingle de la barre latérale gauche",
   'panels.unpin': 'Désépingler {name} de la barre latérale',
   'session.new': 'Nouvelle séance',
@@ -75,6 +100,7 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  ...agentCopy,
   'panels.unpinTooltip': 'Von der linken Seitenleiste lösen',
   'panels.unpin': '{name} von der Seitenleiste lösen',
   'session.new': 'Neue Sitzung',
@@ -89,6 +115,7 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  ...agentCopy,
   'panels.unpinTooltip': 'Открепить от левой боковой панели',
   'panels.unpin': 'Открепить {name} от боковой панели',
   'session.new': 'Новая сессия',
@@ -103,6 +130,23 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  ...agentCopy,
+  'agents.title': 'Agentes',
+  'agents.refresh': 'Atualizar',
+  'agents.create': 'Nova seção',
+  'agents.name': 'Nome da seção',
+  'agents.save': 'Salvar',
+  'agents.cancel': 'Cancelar',
+  'agents.loading': 'Carregando agentes…',
+  'agents.empty': 'Nenhum agente ainda',
+  'agents.ungrouped': 'Sem seção',
+  'agents.rename': 'Renomear {name}',
+  'agents.renameButton': 'Renomear',
+  'agents.delete': 'Apagar {name}',
+  'agents.deleteButton': 'Apagar',
+  'agents.deleteConfirm': 'Apagar esta seção? Os agentes ficarão sem seção.',
+  'agents.confirm': 'Apagar seção',
+  'agents.move': 'Mover {name} para seção',
   'panels.unpinTooltip': 'Soltar da barra lateral esquerda',
   'panels.unpin': 'Desafixar {name} da barra lateral',
   'session.new': 'Nova sessão',
