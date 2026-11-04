@@ -238,6 +238,11 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // The plugin market parses fetched indexes in a private Worker resolved
   // relative to import.meta.url; it is shipped without a public package subpath.
   '@deepseek-ai/dsh-plugin-market': ['lib/worker.cjs'],
+  // The tables service starts its SQL Worker by path relative to
+  // import.meta.url; it is shipped without a public package subpath.
+  '@deepseek-ai/dsh-storage-tables': ['lib/worker.cjs'],
+  // The ACP bridge ships its OpenCode setup guide beside the lib.
+  '@deepseek-ai/dsh-subagent-acp': ['README.opencode.md'],
   // The argv-prefix runner entry ships beside the lib as its own bundle;
   // sandbox-local resolves it through the package's ./runner export. tsdown
   // also shares its generated FFI code through a hashed runtime chunk.
