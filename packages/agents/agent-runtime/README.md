@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-agent-runtime
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Connects persistent agent identities to mailbox and routine sessions.

@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-tool-tables
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Registers the eight table tools: `table_create`, `table_list`, `table_schema`, `table_alter`, `table_drop`, `data_query`, `data_execute` and `data_batch`. Each call runs as the authenticated session owner: private tables stay in that account's file, shared tables are in `tables-shared.sqlite`, and each row records its author (`autor`) and a `revisao` counter usable for compare-and-set updates.

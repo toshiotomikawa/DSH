@@ -5,6 +5,8 @@ kind: "package-group"
 
 # Persistent agents
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Optional packages that give persistent agents a stable identity, durable memory, mailbox messaging and scheduled routines. They stay opt-in and leave upstream profiles unchanged.

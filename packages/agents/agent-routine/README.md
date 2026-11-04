@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-agent-routine
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Persists routine definitions and execution history, serializes admission, and handles calendar delivery, quota waits and authenticated local script triggers.

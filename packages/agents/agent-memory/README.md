@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-agent-memory
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Stores isolated memories and commits changes after a successful turn.
