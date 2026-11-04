@@ -137,6 +137,13 @@
     - id: fork-account-tools
       name: '@deepseek-ai/dsh-agent-runtime/account-tools'
 
+    # Durable persistent-agent profiles: the shared registry the sidebar's
+    # account adapter lists and edits. The deployment composes it here so the
+    # client package never loads a host plugin; disable this row to drop the
+    # feature.
+    - id: fork-agent-registry
+      name: '@deepseek-ai/dsh-agent-registry'
+
     # One background job's observation record streamed over Typert Remote;
     # the roster rides the session control stream above.
     - id: job-controller

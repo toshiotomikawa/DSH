@@ -11,11 +11,10 @@ async function fixture(loader = false) {
   await mkdir('.dsh-test', { recursive: true })
   const root = await mkdtemp(join(process.cwd(), '.dsh-test/sidebar-'))
   onTestFinished(() => rm(root, { recursive: true, force: true }))
-  const { ctx, registryFiber } = await harness(root)
+  const { ctx } = await harness(root)
   onTestFinished(() => ctx.fiber.dispose())
   ctx.provide('typert', {} as never)
   if (loader) {
-    await registryFiber.dispose()
     await ctx.plugin(Loader)
     ctx.loader.builtins.sidebar = Sidebar
     const rows = load(await readFile(new URL('./sidebar.cordis.yml', import.meta.url), 'utf8')) as EntryOptions[]
@@ -30,7 +29,7 @@ async function fixture(loader = false) {
 }
 
 describe('agent sidebar Remote adapter', () => {
-  it('boots from Loader configuration, creates the shared registry and commits visible edits to disk', async () => {
+  it('boots from Loader configuration, reuses the deployment registry and commits visible edits to disk', async () => {
     const { ctx, account, signal, root } = await fixture(true)
     const a = account('a')
     const profile = await a.persistentAgents.create({ name: 'Durable' }, inherited)
@@ -43,6 +42,7 @@ describe('agent sidebar Remote adapter', () => {
     await ctx.loader.root.update([])
     await ctx.loader.await()
     expect(ctx.get('agentSidebar')).toBeUndefined()
+    expect(ctx.get('persistentAgents')).toBeDefined()
   })
   it('projects only this account, delegates all edits, retains agents on deletion, and rejects cross-account ids', async () => {
     const { ctx, account, signal } = await fixture()

@@ -1,6 +1,7 @@
 /** Host companion: expose the account's persistent agent sidebar. */
 import type { Context } from '@deepseek-ai/cordis'
-import * as Registry from '@deepseek-ai/dsh-agent-registry'
+// Type-only: the registry's Context augmentation. The deployment composes the plugin.
+import type {} from '@deepseek-ai/dsh-agent-registry'
 import { ownerIdOf, Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { AgentSidebarSnapshot } from './types.ts'
 
@@ -68,18 +69,20 @@ export class AgentSidebar extends TypertRemoteService {
    */
   @Remote
   async moveAgent(id: string, sectionId: string | null): Promise<void> {
-    await this.account().persistentAgents.assignSection(Registry.PersistentAgentId(id), sectionId)
+    const registry = this.account().persistentAgents
+    const agent = registry.list().find(profile => profile.id === id)
+    if (agent === undefined) throw new Error(`Unknown persistent agent: ${id}`)
+    await registry.assignSection(agent.id, sectionId)
   }
 }
 
-/** Host services needed by the registry and Remote adapter. */
-export const inject = ['storageDomain', 'llm', 'agents', 'typert']
+/** Host services needed by the Remote adapter; the deployment composes the registry. */
+export const inject = ['persistentAgents', 'typert']
 
-/** Reuse the singleton registry when already composed by the deployment.
+/** Mount the adapter over the registry the deployment already composed.
  * @param ctx - host plugin context.
- * @returns resolves when the registry and adapter are active.
+ * @returns resolves when the adapter is active.
  */
 export async function apply(ctx: Context): Promise<void> {
-  if (ctx.get('persistentAgents') === undefined) await ctx.plugin(Registry)
   await ctx.plugin(AgentSidebar)
 }
