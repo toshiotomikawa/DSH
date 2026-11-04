@@ -133,6 +133,48 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'agentDirectory',
+    summary: 'Minimal identity seam.',
+    description: 'Minimal identity seam. The persistent-agent registry supplies the real implementation; this package never decides visibility or authority itself.',
+    methods: [
+      {
+        signature: 'describe(agent: Agent): MailboxTarget',
+        description: 'Identity of the authenticated live caller.',
+        parameters: [{ name: 'agent', description: 'the live caller.' }],
+        returns: 'the target that identifies the caller.',
+      },
+      {
+        signature: 'visible(caller: Agent): readonly MailboxTarget[]',
+        description: 'Targets the caller may address, as a snapshot.',
+        parameters: [{ name: 'caller', description: 'the live caller.' }],
+        returns: 'the visible targets.',
+      },
+      {
+        signature: 'find(agentId: string): MailboxTarget | undefined',
+        description: 'Any known target, used to route an already committed delivery.',
+        parameters: [{ name: 'agentId', description: 'stable agent id.' }],
+        returns: 'the target, or undefined when unknown.',
+      },
+      {
+        signature: 'mayInterrupt(caller: Agent, target: MailboxTarget): boolean',
+        description: 'Whether the caller may interrupt this target.',
+        parameters: [{ name: 'caller', description: 'the live caller.' }, { name: 'target', description: 'the agent to interrupt.' }],
+        returns: 'true when the interruption is allowed.',
+      },
+      {
+        signature: 'thread(target: MailboxTarget, title?: string): SessionId',
+        description: 'A fresh conversation bound to the same agent, optionally titled.',
+        parameters: [{ name: 'target', description: 'the agent that owns the conversation.' }, { name: 'title', description: 'optional conversation title.' }],
+        returns: 'the id of the new conversation.',
+      },
+      {
+        signature: 'prepare?(target: MailboxTarget, sessionId: SessionId): Promise<void>',
+        description: 'Bind an unopened conversation to its durable owner before factory setup.',
+        parameters: [{ name: 'target', description: 'the owning agent.' }, { name: 'sessionId', description: 'the unopened conversation.' }],
+      },
+    ],
+  },
+  {
     key: 'agentLoop',
     summary: 'Concrete agent factory and driver service.',
     description: 'Concrete agent factory and driver service.',
@@ -159,6 +201,122 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Resume an owned agent from the configured persistence service.',
         parameters: [{ name: 'ownerCtx', description: 'caller context that owns load, setup, and the live lifecycle.' }, { name: 'options', description: 'persisted identity, optional live parent, loop options, setup, and cancellation.' }],
         returns: 'the published handle.',
+      },
+    ],
+  },
+  {
+    key: 'agentMailbox',
+    summary: 'Durable message store and delivery pump.',
+    description: 'Durable message store and delivery pump.',
+    methods: [
+      {
+        signature: 'async send(caller: Agent, input: SendInput): Promise<SendReceipt>',
+        description: 'Persist and accept one message, then schedule delivery.',
+        parameters: [{ name: 'caller', description: 'authenticated live agent.' }, { name: 'input', description: 'message fields.' }],
+        returns: 'acceptance receipt after persistence.',
+      },
+      {
+        signature: 'list(caller: Agent): AgentSummary[]',
+        description: 'Retrato dos agentes visíveis, com execução, fila e pedidos pendentes.',
+        parameters: [{ name: 'caller', description: 'authenticated live agent.' }],
+        returns: 'one summary per visible target.',
+      },
+      {
+        signature: 'async interrupt(caller: Agent, agentId: string, sessionId?: SessionId): Promise<{ interrupted: boolean }>',
+        description: 'Request cancellation of the target\'s current turn.',
+        parameters: [{ name: 'caller', description: 'authenticated live agent seeking interruption.' }, { name: 'agentId', description: 'stable target id.' }, { name: 'sessionId', description: 'optional conversation already known for this target.' }],
+        returns: 'whether a running turn was asked to stop.',
+      },
+      {
+        signature: 'async flush(): Promise<void>',
+        description: 'Attempt every queued delivery now and wait for the pump.',
+        parameters: [],
+        returns: 'resolution after queued attempts settle.',
+      },
+      {
+        signature: 'async settled(): Promise<void>',
+        description: 'Wait for already scheduled delivery work without retrying the queue.',
+        parameters: [],
+        returns: 'resolution after the current chain drains.',
+      },
+      {
+        signature: 'claimed(messageId: string, sessionId: SessionId, turn: number): void',
+        description: 'Record the exact turn that claimed one delivered message.',
+        parameters: [{ name: 'messageId', description: 'mailbox message id carried by the user message source.' }, { name: 'sessionId', description: 'claiming conversation.' }, { name: 'turn', description: 'claimed turn number.' }],
+      },
+      {
+        signature: 'settle(sessionId: SessionId, turn: number, aborted: boolean): void',
+        description: 'Close the exact turn that claimed one delivery.',
+        parameters: [{ name: 'sessionId', description: 'conversation whose turn ended.' }, { name: 'turn', description: 'exact turn.' }, { name: 'aborted', description: 'true only when the turn was cancelled.' }],
+      },
+      {
+        signature: 'start(): void',
+        description: 'Attempt queued deliveries when the plugin mounts.',
+        parameters: [],
+      },
+      {
+        signature: 'async close(): Promise<void>',
+        description: 'Drain the pump, release opened agents, then close storage.',
+        parameters: [],
+        returns: 'resolution after teardown.',
+      },
+    ],
+  },
+  {
+    key: 'agentMemory',
+    summary: 'Transaction owner for bounded, agent-isolated memory books.',
+    description: 'Transaction owner for bounded, agent-isolated memory books.',
+    methods: [
+      {
+        signature: 'async settled(sessionId?: SessionId): Promise<void>',
+        description: 'Await commits already admitted by the turn-end observer.',
+        parameters: [{ name: 'sessionId', description: 'optional failure to surface.' }],
+        returns: 'resolution or the failed session\'s error when sessionId is supplied.',
+      },
+      {
+        signature: 'async remember(agent: Agent, input: { text: string; id?: MemoryId; expectedRevision?: number; inclusion?: Memory[\'inclusion\'] }, signal?: AbortSignal): Promise<{ memory: Memory; inclusionApplied: boolean }>',
+        description: 'Stage creation, correction or selection using a revision.',
+        parameters: [{ name: 'agent', description: 'live caller.' }, { name: 'input', description: 'memory fields; omitted inclusion retains selection.' }, { name: 'signal', description: 'optional caller cancellation.' }],
+        returns: 'staged memory and whether inclusion fit the budget.',
+      },
+      {
+        signature: 'async forget(agent: Agent, id: MemoryId, expectedRevision: number, signal?: AbortSignal): Promise<void>',
+        description: 'Stage explicit deletion with CAS.',
+        parameters: [{ name: 'agent', description: 'live caller.' }, { name: 'id', description: 'memory id.' }, { name: 'expectedRevision', description: 'current selection revision.' }, { name: 'signal', description: 'optional caller cancellation.' }],
+      },
+      {
+        signature: 'async search(id: PersistentAgentId, query: string, limit: number = 20, sessionId?: SessionId): Promise<Memory[]>',
+        description: 'Search committed memories by term matches, recency and id.',
+        parameters: [{ name: 'id', description: 'persistent owner.' }, { name: 'query', description: 'terms, case insensitive.' }, { name: 'limit', description: 'result ceiling.' }, { name: 'sessionId', description: 'live caller whose prepared changes are visible.' }],
+        returns: 'matches; no matches is an empty array.',
+      },
+      {
+        signature: 'async list( id: PersistentAgentId, cursor: number = 0, limit: number = Math.min(50, this.limits.maxMemories), sessionId?: SessionId, ): Promise<{ memories: Memory[]; nextCursor: number | null }>',
+        description: 'Read a page without deleting excluded context.',
+        parameters: [{ name: 'id', description: 'persistent owner.' }, { name: 'cursor', description: 'zero-based offset.' }, { name: 'limit', description: 'page size.' }, { name: 'sessionId', description: 'live caller whose prepared changes and commit failure surface.' }],
+        returns: 'page and explicit next cursor, or null at the end.',
+      },
+      {
+        signature: 'essential(id: PersistentAgentId): string',
+        description: 'Render committed essential data literally, with an authority warning.',
+        parameters: [{ name: 'id', description: 'persistent owner.' }],
+        returns: 'bounded data block or empty string.',
+      },
+      {
+        signature: 'async selectForUser(agentId: PersistentAgentId, id: MemoryId, expectedRevision: number, inclusion: Memory[\'inclusion\'], userLocked: boolean): Promise<Memory>',
+        description: 'Change and optionally reserve inclusion through a trusted human-facing consumer, never a model tool.',
+        parameters: [{ name: 'agentId', description: 'owner.' }, { name: 'id', description: 'selected memory.' }, { name: 'expectedRevision', description: 'current revision.' }, { name: 'inclusion', description: 'new selection.' }, { name: 'userLocked', description: 'reserve future selection to the user.' }],
+        returns: 'saved memory.',
+      },
+      {
+        signature: 'end(sessionId: SessionId, turn: number, completed: boolean): void',
+        description: 'Observe an exact turn settlement; failed or interrupted turns discard the entire staged book.',
+        parameters: [{ name: 'sessionId', description: 'conversation id.' }, { name: 'turn', description: 'exact turn.' }, { name: 'completed', description: 'true only for completed turn/end.' }],
+      },
+      {
+        signature: 'async close(): Promise<void>',
+        description: 'Discard unfinished turns, drain admitted commits, then close storage.',
+        parameters: [],
       },
     ],
   },
@@ -256,6 +414,40 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Read plugin rows without creating an Agent.',
         parameters: [],
         returns: 'Current declaration metadata and activation states.',
+      },
+    ],
+  },
+  {
+    key: 'agentRoutineBridge',
+    summary: 'What the agent registry and the session layer provide to routines; supplied by the composition.',
+    description: 'What the agent registry and the session layer provide to routines; supplied by the composition.',
+    methods: [
+      {
+        signature: 'readonly agents: AgentResolver',
+        description: 'Resolve a persistent agent by its stable id.',
+        parameters: [],
+      },
+      {
+        signature: 'readonly agentOfSession?: (sessionId: string) => string | undefined',
+        description: 'Persistent agent that owns a session, when known; lets tools default to the calling agent.',
+        parameters: [],
+      },
+      {
+        signature: 'readonly runner: RunnerPort',
+        description: 'Start and stop sessions of admitted executions; outcomes return through `ctx.agentRoutines.engine.settle`.',
+        parameters: [],
+      },
+    ],
+  },
+  {
+    key: 'agentRoutines',
+    summary: 'The `ctx.agentRoutines` service: opens the routine domain and wires the engine to the scheduler and web server.',
+    description: 'The `ctx.agentRoutines` service: opens the routine domain and wires the engine to the scheduler and web server.',
+    methods: [
+      {
+        signature: 'engine!: RoutineEngine',
+        description: 'The engine; defined once the service is ready.',
+        parameters: [],
       },
     ],
   },
@@ -2210,6 +2402,66 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'persistentAgents',
+    summary: 'Registry owning profiles and durable session-to-agent metadata.',
+    description: 'Registry owning profiles and durable session-to-agent metadata.',
+    methods: [
+      {
+        signature: 'async create(input: AgentPatch, inherited: AgentRoute): Promise<AgentProfile>',
+        description: 'Create without starting a turn.',
+        parameters: [{ name: 'input', description: 'profile fields.' }, { name: 'inherited', description: 'creator\'s selection.' }],
+        returns: 'durable profile.',
+      },
+      {
+        signature: 'get(id: PersistentAgentId): AgentProfile',
+        description: 'Read a detached profile.',
+        parameters: [{ name: 'id', description: 'stable id.' }],
+        returns: 'profile; throws when absent.',
+      },
+      {
+        signature: 'list(): AgentProfile[]',
+        description: 'List detached configurations, including stored fallback order.',
+        parameters: [],
+        returns: 'all profiles.',
+      },
+      {
+        signature: 'async update(id: PersistentAgentId, expectedRevision: number, input: AgentPatch): Promise<AgentProfile>',
+        description: 'Compare-and-set a partial edit.',
+        parameters: [{ name: 'id', description: 'stable id.' }, { name: 'expectedRevision', description: 'last read revision.' }, { name: 'input', description: 'changed fields.' }],
+        returns: 'saved profile.',
+      },
+      {
+        signature: 'async updateMany( edits: readonly { id: PersistentAgentId; revision: number; patch: AgentPatch }[], ): Promise<({ id: PersistentAgentId; profile: AgentProfile } | { id: PersistentAgentId; error: string })[]>',
+        description: 'Edit each item independently.',
+        parameters: [{ name: 'edits', description: 'ids, revisions and partial edits.' }],
+        returns: 'explicit per-item outcome.',
+      },
+      {
+        signature: 'async bind(sessionId: SessionId, agentId: PersistentAgentId): Promise<void>',
+        description: 'Attach durable metadata without changing a Session header or its history.',
+        parameters: [{ name: 'sessionId', description: 'conversation id.' }, { name: 'agentId', description: 'profile id.' }],
+      },
+      {
+        signature: 'metadataOf(sessionId: SessionId): { agentId: PersistentAgentId; ownerId?: string | undefined } | undefined',
+        description: 'Read plugin-owned session metadata.',
+        parameters: [{ name: 'sessionId', description: 'conversation id.' }],
+        returns: 'agentId and optional ownerId, or undefined.',
+      },
+      {
+        signature: 'of(agent: Agent): PersistentAgentId',
+        description: 'Resolve the authenticated tool caller, never a model-supplied id.',
+        parameters: [{ name: 'agent', description: 'live caller.' }],
+        returns: 'stable persistent id.',
+      },
+      {
+        signature: 'async selection(id: PersistentAgentId): Promise<ModelSelection>',
+        description: 'Validate a selection again before session activation.',
+        parameters: [{ name: 'id', description: 'stable id.' }],
+        returns: 'loop-compatible model selection.',
+      },
+    ],
+  },
+  {
     key: 'planMode',
     summary: '`ctx.planMode`: owns logged plan state, applies and narrates selected state at step start, the `plan:policy` section, the `/plan` command, and the conditional exit tool.',
     description: '`ctx.planMode`: owns logged plan state, applies and narrates selected state at step start, the `plan:policy` section, the `/plan` command, and the conditional exit tool. Client carriers expose the projection\'s cropped `{ active, pending }` view. Agent prompt assembly fails while the projection reader is not ready; callers must await plugin activation before running an agent.',
@@ -3634,7 +3886,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'async open<S extends DomainSpec>(spec: S): Promise<Domain<S>>',
-        description: 'Open one declared domain. Steps, each failing the whole call: reject a name that is already open (`already-open`); resolve the backend route (`backend-not-found` passes through from the hub); require its `kv` facet (`facet-unsupported`); open the unit projected from the spec (backend `version-mismatch`/`malformed-medium` pass through); load and validate every stored record against the spec\'s zod schemas (`invalid-record` with the offending table and key — unless the spec declares `invalidRecords: \'backup-and-skip\'` and the unit can move documents aside, in which case the failing record is backed up, logged, and skipped); construct the domain.\n\nLifecycle: the CALLER owns the returned handle and closes it via `Domain.close()` (typically as its own `ctx.effect` disposer) — the facility does not tie the domain to any consumer fiber. Domains still open when the facility unmounts are closed by the plugin disposer.',
+        description: 'Open one declared domain. Steps, each failing the whole call: reject a name that is already open (`already-open`); resolve the backend route (`backend-not-found` passes through from the hub); require its `kv` facet (`facet-unsupported`); open the unit projected from the spec (backend `version-mismatch`/`malformed-medium` pass through); load and validate every stored record against the spec\'s zod schemas, and account for every document the backend reports as damaged (`invalid-record` with the offending table and key — unless the spec declares `invalidRecords: \'backup-and-skip\'`, which backs the document up, logs it, and skips it, or `invalidRecords: \'quarantine\'`, which leaves it in place, logs it, skips it, and lists the key on `Domain.quarantined`); construct the domain.\n\nLifecycle: the CALLER owns the returned handle and closes it via `Domain.close()` (typically as its own `ctx.effect` disposer) — the facility does not tie the domain to any consumer fiber. Domains still open when the facility unmounts are closed by the plugin disposer.',
         parameters: [{ name: 'spec', description: 'The domain declaration, typically from `defineDomain`.' }],
         returns: 'the opened domain handle, typed by the spec.',
       },
@@ -3839,6 +4091,78 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Assemble global and scoped providers, detach tool parameters, apply canonical ordering, then run the presentation waterfall. Scoped sections and variables shadow globals. The waterfall\'s text is authoritative except that an effective complete section is restored afterwards as the sole prompt section; tool declarations stay provider-owned.',
         parameters: [{ name: 'context', description: 'the optional scope, step tool set, and plugin-defined assembly fields.' }],
         returns: 'the post-waterfall assembly with ordered tool declarations and any complete prompt enforced.',
+      },
+    ],
+  },
+  {
+    key: 'tables',
+    summary: 'The `ctx.tables` service.',
+    description: 'The `ctx.tables` service.',
+    methods: [
+      {
+        signature: 'createTable(request: CreateTableRequest, call: CallContext): Promise<TableSchema>',
+        description: 'Create a table.',
+        parameters: [{ name: 'request', description: 'table definition.' }, { name: 'call', description: 'caller identity and cancellation.' }],
+        returns: 'the stored schema.',
+      },
+      {
+        signature: 'listTables(call: CallContext): Promise<TableSummary[]>',
+        description: 'List tables with creator and row count.',
+        parameters: [{ name: 'call', description: 'caller identity and cancellation.' }],
+        returns: 'one summary per table.',
+      },
+      {
+        signature: 'tableSchema(tabela: string, call: CallContext): Promise<TableSchema>',
+        description: 'Describe one table.',
+        parameters: [{ name: 'tabela', description: 'table name.' }, { name: 'call', description: 'caller identity and cancellation.' }],
+        returns: 'the table schema.',
+      },
+      {
+        signature: 'alterTable(request: AlterTableRequest, call: CallContext): Promise<TableSchema>',
+        description: 'Add a column or an index.',
+        parameters: [{ name: 'request', description: 'alteration request.' }, { name: 'call', description: 'caller identity and cancellation.' }],
+        returns: 'the updated schema.',
+      },
+      {
+        signature: 'dropTable(request: DropTableRequest, call: CallContext): Promise<{ readonly tabela: string }>',
+        description: 'Drop a table; the request needs `confirmar` equal to its name.',
+        parameters: [{ name: 'request', description: 'drop request.' }, { name: 'call', description: 'caller identity and cancellation.' }],
+        returns: 'the dropped table name.',
+      },
+      {
+        signature: 'query(request: QueryRequest, call: CallContext): Promise<QueryResult>',
+        description: 'Run one SELECT.',
+        parameters: [{ name: 'request', description: 'query request.' }, { name: 'call', description: 'caller identity and cancellation.' }],
+        returns: 'the query result.',
+      },
+      {
+        signature: 'execute(request: ExecuteRequest, call: CallContext): Promise<ExecuteResult>',
+        description: 'Run one INSERT, UPDATE or DELETE.',
+        parameters: [{ name: 'request', description: 'execution request.' }, { name: 'call', description: 'caller identity and cancellation.' }],
+        returns: 'the execution summary.',
+      },
+      {
+        signature: 'batch(requests: readonly ExecuteRequest[], call: CallContext): Promise<ExecuteResult[]>',
+        description: 'Run several writes atomically.',
+        parameters: [{ name: 'requests', description: 'execution requests.' }, { name: 'call', description: 'caller identity and cancellation.' }],
+        returns: 'one summary per request.',
+      },
+      {
+        signature: 'auditLog(): readonly AuditEvent[]',
+        description: 'The most recent audit records, oldest first.',
+        parameters: [],
+        returns: 'a snapshot of the audit ring.',
+      },
+      {
+        signature: 'onAudit(listener: (event: AuditEvent) => void): () => void',
+        description: 'Observe audit records as they are produced.',
+        parameters: [{ name: 'listener', description: 'called for every finished command.' }],
+        returns: 'a disposer.',
+      },
+      {
+        signature: 'close(): Promise<void>',
+        description: 'Stop the SQL child process.',
+        parameters: [],
       },
     ],
   },
@@ -4707,6 +5031,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'sessionId', description: 'the session whose composition changed.' }, { name: 'agentPreset', description: 'the preset recorded by the committed selection.' }],
   },
   {
+    name: 'agent-routine/report',
+    mode: 'emit',
+    signature: '\'agent-routine/report\'(report: RoutineReport): void',
+    summary: 'A routine produced a report for the user; consumers deliver it (inbox, mailbox, notification).',
+    description: 'A routine produced a report for the user; consumers deliver it (inbox, mailbox, notification).',
+    parameters: [{ name: 'report', description: 'the report to deliver.' }],
+  },
+  {
     name: 'agent/assistant-stream',
     mode: 'emit',
     signature: '\'agent/assistant-stream\'(this: Scoped<Agent>, payload: { agent: Agent; frame: AssistantStreamFrame }): void',
@@ -5171,6 +5503,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'sessionId', description: 'Original Session receiving the reminder.' }],
   },
   {
+    name: 'schedule/validate-edit',
+    mode: 'serial',
+    signature: '\'schedule/validate-edit\'(request: ScheduleEditRequest): void | Promise<void>',
+    summary: 'Validate an existing task mutation before any durable write; rejection leaves the task unchanged.',
+    description: 'Validate an existing task mutation before any durable write; rejection leaves the task unchanged.',
+    parameters: [{ name: 'request', description: 'the mutation about to be written.' }],
+  },
+  {
     name: 'session-telemetry/record',
     mode: 'waterfall',
     signature: '\'session-telemetry/record\'(record: SessionTelemetryRecord, next: () => SessionTelemetryRecord): SessionTelemetryRecord',
@@ -5515,8 +5855,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AgentHandle {\n    agent: Agent;\n    dispose(): Promise<void>;\n}',
   },
   {
+    name: 'AgentInfo',
+    declaration: 'export interface AgentInfo {\n    readonly id: string;\n    readonly name: string;\n    readonly preset?: string;\n    readonly cwd?: string;\n}',
+  },
+  {
     name: 'AgentOptions',
     declaration: 'export interface AgentOptions {\n    provider?: string;\n    model?: string;\n    reasoningEffort?: ReasoningEffortId | undefined;\n    maxTokens?: number;\n}',
+  },
+  {
+    name: 'AgentPatch',
+    declaration: 'export type AgentPatch = z.input<typeof patchSchema>;',
   },
   {
     name: 'AgentPresetComposition',
@@ -5543,8 +5891,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AgentPresetRow {\n    readonly id: string;\n    readonly isDefault: boolean;\n    readonly name?: string;\n    readonly description?: string;\n    readonly broken?: string;\n}',
   },
   {
-    name: 'AgentResolver',
-    declaration: 'export type AgentResolver = (sessionId: SessionId) => Promise<Agent>;',
+    name: 'AgentProfile',
+    declaration: 'export type AgentProfile = z.infer<typeof profileSchema>;',
+  },
+  {
+    name: 'AgentRoute',
+    declaration: 'export type AgentRoute = z.infer<typeof routeSchema>;',
   },
   {
     name: 'AgentSetup',
@@ -5557,6 +5909,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AgentStatus',
     declaration: 'export type AgentStatus = \'idle\' | \'running\';',
+  },
+  {
+    name: 'AgentSummary',
+    declaration: 'export interface AgentSummary {\n    readonly id: string;\n    readonly name: string;\n    readonly title: string;\n    readonly description: string;\n    readonly status: \'working\' | \'queued\' | \'uncertain\' | \'ready\';\n    readonly queued: boolean;\n    readonly pending: number;\n    readonly workingSessions: readonly SessionId[];\n    readonly uncertain: boolean;\n    readonly blocked?: string;\n}',
+  },
+  {
+    name: 'AlterTableRequest',
+    declaration: 'export interface AlterTableRequest {\n    readonly tabela: string;\n    readonly adicionarColuna?: ColumnSpec;\n    readonly adicionarIndice?: {\n        readonly nome: string;\n        readonly colunas: readonly string[];\n        readonly unica?: boolean;\n    };\n}',
   },
   {
     name: 'AnalyticsPreset',
@@ -5691,6 +6051,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
   },
   {
+    name: 'AuditEvent',
+    declaration: 'export interface AuditEvent {\n    readonly agent: string;\n    readonly operation: Method;\n    readonly sql?: readonly string[];\n    readonly durationMs: number;\n    readonly ok: boolean;\n    readonly code?: string;\n}',
+  },
+  {
     name: 'AuthorizationEntry',
     declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
   },
@@ -5791,6 +6155,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ButtonProps {\n    readonly label: string;\n    readonly hotkey?: string | undefined;\n    readonly disabled?: boolean | undefined;\n    readonly onPress?: (() => unknown) | undefined;\n}',
   },
   {
+    name: 'CallContext',
+    declaration: 'export interface CallContext {\n    readonly agent: string;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
     name: 'ChangeRequestCheck',
     declaration: 'export interface ChangeRequestCheck {\n    readonly name: string;\n    readonly state: CheckState;\n    readonly url: string | null;\n    readonly workflow: string | null;\n    readonly startedAt: string | null;\n    readonly completedAt: string | null;\n}',
   },
@@ -5841,6 +6209,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CollectedOutput',
     declaration: 'export interface CollectedOutput {\n    text: string;\n    truncated: boolean;\n    spillPath?: string;\n}',
+  },
+  {
+    name: 'ColumnInfo',
+    declaration: 'export interface ColumnInfo {\n    readonly nome: string;\n    readonly tipo: ColumnType;\n    readonly obrigatoria: boolean;\n    readonly padrao?: SqlValue;\n    readonly automatica: boolean;\n    readonly chavePrimaria: boolean;\n}',
+  },
+  {
+    name: 'ColumnSpec',
+    declaration: 'export interface ColumnSpec {\n    readonly nome: string;\n    readonly tipo: ColumnType;\n    readonly obrigatoria?: boolean;\n    readonly padrao?: SqlValue;\n}',
+  },
+  {
+    name: 'ColumnType',
+    declaration: 'export type ColumnType = typeof COLUMN_TYPES[number];',
   },
   {
     name: 'CommandDefinition',
@@ -6119,6 +6499,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CreateShareRequest {\n    readonly sessionId: string;\n    readonly sessionTitle?: string;\n    readonly accessMode?: \'open\' | \'selected\';\n    readonly ttlMinutes?: number;\n    readonly allowedSubjectIds?: readonly string[];\n    readonly allowsFork?: boolean;\n    readonly sessionMode?: \'view\' | \'write\';\n}',
   },
   {
+    name: 'CreateTableRequest',
+    declaration: 'export interface CreateTableRequest {\n    readonly nome: string;\n    readonly colunas: readonly ColumnSpec[];\n    readonly chavePrimaria?: readonly string[];\n    readonly unicas?: readonly (readonly string[])[];\n}',
+  },
+  {
     name: 'CreateTeamTaskRequest',
     declaration: 'export interface CreateTeamTaskRequest {\n    readonly subject: string;\n    readonly description: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n}',
   },
@@ -6211,8 +6595,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type DeepSeekLlmApiJson = null | boolean | number | string | DeepSeekLlmApiJson[] | {\n    [key: string]: DeepSeekLlmApiJson;\n};',
   },
   {
+    name: 'Delivery',
+    declaration: 'export interface Delivery {\n    readonly messageId: string;\n    readonly scheduledAt: string;\n    readonly deliveredAt: string;\n    readonly sessionId: string;\n}',
+  },
+  {
+    name: 'DeliveryReceipt',
+    declaration: 'export interface DeliveryReceipt {\n    readonly recipientId: string;\n    readonly state: DeliveryState;\n    readonly error?: string;\n}',
+  },
+  {
     name: 'DeliveryRetentionBounds',
     declaration: 'export interface DeliveryRetentionBounds {\n    readonly days: number;\n    readonly records: number;\n}',
+  },
+  {
+    name: 'DeliveryState',
+    declaration: 'export type DeliveryState = \'queued\' | \'started\' | \'completed\' | \'interrupted\' | \'uncertain\';',
   },
   {
     name: 'DeveloperMessage',
@@ -6256,7 +6652,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'Domain',
-    declaration: 'export interface Domain<S extends DomainSpec> {\n    readonly name: string;\n    readonly global: DomainGlobalHandleOf<S>;\n    table<N extends keyof S[\'tables\'] & string>(name: N): KvTable<TableKeyOf<S, N>, TableValueOf<S, N>>;\n    close(): Promise<void>;\n}',
+    declaration: 'export interface Domain<S extends DomainSpec> {\n    readonly name: string;\n    readonly global: DomainGlobalHandleOf<S>;\n    table<N extends keyof S[\'tables\'] & string>(name: N): KvTable<TableKeyOf<S, N>, TableValueOf<S, N>>;\n    quarantined(name: string): readonly string[];\n    close(): Promise<void>;\n}',
   },
   {
     name: 'DomainChanged',
@@ -6288,15 +6684,19 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'DomainImpl',
-    declaration: 'export class DomainImpl {\n    readonly name: string;\n    constructor(private readonly ctx: Context, spec: DomainSpec, private readonly unit: KvUnit, records: Map<string, Map<string, unknown>>, globalValue: unknown, private readonly onClosed: () => void);\n    get global(): DomainGlobal<unknown>;\n    table(name: string): KvTable<string, unknown>;\n    close(): Promise<void>;\n}',
+    declaration: 'export class DomainImpl {\n    readonly name: string;\n    constructor(private readonly ctx: Context, spec: DomainSpec, private readonly unit: KvUnit, records: Map<string, Map<string, unknown>>, globalValue: unknown, private readonly quarantinedKeys: ReadonlyMap<string, ReadonlySet<string>>, private readonly onClosed: () => void);\n    get global(): DomainGlobal<unknown>;\n    table(name: string): KvTable<string, unknown>;\n    quarantined(name: string): readonly string[];\n    close(): Promise<void>;\n}',
   },
   {
     name: 'DomainSpec',
-    declaration: 'export interface DomainSpec {\n    readonly name: string;\n    readonly version: number;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n    readonly invalidRecords?: \'backup-and-skip\';\n    readonly global?: DomainGlobalSpec<unknown>;\n    readonly tables: Record<string, DomainTableSpec>;\n}',
+    declaration: 'export interface DomainSpec {\n    readonly name: string;\n    readonly version: number;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n    readonly invalidRecords?: \'backup-and-skip\' | \'quarantine\';\n    readonly global?: DomainGlobalSpec<unknown>;\n    readonly tables: Record<string, DomainTableSpec>;\n}',
   },
   {
     name: 'DomainTableSpec',
     declaration: 'export interface DomainTableSpec<K extends string = string, V = unknown> {\n    readonly valueSchema: ZodType<V>;\n    readonly __key?: K;\n}',
+  },
+  {
+    name: 'DropTableRequest',
+    declaration: 'export interface DropTableRequest {\n    readonly tabela: string;\n    readonly confirmar: string;\n}',
   },
   {
     name: 'DshEnvironment',
@@ -6353,6 +6753,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'EveryScheduleRecord',
     declaration: 'export interface EveryScheduleRecord {\n    readonly id: ScheduleId;\n    readonly kind: \'every\';\n    readonly title: string;\n    readonly prompt: string;\n    readonly everySeconds: number;\n    readonly scheduledAt: string;\n}',
+  },
+  {
+    name: 'ExecuteRequest',
+    declaration: 'export interface ExecuteRequest {\n    readonly sql: string;\n    readonly parametros?: SqlParams;\n    readonly permitirTudo?: boolean;\n}',
+  },
+  {
+    name: 'ExecuteResult',
+    declaration: 'export interface ExecuteResult {\n    readonly linhasAfetadas: number;\n    readonly ultimoId: number | null;\n}',
   },
   {
     name: 'FeedbackCategory',
@@ -6707,6 +7115,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface IncompatiblePlugin {\n    name: string;\n    version: string;\n    runtimeVersion: string;\n    requirements: Record<string, string>;\n}',
   },
   {
+    name: 'IndexInfo',
+    declaration: 'export interface IndexInfo {\n    readonly nome: string;\n    readonly colunas: readonly string[];\n    readonly unica: boolean;\n}',
+  },
+  {
     name: 'IndexInjection',
     declaration: 'export type IndexInjection = {\n    kind: \'global\';\n    name: string;\n    value: unknown;\n} | {\n    kind: \'script\';\n    placement: IndexInjectionPlacement;\n    text: string;\n} | {\n    kind: \'script-src\';\n    placement: IndexInjectionPlacement;\n    src: string;\n} | {\n    kind: \'script-preload\';\n    src: string;\n} | {\n    kind: \'style\';\n    text: string;\n} | {\n    kind: \'html\';\n    placement: IndexInjectionPlacement;\n    html: string;\n};',
   },
@@ -6900,11 +7312,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'KvUnit',
-    declaration: 'export interface KvUnit {\n    loadAll(): Promise<{\n        tables: Record<string, Record<string, unknown>>;\n        global: unknown;\n    }>;\n    putRecord(table: string, key: string, value: unknown): Promise<void>;\n    deleteRecord(table: string, key: string): Promise<void>;\n    deleteRecords(table: string, keys: readonly string[]): Promise<void>;\n    backupRecord?(table: string, key: string): Promise<string>;\n    setGlobal(value: unknown): Promise<void>;\n    close(): Promise<void>;\n}',
+    declaration: 'export interface KvUnit {\n    loadAll(): Promise<{\n        tables: Record<string, Record<string, unknown>>;\n        global: unknown;\n        damaged?: readonly {\n            table: string;\n            key: string;\n        }[];\n    }>;\n    putRecord(table: string, key: string, value: unknown): Promise<void>;\n    deleteRecord(table: string, key: string): Promise<void>;\n    deleteRecords(table: string, keys: readonly string[]): Promise<void>;\n    backupRecord?(table: string, key: string): Promise<string>;\n    setGlobal(value: unknown): Promise<void>;\n    close(): Promise<void>;\n}',
   },
   {
     name: 'KvUnitDescriptor',
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n}',
+  },
+  {
+    name: 'LimitPolicy',
+    declaration: 'export type LimitPolicy = \'wait\' | \'skip\';',
   },
   {
     name: 'ListVersionsOptions',
@@ -7055,6 +7471,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface LspRange {\n    readonly start: LspPosition;\n    readonly end: LspPosition;\n}',
   },
   {
+    name: 'MailboxTarget',
+    declaration: 'export interface MailboxTarget {\n    readonly id: string;\n    readonly name: string;\n    readonly title: string;\n    readonly description: string;\n    readonly sessionId: SessionId;\n    readonly model?: AgentOptions;\n    readonly ownerId?: string;\n}',
+  },
+  {
     name: 'ManagementError',
     declaration: 'export interface ManagementError {\n    code: ReadOnlyReason | \'unknown-plugin\' | \'invalid-spec\' | \'already-installed\' | \'ambiguous-install\' | \'not-bundle\' | \'not-removable\' | \'stop-profile\' | \'bundle-in-use\' | \'stale-approval\' | \'incompatible-version\' | \'unsupported-platform\' | \'operation-error\';\n    diagnostic?: string;\n    incompatible?: IncompatiblePlugin[];\n}',
   },
@@ -7191,6 +7611,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type McpServerRegistration = Omit<EntryInput, \'enabled\'>;',
   },
   {
+    name: 'Memory',
+    declaration: 'export type Memory = z.infer<typeof memorySchema>;',
+  },
+  {
+    name: 'MemoryId',
+    declaration: 'export type MemoryId = Branded<\'MemoryId\'>;',
+  },
+  {
     name: 'Mergeability',
     declaration: 'export type Mergeability = \'mergeable\' | \'conflicting\' | \'unknown\';',
   },
@@ -7293,6 +7721,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'MessageSourceMap',
     declaration: 'export interface MessageSourceMap {\n    user: {\n        kind: \'user\';\n    };\n    model: ModelMessageSource;\n    tool: ToolMessageSource;\n    \'system-prompt\': SystemPromptMessageSource;\n}',
+  },
+  {
+    name: 'Method',
+    declaration: 'export type Method = \'createTable\' | \'listTables\' | \'tableSchema\' | \'alterTable\' | \'dropTable\' | \'query\' | \'execute\' | \'batch\';',
+  },
+  {
+    name: 'MissedPolicy',
+    declaration: 'export type MissedPolicy = \'skip\' | \'run-once\';',
   },
   {
     name: 'ModDefinition',
@@ -7419,6 +7855,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type OTelEventScalar = string | number | boolean;',
   },
   {
+    name: 'Outcome',
+    declaration: 'export type Outcome = {\n    readonly kind: \'completed\';\n    readonly text: string;\n} | {\n    readonly kind: \'limit\';\n    readonly resetAt?: string;\n    readonly afterEffects?: boolean;\n    readonly message?: string;\n} | {\n    readonly kind: \'auth\';\n    readonly message: string;\n} | {\n    readonly kind: \'failed\';\n    readonly message: string;\n} | {\n    readonly kind: \'cancelled\';\n};',
+  },
+  {
     name: 'OwnerIdentityRequest',
     declaration: 'export interface OwnerIdentityRequest {\n    readonly relay?: string;\n}',
   },
@@ -7489,6 +7929,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PermissionCatalog',
     declaration: 'export interface PermissionCatalog {\n    options: PresetOption[];\n    defaultOptions: PresetOption[];\n    defaultPreset: string;\n}',
+  },
+  {
+    name: 'PersistentAgentId',
+    declaration: 'export type PersistentAgentId = Branded<\'PersistentAgentId\'>;',
   },
   {
     name: 'PiAiRequestHeaderContext',
@@ -7807,6 +8251,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PtcRunSpec extends PtcRunRequest {\n    cwd: string;\n    timeoutMs: number | null;\n}',
   },
   {
+    name: 'QueryRequest',
+    declaration: 'export interface QueryRequest {\n    readonly sql: string;\n    readonly parametros?: SqlParams;\n    readonly limite?: number;\n}',
+  },
+  {
     name: 'QueueAction',
     declaration: 'export type QueueAction = {\n    readonly kind: \'edit\';\n    readonly content: readonly TextBlock[];\n} | {\n    readonly kind: \'remove\';\n} | {\n    readonly kind: \'steer\';\n};',
   },
@@ -8035,6 +8483,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ReviewDecision = \'approved\' | \'changes-requested\' | \'review-required\' | \'none\';',
   },
   {
+    name: 'Routine',
+    declaration: 'export interface Routine {\n    readonly id: string;\n    readonly agentId: string;\n    readonly ownerId?: string;\n    readonly name: string;\n    readonly instruction: string;\n    readonly instructionVersion: number;\n    readonly trigger: \'schedule\' | \'script\';\n    readonly schedule?: ScheduleSpec;\n    readonly timeZone: string;\n    readonly active: boolean;\n    readonly limitPolicy: LimitPolicy;\n    readonly missedPolicy: MissedPolicy;\n    readonly scriptEnabled: boolean;\n    readonly scheduleTaskId?: string;\n    readonly consumed: boolean;\n    readonly lastSeenAt: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+  },
+  {
+    name: 'RoutineEngine',
+    declaration: 'export class RoutineEngine {\n    constructor(private readonly options: EngineOptions);\n    createRoutine(input: RoutineInput): Promise<Routine>;\n    editRoutine(id: string, patch: RoutinePatch): Promise<Routine>;\n    deleteRoutine(id: string): Promise<void>;\n    view(id: string, limit: number = 10): {\n        routine: Routine;\n        nextFireAt?: string;\n        runs: Run[];\n    };\n    list(agentId?: string): Routine[];\n    history(routineId: string, limit: number = 20): Run[];\n    run(runId: string): Run | undefined;\n    trigger(routineId: string, request: {\n        source: Exclude<RunSource, \'agenda\'>;\n        manual?: boolean;\n        payload?: unknown;\n        idempotencyKey?: string;\n    }): Promise<TriggerResult>;\n    observeDelivery(routineId: string, delivery: Delivery): Promise<Run | undefined>;\n    settle(runId: string, outcome: Outcome): Promise<boolean>;\n    noUpdate(sessionId: string): Promise<Run>;\n    cancel(runId: string): Promise<Run>;\n    tick(): Promise<void>;\n    recover(): Promise<void>;\n}',
+  },
+  {
+    name: 'RoutineInput',
+    declaration: 'export interface RoutineInput {\n    readonly agentId: string;\n    readonly ownerId?: string;\n    readonly name: string;\n    readonly instruction: string;\n    readonly trigger?: \'schedule\' | \'script\';\n    readonly schedule?: ScheduleSpec;\n    readonly timeZone?: string;\n    readonly active?: boolean;\n    readonly limitPolicy?: LimitPolicy;\n    readonly missedPolicy?: MissedPolicy;\n    readonly scriptEnabled?: boolean;\n}',
+  },
+  {
+    name: 'RoutinePatch',
+    declaration: 'export type RoutinePatch = Partial<Omit<RoutineInput, \'agentId\' | \'ownerId\'>>;',
+  },
+  {
+    name: 'RoutineReport',
+    declaration: 'export interface RoutineReport {\n    readonly runId: string;\n    readonly routineId: string;\n    readonly agentId: string;\n    readonly routineName: string;\n    readonly text: string;\n}',
+  },
+  {
     name: 'RpcId',
     declaration: 'export type RpcId = Branded<\'rpc-id\'>;',
   },
@@ -8043,8 +8511,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface RRuleScheduleRecord {\n    readonly kind: \'rrule\';\n    readonly id: ScheduleId;\n    readonly title: string;\n    readonly prompt: string;\n    readonly rrule: string;\n    readonly scheduledAt: string;\n}',
   },
   {
+    name: 'Run',
+    declaration: 'export interface Run {\n    readonly id: string;\n    readonly seq: number;\n    readonly routineId: string;\n    readonly agentId: string;\n    readonly ownerId?: string;\n    readonly source: RunSource;\n    readonly manual: boolean;\n    readonly scheduledAt?: string;\n    readonly acceptedAt: string;\n    readonly startedAt?: string;\n    readonly endedAt?: string;\n    readonly state: RunState;\n    readonly instructionVersion?: number;\n    readonly instruction?: string;\n    readonly payload?: string;\n    readonly idempotencyKey?: string;\n    readonly deliveryKey?: string;\n    readonly sessionId?: string;\n    readonly result?: string;\n    readonly error?: string;\n    readonly reason?: string;\n    readonly eligibleAt?: string;\n    readonly nextCheckAt?: string;\n    readonly quotaChecks: number;\n    readonly uncertain: boolean;\n    readonly noUpdate: boolean;\n    readonly notifiedAt?: string;\n}',
+  },
+  {
     name: 'RunnerFailureRule',
     declaration: 'export interface RunnerFailureRule {\n    allowedExitCodes?: readonly number[];\n    fatalSignatures: readonly string[];\n    informationalLines?: readonly string[];\n}',
+  },
+  {
+    name: 'RunnerPort',
+    declaration: 'export interface RunnerPort {\n    start: (input: {\n        runId: string;\n        agent: AgentInfo;\n        prompt: string;\n    }) => Promise<{\n        sessionId: string;\n    }>;\n    cancel: (sessionId: string) => Promise<void>;\n}',
+  },
+  {
+    name: 'RunSource',
+    declaration: 'export type RunSource = \'agenda\' | \'manual\' | \'script\' | \'webhook\';',
+  },
+  {
+    name: 'RunState',
+    declaration: 'export type RunState = \'fila\' | \'espera_cota\' | \'execucao\' | \'sucesso_relato\' | \'sucesso_sem_novidade\' | \'falha\' | \'cancelada\' | \'pulada\';',
   },
   {
     name: 'SandboxEnforcement',
@@ -8175,6 +8659,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ScheduleSessionCreateSpec {\n    readonly cwd?: string;\n    readonly agentPreset?: string;\n}',
   },
   {
+    name: 'ScheduleSpec',
+    declaration: 'export type ScheduleSpec = {\n    readonly kind: \'once\';\n    readonly date: string;\n    readonly time: string;\n} | {\n    readonly kind: \'daily\';\n    readonly time: string;\n} | {\n    readonly kind: \'weekdays\';\n    readonly time: string;\n} | {\n    readonly kind: \'weekly\';\n    readonly time: string;\n    readonly weekdays: readonly number[];\n} | {\n    readonly kind: \'monthly\';\n    readonly day: number;\n    readonly time: string;\n} | {\n    readonly kind: \'interval\';\n    readonly everySeconds: number;\n} | {\n    readonly kind: \'cron\';\n    readonly expression: string;\n};',
+  },
+  {
     name: 'ScheduleTarget',
     declaration: 'export type ScheduleTarget = {\n    readonly kind: \'session\';\n    readonly sessionId: SessionId;\n} | {\n    readonly kind: \'new_once\';\n    readonly sessionId: SessionId;\n    readonly create: ScheduleSessionCreateSpec;\n} | {\n    readonly kind: \'new\';\n    readonly create: ScheduleSessionCreateSpec;\n};',
   },
@@ -8221,6 +8709,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SearchResultView',
     declaration: 'export type SearchResultView = SearchMatchesResultView | SearchPathsResultView;',
+  },
+  {
+    name: 'SendInput',
+    declaration: 'export interface SendInput {\n    readonly recipients?: readonly string[];\n    readonly text: string;\n    readonly expectsReply?: boolean;\n    readonly replyToMessageId?: string;\n    readonly newThread?: boolean;\n    readonly title?: string;\n    readonly idempotencyKey?: string;\n}',
+  },
+  {
+    name: 'SendReceipt',
+    declaration: 'export interface SendReceipt {\n    readonly messageId: string;\n    readonly deliveries: readonly DeliveryReceipt[];\n}',
   },
   {
     name: 'SerializedElement',
@@ -9155,6 +9651,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SpillSource = {\n    kind: \'tool\';\n    toolName: string;\n    callId: ToolCallId;\n    label: string;\n} | {\n    kind: \'session-reference\';\n    sessionId: SessionId;\n    label: string;\n};',
   },
   {
+    name: 'SqlParams',
+    declaration: 'export type SqlParams = readonly SqlValue[] | {\n    readonly [key: string]: SqlValue;\n};',
+  },
+  {
+    name: 'SqlValue',
+    declaration: 'export type SqlValue = string | number | boolean | null | readonly SqlValue[] | {\n    readonly [key: string]: SqlValue;\n};',
+  },
+  {
     name: 'SshStreamEndpoint',
     declaration: 'export type SshStreamEndpoint = z.infer<typeof streamEndpointSchema>;',
   },
@@ -9381,6 +9885,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TableKeyOf',
     declaration: 'export type TableKeyOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<infer K> ? K : never;',
+  },
+  {
+    name: 'TableSchema',
+    declaration: 'export interface TableSchema {\n    readonly nome: string;\n    readonly criador: string;\n    readonly escopo: \'compartilhada\' | \'privada\';\n    readonly criadoEm: string;\n    readonly colunas: readonly ColumnInfo[];\n    readonly chavePrimaria: readonly string[];\n    readonly indices: readonly IndexInfo[];\n}',
+  },
+  {
+    name: 'TableSummary',
+    declaration: 'export interface TableSummary {\n    readonly nome: string;\n    readonly criador: string;\n    readonly escopo: \'compartilhada\' | \'privada\';\n    readonly criadoEm: string;\n    readonly linhas: number;\n}',
   },
   {
     name: 'TableValueOf',
@@ -9717,6 +10229,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TranslationSpec',
     declaration: 'export type TranslationSpec = AnonymousTranslationSpec | PaidTranslationSpec;',
+  },
+  {
+    name: 'TriggerResult',
+    declaration: 'export interface TriggerResult {\n    readonly run: Run;\n    readonly duplicate: boolean;\n}',
   },
   {
     name: 'TurnBoundaryProjection',

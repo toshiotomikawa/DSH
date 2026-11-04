@@ -27,3 +27,316 @@ maxMemories 默认为 256，maxMemoryBytes 和 essentialBytes 默认为 8192 UTF
 ## 验证
 
 运行 `pnpm exec vitest run packages/agents`。Loader 测试通过 cordis.yml 加载真实插件、存储和智能体循环，仅模拟模型提供方。测试覆盖重开、验证、隔离、成功与取消回合、版本冲突、用户锁和预算限制，并对每个源文件要求 100% 覆盖率。
+
+<!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
+
+<a id="cordis-surface"></a>
+
+## Cordis API
+
+Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxagentdirectory--mailboxdirectory"></a>
+
+### `ctx.agentDirectory` — `MailboxDirectory`
+
+Minimal identity seam. The persistent-agent registry supplies the real implementation; this package never decides visibility or authority itself.
+
+```ts cordis-catalog
+/**
+ * Identity of the authenticated live caller.
+ * @param agent - the live caller.
+ * @returns the target that identifies the caller.
+ */
+describe(agent: Agent): MailboxTarget
+
+/**
+ * Targets the caller may address, as a snapshot.
+ * @param caller - the live caller.
+ * @returns the visible targets.
+ */
+visible(caller: Agent): readonly MailboxTarget[]
+
+/**
+ * Any known target, used to route an already committed delivery.
+ * @param agentId - stable agent id.
+ * @returns the target, or undefined when unknown.
+ */
+find(agentId: string): MailboxTarget | undefined
+
+/**
+ * Whether the caller may interrupt this target.
+ * @param caller - the live caller.
+ * @param target - the agent to interrupt.
+ * @returns true when the interruption is allowed.
+ */
+mayInterrupt(caller: Agent, target: MailboxTarget): boolean
+
+/**
+ * A fresh conversation bound to the same agent, optionally titled.
+ * @param target - the agent that owns the conversation.
+ * @param title - optional conversation title.
+ * @returns the id of the new conversation.
+ */
+thread(target: MailboxTarget, title?: string): SessionId
+
+/**
+ * Bind an unopened conversation to its durable owner before factory setup.
+ * @param target - the owning agent.
+ * @param sessionId - the unopened conversation.
+ */
+prepare?(target: MailboxTarget, sessionId: SessionId): Promise<void>
+```
+
+Types: [Agent](core.zh.md) · [SessionId](core.zh.md)
+
+Source: [`packages/agents/agent-mailbox/src/index.ts`](../../packages/agents/agent-mailbox/src/index.ts)
+
+<a id="ctxagentmailbox--agentmailbox"></a>
+
+### `ctx.agentMailbox` — `AgentMailbox`
+
+Durable message store and delivery pump.
+
+```ts cordis-catalog
+/** Persist and accept one message, then schedule delivery.
+ * @param caller - authenticated live agent.
+ * @param input - message fields.
+ * @returns acceptance receipt after persistence.
+ */
+async send(caller: Agent, input: SendInput): Promise<SendReceipt>
+
+/** Retrato dos agentes visíveis, com execução, fila e pedidos pendentes.
+ * @param caller - authenticated live agent.
+ * @returns one summary per visible target.
+ */
+list(caller: Agent): AgentSummary[]
+
+/** Request cancellation of the target's current turn.
+ * @param caller - authenticated live agent seeking interruption.
+ * @param agentId - stable target id.
+ * @param sessionId - optional conversation already known for this target.
+ * @returns whether a running turn was asked to stop.
+ */
+async interrupt(caller: Agent, agentId: string, sessionId?: SessionId): Promise<{ interrupted: boolean }>
+
+/** Attempt every queued delivery now and wait for the pump.
+ * @returns resolution after queued attempts settle.
+ */
+async flush(): Promise<void>
+
+/** Wait for already scheduled delivery work without retrying the queue.
+ * @returns resolution after the current chain drains.
+ */
+async settled(): Promise<void>
+
+/** Record the exact turn that claimed one delivered message.
+ * @param messageId - mailbox message id carried by the user message source.
+ * @param sessionId - claiming conversation.
+ * @param turn - claimed turn number.
+ */
+claimed(messageId: string, sessionId: SessionId, turn: number): void
+
+/** Close the exact turn that claimed one delivery.
+ * @param sessionId - conversation whose turn ended.
+ * @param turn - exact turn.
+ * @param aborted - true only when the turn was cancelled.
+ */
+settle(sessionId: SessionId, turn: number, aborted: boolean): void
+
+/** Attempt queued deliveries when the plugin mounts. */
+start(): void
+
+/** Drain the pump, release opened agents, then close storage.
+ * @returns resolution after teardown.
+ */
+async close(): Promise<void>
+```
+
+Types: [Agent](core.zh.md) · [SessionId](core.zh.md)
+
+Source: [`packages/agents/agent-mailbox/src/index.ts`](../../packages/agents/agent-mailbox/src/index.ts)
+
+<a id="ctxagentmemory--agentmemory"></a>
+
+### `ctx.agentMemory` — `AgentMemory`
+
+Transaction owner for bounded, agent-isolated memory books.
+
+```ts cordis-catalog
+/** Await commits already admitted by the turn-end observer.
+ * @returns resolution or the failed session's error when sessionId is supplied.
+ * @param sessionId - optional failure to surface.
+ */
+async settled(sessionId?: SessionId): Promise<void>
+
+/** Stage creation, correction or selection using a revision.
+ * @param agent - live caller.
+ * @param input - memory fields; omitted inclusion retains selection.
+ * @param signal - optional caller cancellation.
+ * @returns staged memory and whether inclusion fit the budget.
+ */
+async remember(agent: Agent, input: { text: string; id?: MemoryId; expectedRevision?: number; inclusion?: Memory['inclusion'] }, signal?: AbortSignal): Promise<{ memory: Memory; inclusionApplied: boolean }>
+
+/** Stage explicit deletion with CAS.
+ * @param agent - live caller.
+ * @param id - memory id.
+ * @param expectedRevision - current selection revision.
+ * @param signal - optional caller cancellation.
+ */
+async forget(agent: Agent, id: MemoryId, expectedRevision: number, signal?: AbortSignal): Promise<void>
+
+/** Search committed memories by term matches, recency and id.
+ * @param id - persistent owner.
+ * @param query - terms, case insensitive.
+ * @param limit - result ceiling.
+ * @param sessionId - live caller whose prepared changes are visible.
+ * @returns matches; no matches is an empty array.
+ */
+async search(id: PersistentAgentId, query: string, limit: number = 20, sessionId?: SessionId): Promise<Memory[]>
+
+/** Read a page without deleting excluded context.
+ * @param id - persistent owner.
+ * @param cursor - zero-based offset.
+ * @param limit - page size.
+ * @param sessionId - live caller whose prepared changes and commit failure surface.
+ * @returns page and explicit next cursor, or null at the end.
+ */
+async list( id: PersistentAgentId, cursor: number = 0, limit: number = Math.min(50, this.limits.maxMemories), sessionId?: SessionId, ): Promise<{ memories: Memory[]; nextCursor: number | null }>
+
+/** Render committed essential data literally, with an authority warning.
+ * @param id - persistent owner.
+ * @returns bounded data block or empty string.
+ */
+essential(id: PersistentAgentId): string
+
+/** Change and optionally reserve inclusion through a trusted human-facing consumer, never a model tool.
+ * @param agentId - owner.
+ * @param id - selected memory.
+ * @param expectedRevision - current revision.
+ * @param inclusion - new selection.
+ * @param userLocked - reserve future selection to the user.
+ * @returns saved memory.
+ */
+async selectForUser(agentId: PersistentAgentId, id: MemoryId, expectedRevision: number, inclusion: Memory['inclusion'], userLocked: boolean): Promise<Memory>
+
+/** Observe an exact turn settlement; failed or interrupted turns discard the entire staged book.
+ * @param sessionId - conversation id.
+ * @param turn - exact turn.
+ * @param completed - true only for completed turn/end.
+ */
+end(sessionId: SessionId, turn: number, completed: boolean): void
+
+/** Discard unfinished turns, drain admitted commits, then close storage. */
+async close(): Promise<void>
+```
+
+Types: [Agent](core.zh.md) · [SessionId](core.zh.md)
+
+Source: [`packages/agents/agent-memory/src/index.ts`](../../packages/agents/agent-memory/src/index.ts)
+
+<a id="ctxagentroutinebridge--routinebridge"></a>
+
+### `ctx.agentRoutineBridge` — `RoutineBridge`
+
+What the agent registry and the session layer provide to routines; supplied by the composition.
+
+Source: [`packages/agents/agent-routine/src/index.ts`](../../packages/agents/agent-routine/src/index.ts)
+
+<a id="ctxagentroutines--agentroutines"></a>
+
+### `ctx.agentRoutines` — `AgentRoutines`
+
+The `ctx.agentRoutines` service: opens the routine domain and wires the engine to the scheduler and web server.
+
+Source: [`packages/agents/agent-routine/src/index.ts`](../../packages/agents/agent-routine/src/index.ts)
+
+<a id="ctxpersistentagents--persistentagents"></a>
+
+### `ctx.persistentAgents` — `PersistentAgents`
+
+Registry owning profiles and durable session-to-agent metadata.
+
+```ts cordis-catalog
+/** Create without starting a turn.
+ * @param input - profile fields.
+ * @param inherited - creator's selection.
+ * @returns durable profile.
+ */
+async create(input: AgentPatch, inherited: AgentRoute): Promise<AgentProfile>
+
+/** Read a detached profile.
+ * @param id - stable id.
+ * @returns profile; throws when absent.
+ */
+get(id: PersistentAgentId): AgentProfile
+
+/** List detached configurations, including stored fallback order.
+ * @returns all profiles.
+ */
+list(): AgentProfile[]
+
+/** Compare-and-set a partial edit.
+ * @param id - stable id.
+ * @param expectedRevision - last read revision.
+ * @param input - changed fields.
+ * @returns saved profile.
+ */
+async update(id: PersistentAgentId, expectedRevision: number, input: AgentPatch): Promise<AgentProfile>
+
+/** Edit each item independently.
+ * @param edits - ids, revisions and partial edits.
+ * @returns explicit per-item outcome.
+ */
+async updateMany( edits: readonly { id: PersistentAgentId; revision: number; patch: AgentPatch }[], ): Promise<({ id: PersistentAgentId; profile: AgentProfile } | { id: PersistentAgentId; error: string })[]>
+
+/** Attach durable metadata without changing a Session header or its history.
+ * @param sessionId - conversation id.
+ * @param agentId - profile id.
+ */
+async bind(sessionId: SessionId, agentId: PersistentAgentId): Promise<void>
+
+/** Read plugin-owned session metadata.
+ * @param sessionId - conversation id.
+ * @returns agentId and optional ownerId, or undefined.
+ */
+metadataOf(sessionId: SessionId): { agentId: PersistentAgentId; ownerId?: string | undefined } | undefined
+
+/** Resolve the authenticated tool caller, never a model-supplied id.
+ * @param agent - live caller.
+ * @returns stable persistent id.
+ */
+of(agent: Agent): PersistentAgentId
+
+/** Validate a selection again before session activation.
+ * @param id - stable id.
+ * @returns loop-compatible model selection.
+ */
+async selection(id: PersistentAgentId): Promise<ModelSelection>
+```
+
+Types: [Agent](core.zh.md) · [ModelSelection](core.zh.md) · [SessionId](core.zh.md)
+
+Source: [`packages/agents/agent-registry/src/index.ts`](../../packages/agents/agent-registry/src/index.ts)
+
+<a id="agent-routine-events"></a>
+
+### `agent-routine/*` events
+
+<a id="agent-routinereport--emit"></a>
+
+#### `agent-routine/report` — emit
+
+A routine produced a report for the user; consumers deliver it (inbox, mailbox, notification).
+
+```ts cordis-catalog
+/**
+ * A routine produced a report for the user; consumers deliver it (inbox, mailbox, notification).
+ * @param report - the report to deliver.
+ * @mode emit
+ */
+'agent-routine/report'(report: RoutineReport): void
+```
+
+Source: [`packages/agents/agent-routine/src/index.ts`](../../packages/agents/agent-routine/src/index.ts)
+<!-- END GENERATED cordis-surface -->

@@ -233,10 +233,12 @@ The mounted domain facility. Opens declared domains over routed backends; one fa
  * (`backend-not-found` passes through from the hub); require its `kv` facet
  * (`facet-unsupported`); open the unit projected from the spec (backend
  * `version-mismatch`/`malformed-medium` pass through); load and validate
- * every stored record against the spec's zod schemas (`invalid-record`
- * with the offending table and key — unless the spec declares
- * `invalidRecords: 'backup-and-skip'` and the unit can move documents aside, in
- * which case the failing record is backed up, logged, and skipped);
+ * every stored record against the spec's zod schemas, and account for every
+ * document the backend reports as damaged (`invalid-record` with the
+ * offending table and key — unless the spec declares
+ * `invalidRecords: 'backup-and-skip'`, which backs the document up, logs it,
+ * and skips it, or `invalidRecords: 'quarantine'`, which leaves it in place,
+ * logs it, skips it, and lists the key on `Domain.quarantined`);
  * construct the domain.
  *
  * Lifecycle: the CALLER owns the returned handle and closes it via
@@ -266,6 +268,95 @@ async closeAll(): Promise<void>
 ```
 
 Source: [`packages/storage/storage-domain/src/index.ts`](../../packages/storage/storage-domain/src/index.ts)
+
+<a id="ctxtables--tablesservice"></a>
+
+### `ctx.tables` — `TablesService`
+
+The `ctx.tables` service.
+
+```ts cordis-catalog
+/**
+ * Create a table.
+ * @param request - table definition.
+ * @param call - caller identity and cancellation.
+ * @returns the stored schema.
+ */
+createTable(request: CreateTableRequest, call: CallContext): Promise<TableSchema>
+
+/**
+ * List tables with creator and row count.
+ * @param call - caller identity and cancellation.
+ * @returns one summary per table.
+ */
+listTables(call: CallContext): Promise<TableSummary[]>
+
+/**
+ * Describe one table.
+ * @param tabela - table name.
+ * @param call - caller identity and cancellation.
+ * @returns the table schema.
+ */
+tableSchema(tabela: string, call: CallContext): Promise<TableSchema>
+
+/**
+ * Add a column or an index.
+ * @param request - alteration request.
+ * @param call - caller identity and cancellation.
+ * @returns the updated schema.
+ */
+alterTable(request: AlterTableRequest, call: CallContext): Promise<TableSchema>
+
+/**
+ * Drop a table; the request needs `confirmar` equal to its name.
+ * @param request - drop request.
+ * @param call - caller identity and cancellation.
+ * @returns the dropped table name.
+ */
+dropTable(request: DropTableRequest, call: CallContext): Promise<{ readonly tabela: string }>
+
+/**
+ * Run one SELECT.
+ * @param request - query request.
+ * @param call - caller identity and cancellation.
+ * @returns the query result.
+ */
+query(request: QueryRequest, call: CallContext): Promise<QueryResult>
+
+/**
+ * Run one INSERT, UPDATE or DELETE.
+ * @param request - execution request.
+ * @param call - caller identity and cancellation.
+ * @returns the execution summary.
+ */
+execute(request: ExecuteRequest, call: CallContext): Promise<ExecuteResult>
+
+/**
+ * Run several writes atomically.
+ * @param requests - execution requests.
+ * @param call - caller identity and cancellation.
+ * @returns one summary per request.
+ */
+batch(requests: readonly ExecuteRequest[], call: CallContext): Promise<ExecuteResult[]>
+
+/**
+ * The most recent audit records, oldest first.
+ * @returns a snapshot of the audit ring.
+ */
+auditLog(): readonly AuditEvent[]
+
+/**
+ * Observe audit records as they are produced.
+ * @param listener - called for every finished command.
+ * @returns a disposer.
+ */
+onAudit(listener: (event: AuditEvent) => void): () => void
+
+/** Stop the SQL child process. */
+close(): Promise<void>
+```
+
+Source: [`packages/storage/storage-tables/src/index.ts`](../../packages/storage/storage-tables/src/index.ts)
 
 <a id="domain-events"></a>
 
