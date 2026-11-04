@@ -98,48 +98,90 @@ export class TablesService {
     this.runner = new SqlRunner(options, config.commandTimeoutMs ?? 5000)
   }
 
-  /** Create a table. */
+  /**
+   * Create a table.
+   * @param request - table definition.
+   * @param call - caller identity and cancellation.
+   * @returns the stored schema.
+   */
   createTable(request: CreateTableRequest, call: CallContext): Promise<TableSchema> {
     return this.invoke('createTable', [request, call.agent], call) as Promise<TableSchema>
   }
 
-  /** List tables with creator and row count. */
+  /**
+   * List tables with creator and row count.
+   * @param call - caller identity and cancellation.
+   * @returns one summary per table.
+   */
   listTables(call: CallContext): Promise<TableSummary[]> {
     return this.invoke('listTables', [], call) as Promise<TableSummary[]>
   }
 
-  /** Describe one table. */
+  /**
+   * Describe one table.
+   * @param tabela - table name.
+   * @param call - caller identity and cancellation.
+   * @returns the table schema.
+   */
   tableSchema(tabela: string, call: CallContext): Promise<TableSchema> {
     return this.invoke('tableSchema', [tabela], call) as Promise<TableSchema>
   }
 
-  /** Add a column or an index. */
+  /**
+   * Add a column or an index.
+   * @param request - alteration request.
+   * @param call - caller identity and cancellation.
+   * @returns the updated schema.
+   */
   alterTable(request: AlterTableRequest, call: CallContext): Promise<TableSchema> {
     return this.invoke('alterTable', [request, call.agent], call) as Promise<TableSchema>
   }
 
-  /** Drop a table (needs `confirmar` equal to its name). */
+  /**
+   * Drop a table; the request needs `confirmar` equal to its name.
+   * @param request - drop request.
+   * @param call - caller identity and cancellation.
+   * @returns the dropped table name.
+   */
   dropTable(request: DropTableRequest, call: CallContext): Promise<{ readonly tabela: string }> {
     return this.invoke('dropTable', [request, call.agent], call) as Promise<{ readonly tabela: string }>
   }
 
-  /** Run one SELECT. */
+  /**
+   * Run one SELECT.
+   * @param request - query request.
+   * @param call - caller identity and cancellation.
+   * @returns the query result.
+   */
   query(request: QueryRequest, call: CallContext): Promise<QueryResult> {
     return this.invoke('query', [request], call, [request.sql]) as Promise<QueryResult>
   }
 
-  /** Run one INSERT, UPDATE or DELETE. */
+  /**
+   * Run one INSERT, UPDATE or DELETE.
+   * @param request - execution request.
+   * @param call - caller identity and cancellation.
+   * @returns the execution summary.
+   */
   execute(request: ExecuteRequest, call: CallContext): Promise<ExecuteResult> {
     return this.invoke('execute', [request, call.agent], call, [request.sql]) as Promise<ExecuteResult>
   }
 
-  /** Run several writes atomically. */
+  /**
+   * Run several writes atomically.
+   * @param requests - execution requests.
+   * @param call - caller identity and cancellation.
+   * @returns one summary per request.
+   */
   batch(requests: readonly ExecuteRequest[], call: CallContext): Promise<ExecuteResult[]> {
     const sql = requests.map(request => request.sql)
     return this.invoke('batch', [requests, call.agent], call, sql) as Promise<ExecuteResult[]>
   }
 
-  /** The most recent audit records, oldest first. */
+  /**
+   * The most recent audit records, oldest first.
+   * @returns a snapshot of the audit ring.
+   */
   auditLog(): readonly AuditEvent[] {
     return [...this.ring]
   }

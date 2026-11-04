@@ -23,7 +23,9 @@ export type TablesErrorCode =
 
 /** A failure the caller can act on. */
 export class TablesError extends Error {
+  /** Stable failure code. */
   readonly code: TablesErrorCode
+  /** Machine-readable context; never carries parameter values. */
   readonly details: Readonly<Record<string, unknown>>
 
   /**

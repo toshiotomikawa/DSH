@@ -140,6 +140,7 @@ export const DEFAULT_LIMITS = {
 
 /** Default and maximum rows per query page. */
 export const DEFAULT_PAGE = 200
+/** Hard ceiling for one query page. */
 export const MAX_PAGE = 1000
 /** Maximum commands in one batch. */
 export const MAX_BATCH = 100
@@ -229,7 +230,11 @@ function stripLiteralsAndComments(sql: string): string {
   return sql.replace(/'(?:[^']|'')*'|"(?:[^"]|"")*"|`(?:[^`]|``)*`|\[[^\]]*\]|--[^\n]*|\/\*[\s\S]*?(?:\*\/|$)/g, ' ')
 }
 
-/** Whether the statement has a `WHERE` outside every parenthesis. */
+/**
+ * Whether the statement has a `WHERE` outside every parenthesis.
+ * @param sql - SQL text.
+ * @returns whether a top-level WHERE exists.
+ */
 export function hasTopLevelWhere(sql: string): boolean {
   let depth = 0
   for (const token of stripLiteralsAndComments(sql).matchAll(/[()]|[A-Za-z_]+/g)) {

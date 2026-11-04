@@ -3619,6 +3619,32 @@ export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-storage-sqlite -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-storage-tables -->
+<a id="deepseek-aidsh-storage-tables"></a>
+
+## `@deepseek-ai/dsh-storage-tables`
+
+- `source`: [`packages/storage/storage-tables/src/index.ts:36`](../packages/storage/storage-tables/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Database file; omitted means `<dshHome>/data/tables-shared.sqlite`. */
+  path?: string
+  /** Harness home; omitted follows `DSH_HOME`, then `~/.dsh`. */
+  dshHome?: string
+  /** Ceiling for the database file in bytes (default 256 MiB). */
+  maxDbBytes?: number
+  /** Ceiling for one bound text value in bytes (default 1 MiB). */
+  maxValueBytes?: number
+  /** Deadline for one command in milliseconds (default 5000). */
+  commandTimeoutMs?: number
+  /** SQLite busy timeout in milliseconds (default 3000). */
+  busyTimeoutMs?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-storage-tables -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-subagent -->
 <a id="deepseek-aidsh-subagent"></a>
 
@@ -3684,6 +3710,21 @@ export interface Config {
 export type PermissionPolicy = 'allow' | 'reject'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-subagent-acp -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-subagent-agy -->
+<a id="deepseek-aidsh-subagent-agy"></a>
+
+## `@deepseek-ai/dsh-subagent-agy`
+
+- `inject`: `subagents` · `subprocess`
+- `refs`: [`SharedConfig`](#deepseek-aidsh-subagent-grok)
+- `source`: [`packages/subagent/subagent-agy/src/index.ts:9`](../packages/subagent/subagent-agy/src/index.ts)
+
+```ts config-catalog
+/** Loader configuration for one Antigravity provider instance, sharing the native adapter fields. */
+export type Config = SharedConfig
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-subagent-agy -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-subagent-claude-code -->
 <a id="deepseek-aidsh-subagent-claude-code"></a>
@@ -3819,6 +3860,45 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-subagent-fork-in-process -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-subagent-grok -->
+<a id="deepseek-aidsh-subagent-grok"></a>
+
+## `@deepseek-ai/dsh-subagent-grok`
+
+- `inject`: `subagents` · `subprocess`
+- `source`: [`packages/subagent/subagent-grok/src/index.ts:12`](../packages/subagent/subagent-grok/src/index.ts)
+
+```ts config-catalog
+/** Deployment settings, never supplied by the model's tool arguments. */
+export interface Config {
+  /** Unique provider registry name. */
+  providerName?: string
+  /** Native executable; Windows deployments should use an exe, not a cmd shim. */
+  command?: string
+  /** Deployment-owned arguments inserted before the adapter arguments. */
+  args?: string[]
+  /** Native model fixed for this provider instance. */
+  model?: string
+  /** Non-interactive native permission policy. */
+  permission?: 'allow' | 'reject'
+  /** Explicit opt-ins layered over the credential-scrubbed parent environment. */
+  env?: Record<string, string>
+  /** Whole-run deadline in milliseconds. */
+  timeoutMs?: number
+  /** Managed process termination grace in milliseconds. */
+  disposeGraceMs?: number
+  /** Per-stream retained output and audit cap in bytes. */
+  maxOutputBytes?: number
+  /** Private absolute directory for per-run audit artifacts. */
+  logDirectory: string
+  /** Optional JSON status file containing remainingPercent. */
+  quotaFile?: string
+  /** Refuse before spawn when known remaining quota is below this floor. */
+  minimumRemainingPercent?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-subagent-grok -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-subagent-spawn-in-process -->
 <a id="deepseek-aidsh-subagent-spawn-in-process"></a>
@@ -5004,6 +5084,7 @@ export interface Config {
 | `@deepseek-ai/dsh-tool-cordis` | `tools` · `cordisInspect` | [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts) |
 | `@deepseek-ai/dsh-tool-executor-native` | `tools` | [`packages/core/tool-executor-native/src/index.ts`](../packages/core/tool-executor-native/src/index.ts) |
 | `@deepseek-ai/dsh-tool-schedule` | `tools` · `systemPrompt` | [`packages/schedule/tool-schedule/src/index.ts`](../packages/schedule/tool-schedule/src/index.ts) |
+| `@deepseek-ai/dsh-tool-tables` | `tools` · `tables` | [`packages/storage/tool-tables/src/index.ts`](../packages/storage/tool-tables/src/index.ts) |
 | `@deepseek-ai/dsh-tool-working-directory` | `tools` · `workingDirectory` | [`packages/session/tool-working-directory/src/index.ts`](../packages/session/tool-working-directory/src/index.ts) |
 | `@deepseek-ai/dsh-tools` | `systemPrompt` | [`packages/core/tools/src/index.ts`](../packages/core/tools/src/index.ts) |
 | `@deepseek-ai/dsh-user-questions` | — | [`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts) |

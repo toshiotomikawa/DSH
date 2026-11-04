@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Sous-agent Grok",
+    "description": "Déléguez une tâche à grok avec un délai et une annulation."
+  }
+}
