@@ -97,6 +97,16 @@ async function host(extra: { bridge?: boolean; cancelFails?: boolean } = {}) {
 const base = { agentId: 'a1', name: 'Resumo', instruction: 'Resuma.', schedule: { kind: 'daily', time: '12:00' }, timeZone: 'UTC' } as const
 
 describe('plugin wiring', () => {
+  it('honors an explicit token file when DSH_HOME is absent', async () => {
+    vi.stubEnv('DSH_HOME', undefined)
+    try {
+      const h = await host()
+      const { readFile } = await import('node:fs/promises')
+      expect((await readFile(join(h.root, 'token'), 'utf8')).trim()).not.toBe('')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
   it('creates scheduler tasks with a fresh-session target of the agent preset', async () => {
     const h = await host()
     const engine = h.ctx.agentRoutines.engine

@@ -635,6 +635,10 @@ declare module '@deepseek-ai/dsh-session/types' {
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
+    /** Validate an existing task mutation before any durable write; rejection leaves the task unchanged.
+     * @mode serial
+     */
+    'schedule/validate-edit'(request: ScheduleEditRequest): void | Promise<void>
     /** Durable task set changed; clients refetch global task and Session-active catalogs.
      * @mode emit
      */

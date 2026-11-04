@@ -8,8 +8,8 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
-import { ScheduleId } from '@deepseek-ai/dsh-schedule'
-import type { ScheduleCatalogEntry, ScheduleEditResult } from '@deepseek-ai/dsh-schedule'
+import { ScheduleId, ScheduleInputError } from '@deepseek-ai/dsh-schedule'
+import type { ScheduleCatalogEntry, ScheduleEditRequest, ScheduleEditResult } from '@deepseek-ai/dsh-schedule'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-storage-domain'
 import z from '@deepseek-ai/schemastery'
@@ -82,6 +82,18 @@ const ConfigSchema: z<Config> = z.object({
   backoffSeconds: z.array(z.number().step(1).min(1).max(86_400)).default([300, 900, 3600]),
 })
 
+// Only this gateway can mutate the engine's calendar; model arguments cannot mint a permitted request.
+const routineEdits = new WeakSet<ScheduleEditRequest>()
+
+async function editCalendar(ctx: Context, request: ScheduleEditRequest): Promise<ScheduleEditResult> {
+  routineEdits.add(request)
+  try {
+    return await ctx.schedule.edit(request)
+  } finally {
+    routineEdits.delete(request)
+  }
+}
+
 /**
  * Adapter from the engine's gateway to `ctx.schedule`: every execution gets a fresh session (`new` target) of the
  * agent's preset.
@@ -108,14 +120,14 @@ export function scheduleGateway(ctx: Context): ScheduleGateway {
   return {
     async create(task) {
       const entry = await ctx.schedule.create(fields(task))
-      if (!task.active) checked(await ctx.schedule.edit({ id: entry.id, action: 'update', patch: { active: false } }))
+      if (!task.active) checked(await editCalendar(ctx, { id: entry.id, action: 'update', patch: { active: false } }))
       return created(entry)
     },
     async update(id, task) {
-      checked(await ctx.schedule.edit({ id: ScheduleId(id), action: 'update', patch: { ...fields(task), active: task.active } }))
+      checked(await editCalendar(ctx, { id: ScheduleId(id), action: 'update', patch: { ...fields(task), active: task.active } }))
     },
     async remove(id) {
-      checked(await ctx.schedule.edit({ id: ScheduleId(id), action: 'delete' }))
+      checked(await editCalendar(ctx, { id: ScheduleId(id), action: 'delete' }))
     },
   }
 }
@@ -167,6 +179,11 @@ export class AgentRoutines extends Service {
       graceSeconds: config.graceSeconds as number,
     })
     const engine = this.engine
+    ctx.on('schedule/validate-edit', (request) => {
+      if (!routineEdits.has(request) && engine.list().some(routine => routine.scheduleTaskId === request.id)) {
+        throw new ScheduleInputError('invalid_selector', 'This calendar belongs to an agent routine; use routine_update.')
+      }
+    })
     ctx.effect(() => async () => { await domain.close() }, 'agent-routine.domain')
     ctx.effect(
       () => ctx.webServer.register({ kind: 'exact', path: TRIGGER_PATH, handler: createTriggerHandler(engine, token, (message) => { ctx.logger.warn(message) }, tokenFile) }),

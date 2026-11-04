@@ -9,6 +9,7 @@ import * as MailboxTools from '@deepseek-ai/dsh-tool-agent-mailbox'
 import Routines, { TRIGGER_PATH } from '@deepseek-ai/dsh-agent-routine'
 import * as RoutineTools from '@deepseek-ai/dsh-tool-agent-routine'
 import Schedule, { ScheduleId } from '@deepseek-ai/dsh-schedule'
+import * as ScheduleTools from '@deepseek-ai/dsh-tool-schedule'
 import type { Context } from '@deepseek-ai/cordis'
 import Web from '@deepseek-ai/dsh-host-webserver'
 import { createUserMessage, LlmError, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
@@ -84,6 +85,45 @@ async function fixture() {
 }
 
 describe('persistent agent host integration', () => {
+  it('refuses generic calendar edits that bypass routine ownership and the three-minute floor', async () => {
+    const f = await fixture()
+    f.ctx.provide('sessionController', {} as Context['sessionController'])
+    await f.ctx.plugin(ScheduleTools)
+    const routine = await f.ctx.agentRoutines.engine.createRoutine({
+      agentId: f.a.id, name: 'Owned calendar', instruction: 'Run', trigger: 'schedule',
+      schedule: { kind: 'interval', everySeconds: 180 }, timeZone: 'UTC',
+    })
+    const id = ScheduleId(routine.scheduleTaskId!)
+    const original = await f.ctx.schedule.view({ id })
+    const start = new Date(Date.now() + 3_600_000).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+    const rrule = `DTSTART:${start}\nRRULE:FREQ=MINUTELY;INTERVAL=1`
+    for (const patch of [{ target: 'this_session', rrule }, { target: 'new_once' }, { rrule }, { action: 'delete' }]) {
+      const result = await executeToolFixture(f.ctx, {
+        agent: f.agent, callId: ToolCallId('bypass'), signal: new AbortController().signal,
+        name: 'schedule_edit', arguments: { id, action: 'update', ...patch },
+      })
+      expect(result.value).toMatchObject({ code: 'invalid_selector' })
+      expect(JSON.stringify(result.value)).toContain('routine_update')
+      expect(await f.ctx.schedule.view({ id })).toEqual(original)
+    }
+    await expect(f.ctx.schedule.remoteEdit({ id, action: 'delete' })).rejects.toThrow('routine_update')
+    await expect(f.ctx.agentRoutines.engine.editRoutine(routine.id, {
+      schedule: { kind: 'interval', everySeconds: 60 },
+    })).rejects.toThrow()
+    await f.ctx.agentRoutines.engine.editRoutine(routine.id, { name: 'Still owned', active: false })
+    expect(await f.ctx.schedule.view({ id })).toMatchObject({ title: 'Still owned', target: { kind: 'new' }, status: 'paused' })
+    const ordinary = await f.ctx.schedule.create({ title: 'Ordinary', prompt: 'Run', timing: { kind: 'rrule', rrule }, target: { kind: 'new' } })
+    expect(await f.ctx.schedule.remoteEdit({ id: ordinary.id, action: 'update', patch: { title: 'Ordinary changed' } })).toMatchObject({ title: 'Ordinary changed' })
+    const tasks = (await f.ctx.schedule['getDomain']()).table('tasks')
+    await tasks.put(id, { ...tasks.get(id)!, status: 'ended' })
+    await tasks.put(ordinary.id, { ...tasks.get(ordinary.id)!, status: 'ended' })
+    await expect(f.ctx.schedule.deleteInactive()).rejects.toThrow('routine_update')
+    expect(await f.ctx.schedule.view({ id })).toMatchObject({ title: 'Still owned' })
+    expect(await f.ctx.schedule.view({ id: ordinary.id })).toMatchObject({ title: 'Ordinary changed' })
+    await f.ctx.agentRoutines.engine.deleteRoutine(routine.id)
+    expect(await f.ctx.schedule.view({ id })).toMatchObject({ code: 'schedule_not_found' })
+    expect(await f.ctx.schedule.deleteInactive()).toEqual({ deleted: 1 })
+  })
   it('keeps working when a routine calendar change notice is claimed', async () => {
     const f = await fixture()
     // Existing hosts can have involved sessions from edits made before routine ownership was enforced.

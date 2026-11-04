@@ -13,6 +13,8 @@ Persists routine definitions and execution history, serializes admission, and ha
 
 Mount with storage-domain, schedule and host-webserver. For persistent agents, mount agent-runtime first to supply agentRoutineBridge. Each admitted execution receives a fresh bound session; the runner returns admission immediately and reports the turn outcome through engine.settle. The local trigger uses a token file under DSH_HOME unless configured otherwise. Scripts may explicitly run a paused routine when scriptEnabled is true; calendar and webhook deliveries respect pause.
 
+The engine owns its scheduler tasks. Generic schedule edits, Remote edits and bulk cleanup cannot mutate or remove these tasks; use `routine_update`, which validates the three-minute recurrence floor and preserves the fresh-session target. A pre-write `schedule/validate-edit` hook enforces this policy in the routine plugin, without replacing scheduler methods or changing ordinary tasks.
+
 ## Model Experience
 
 ### Fresh routine executions
