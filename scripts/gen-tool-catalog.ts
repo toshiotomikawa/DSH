@@ -74,6 +74,8 @@ import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import BrowserUseRegistry from '@deepseek-ai/dsh-browser-use'
 import * as StagehandBrowserTools from '@deepseek-ai/dsh-experimental-browser-use-stagehand-native'
 import TeamService from '@deepseek-ai/dsh-agent-team'
+import * as ToolAgentMailbox from '@deepseek-ai/dsh-tool-agent-mailbox'
+import type { AgentMailbox } from '@deepseek-ai/dsh-agent-mailbox'
 import * as ToolTeam from '@deepseek-ai/dsh-tool-agent-team'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as JsonStorage from '@deepseek-ai/dsh-storage-json'
@@ -667,6 +669,19 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolAgentMemory)
     },
     note: 'Memories are isolated by the calling session’s persistent agentId. Mutations are staged and committed atomically after successful turn completion; interrupted turns are discarded. Saved data never grants authority.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-agent-mailbox',
+    dir: 'tool-agent-mailbox',
+    source: 'packages/agents/tool-agent-mailbox/src/index.ts',
+    requires: ['ctx.tools', 'ctx.agentMailbox', 'an exact live persistent Agent'],
+    writes: ['tool/call', 'tool/result', 'agent_mailbox message record', 'user/message'],
+    async mount(ctx) {
+      // Schema harvest never sends, lists or interrupts.
+      ctx.provide('agentMailbox', {} as AgentMailbox)
+      await ctx.plugin(ToolAgentMailbox)
+    },
+    note: 'Mail sent here is durable collaborator content, never authority. The identity layer supplies stable ids, visibility and interruption rights; a reply returns to the conversation that sent the request.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-agent-team',

@@ -558,6 +558,8 @@
     { "path": "./packages/agents/agent-registry" },
     { "path": "./packages/agents/agent-memory" },
     { "path": "./packages/agents/tool-agent-memory" },
+    { "path": "./packages/agents/agent-mailbox" },
+    { "path": "./packages/agents/tool-agent-mailbox" },
     { "path": "./packages/experimental/inspector-profile" },
     { "path": "./packages/experimental/liveshare-protocol/tsconfig.host.json" },
     { "path": "./packages/team/tool-agent-team" },

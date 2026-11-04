@@ -21,6 +21,8 @@ export const PRODUCT_PACKAGE_POLICY: Readonly<Record<string, ProductPackagePolic
   'packages/agents/agent-registry': { category: 'optional', reason: 'Fork-only durable agent profiles, enabled by an explicit deployment patch.' },
   'packages/agents/agent-memory': { category: 'optional', reason: 'Fork-only memory storage selected with the persistent-agent registry.' },
   'packages/agents/tool-agent-memory': { category: 'optional', reason: 'Fork-only memory tools and identity preset row, never mounted by upstream profiles.' },
+  'packages/agents/agent-mailbox': { category: 'optional', reason: 'Fork-only durable agent messaging, mounted only with the persistent-agent registry.' },
+  'packages/agents/tool-agent-mailbox': { category: 'optional', reason: 'Fork-only mailbox tools; never part of an upstream profile.' },
   'packages/core/agent-tool-presentation': { category: 'optional', reason: 'Deprecated selector retained for existing executor configurations.' },
   'packages/browser-use/browser-use': { category: 'optional', reason: 'Service definition used by explicitly selected browser providers.' },
   'packages/computer-use/computer-use': { category: 'optional', reason: 'Service definition used by explicitly selected computer providers.' },
