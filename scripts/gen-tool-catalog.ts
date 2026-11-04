@@ -658,7 +658,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
     dir: 'tool-tables',
     source: 'packages/storage/tool-tables/src/index.ts',
     requires: ['ctx.tools', 'ctx.tables'],
-    writes: ['tool/call', 'shared tables database (tables.sqlite) create, alter, drop, insert, update or delete', 'tool/result'],
+    writes: ['tool/call', 'shared tables database (tables-shared.sqlite) create, alter, drop, insert, update or delete', 'tool/result'],
     async mount(ctx) {
       // Schema harvest never starts the SQL child process: it spawns lazily on the first call.
       await ctx.plugin(StorageTables, { path: ':memory:' })

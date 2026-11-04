@@ -168,7 +168,7 @@ describe('data tools', () => {
     expect((await call('data_execute', { sql: 'DELETE FROM notas WHERE id = ?', parametros: [1] })).json.linhasAfetadas).toBe(1)
   })
 
-  it('resolves two writers racing on revisao with one winner (criterion 7)', async () => {
+  it('lets only the first of two queued revisao updates win (the real two-process race is in service.spec, criterion 7)', async () => {
     await call('data_execute', { sql: "INSERT INTO notas (titulo) VALUES ('a')" })
     const sql = 'UPDATE notas SET nota = nota + 1 WHERE id = 1 AND revisao = ?'
     const [first, second] = await Promise.all([
