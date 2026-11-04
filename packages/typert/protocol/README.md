@@ -147,6 +147,7 @@ Read these pages when the package-level contract is not enough; they move from t
 -----
 
 <a id="model-experience"></a>
+
 The fork account principal is `{ kind: "account", ownerId }`, supplied only by a trusted connection adapter. `ownerIdOf(ctx.invocation)` resolves that durable id and uses `owner` for local or single-account calls. The optional `sessionOwners` Host service stores ownership outside the released Session log; it is not a Remote endpoint. These types do not create accounts or authenticate a connection.
 
 ## Model Experience

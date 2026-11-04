@@ -2,8 +2,6 @@ import { mkdir, mkdtemp, readFile, rm, readdir, writeFile } from 'node:fs/promis
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import { applyEntryPatches, type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
-import { load } from 'js-yaml'
 import Typert from '@deepseek-ai/dsh-typert-registry'
 import Gateway from '@deepseek-ai/dsh-api-gateway'
 import Query from '@deepseek-ai/dsh-session-query-sqlite'
@@ -47,10 +45,7 @@ async function fixture(legacy = false) {
   await ctx.plugin(Loader)
   if (legacy) ctx.sessions.create(SessionId('legacy'), { meta: { cwd: root } })
   ctx.loader.builtins['owners'] = Owners
-  const patches = load(await readFile(new URL('../owners.patch.yml', import.meta.url), 'utf8')) as PatchOptions[]
-  const entries = applyEntryPatches([], patches, (warning) => { throw new Error(warning) })
-  expect(entries).toMatchObject([{ id: 'fork-owner-policy', name: '@deepseek-ai/dsh-agent-runtime/owners' }])
-  await ctx.loader.root.update(entries.map(entry => ({ ...entry, name: 'cordis:owners' })))
+  await ctx.loader.root.update([{ id: 'fork-owner-policy', name: 'cordis:owners' }])
   await ctx.loader.await()
   expect(ctx.get('sessionOwners')).toBeDefined()
   const call = (principal: Principal, method: string, args: Readonly<Record<string, unknown>>) =>

@@ -111,6 +111,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 Blockquotes travel as ordinary prompt text without quote metadata. Local submission echoes and durable messages use the same text rendering rules; queue edits replace content while retaining prompt correlation.
 
 <a id="model-experience"></a>
+
 When the optional fork ownership service is mounted, `create` and `fork` await durable ownership assignment using the connection principal before returning the new Session id. Session search filters the visible id set through `remote-access` before accumulating snippets and computing `hasMore`, so hidden matches do not consume the authorized result bound.
 
 ## Model Experience

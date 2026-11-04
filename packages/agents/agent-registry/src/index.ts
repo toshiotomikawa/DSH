@@ -119,7 +119,8 @@ export class PersistentAgents {
    * @returns all profiles.
    */
   list(): AgentProfile[] {
-    return [...this.domain.table('profiles').values()]
+    return [...this.domain.table('profiles').entries()]
+      .map(([, profile]) => profile)
       .filter(profile => this.visible(profile)).map(profile => structuredClone(profile))
   }
 

@@ -57,7 +57,7 @@ export class SessionOwners extends Service {
    * @returns detached owned Session identities, including cold Sessions.
    */
   sessionsOf(ownerId: string): SessionId[] {
-    return [...this.domain.table('sessions').values()].flatMap(record =>
+    return [...this.domain.table('sessions').entries()].flatMap(([, record]) =>
       (record.ownerId ?? 'owner') === ownerId ? [SessionId(record.sessionId)] : [])
   }
 

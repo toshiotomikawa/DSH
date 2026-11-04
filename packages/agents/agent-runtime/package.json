@@ -23,15 +23,14 @@
     "./locale/*.json": "./locale/*.json",
     "./owners": {
       "types": "./lib/types/owners.d.ts",
-      "default": "./lib/owners.js"
+      "default": "./lib/types/owners.js"
     }
   },
   "files": [
     "locale/*.json",
     "lib/index.js",
-    "lib/types/**/*.d.ts",
-    "lib/owners.js",
-    "owners.patch.yml"
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
   "dependencies": {
@@ -48,7 +47,7 @@
     "@deepseek-ai/dsh-api-session-controller": "workspace:*",
     "@deepseek-ai/dsh-storage-domain": "workspace:*",
     "@deepseek-ai/dsh-session-query": "workspace:*",
-    "zod": "4.4.3"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -71,8 +70,7 @@
     "@deepseek-ai/dsh-tool-testkit": "workspace:*",
     "@deepseek-ai/dsh-session-query-sqlite": "workspace:*",
     "@deepseek-ai/dsh-api-gateway": "workspace:*",
-    "@deepseek-ai/dsh-typert-registry": "workspace:*",
-    "@deepseek-ai/cordis-plugin-include": "workspace:~"
+    "@deepseek-ai/dsh-typert-registry": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"
