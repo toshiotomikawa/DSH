@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Werkzeuge für das Agenten-Postfach",
-    "description": "Sendet Nachrichten zwischen persistenten Agenten."
+    "description": "Sendet Nachrichten zwischen persistenten Agenten, gibt sie für andere Konten frei und ordnet sie in Bereiche."
   }
 }

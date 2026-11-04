@@ -22,6 +22,12 @@
     },
     {
       "path": "../agent-mailbox"
+    },
+    {
+      "path": "../agent-registry"
+    },
+    {
+      "path": "../../typert/protocol"
     }
   ]
 }

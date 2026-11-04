@@ -136,6 +136,17 @@ export class AccountGrants extends Service {
     return this.domain.table('grants').get(this.key(ownerId, granteeId)) !== undefined
   }
 
+  /** Accounts that one owner has admitted.
+   * @param ownerId - account that owns the shared agents.
+   * @returns grantee ids, oldest grant first.
+   */
+  list(ownerId: string): string[] {
+    return [...this.domain.table('grants').entries()].map(([, record]) => record)
+      .filter(record => record.ownerId === ownerId)
+      .sort((left, right) => left.createdAt - right.createdAt)
+      .map(record => record.granteeId)
+  }
+
   /** Drain writes before releasing storage.
    * @returns after storage is closed.
    */

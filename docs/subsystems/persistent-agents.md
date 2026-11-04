@@ -166,6 +166,16 @@ thread(target: MailboxTarget, title?: string): SessionId
  * @param sessionId - the unopened conversation.
  */
 prepare?(target: MailboxTarget, sessionId: SessionId): Promise<void>
+
+/**
+ * Whether the first agent may still address the second one right now. It is
+ * asked again when a pending delivery is attempted and when a reply is
+ * written, so a withdrawn permission cuts both. Omitted means always.
+ * @param fromId - the agent that opened the relation.
+ * @param toId - the agent it addresses.
+ * @returns true when the relation is still allowed.
+ */
+reaches?(fromId: string, toId: string): boolean
 ```
 
 Types: [Agent](core.md) · [SessionId](core.md)

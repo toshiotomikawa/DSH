@@ -189,7 +189,7 @@ export const SERVICE_PAGE: Record<string, string> = {
  */
 export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   sessionOwners: 'opt-in session ownership sidecar for account principals — packages/agents/agent-runtime/README.md owns the API',
-  accountGrants: 'opt-in directional grant between accounts — packages/agents/agent-runtime/README.md owns the API',
+  accountGrants: 'opt-in directional account grants of the owner policy — packages/agents/agent-runtime/README.md owns the API',
   contextMenus: 'client-side interface-typed menu registry — packages/client/ui-context-menu/README.md owns the API',
   fileActions: 'client-side interface-typed file actions — packages/client/ui-file-actions/README.md owns the API',
   invocation: 'not a service: per-call accessor (RemoteInvocation | undefined) the Gateway derives for each Remote call — packages/api/gateway/README.md owns the contract',

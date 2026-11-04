@@ -234,6 +234,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Bind an unopened conversation to its durable owner before factory setup.',
         parameters: [{ name: 'target', description: 'the owning agent.' }, { name: 'sessionId', description: 'the unopened conversation.' }],
       },
+      {
+        signature: 'reaches?(fromId: string, toId: string): boolean',
+        description: 'Whether the first agent may still address the second one right now. It is asked again when a pending delivery is attempted and when a reply is written, so a withdrawn permission cuts both. Omitted means always.',
+        parameters: [{ name: 'fromId', description: 'the agent that opened the relation.' }, { name: 'toId', description: 'the agent it addresses.' }],
+        returns: 'true when the relation is still allowed.',
+      },
     ],
   },
   {
@@ -6736,7 +6742,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'DeliveryState',
-    declaration: 'export type DeliveryState = \'queued\' | \'started\' | \'completed\' | \'interrupted\' | \'uncertain\';',
+    declaration: 'export type DeliveryState = \'queued\' | \'started\' | \'completed\' | \'interrupted\' | \'uncertain\' | \'refused\';',
   },
   {
     name: 'DeveloperMessage',

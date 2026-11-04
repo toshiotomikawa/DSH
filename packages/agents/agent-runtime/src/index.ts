@@ -63,6 +63,11 @@ export function apply(ctx: Context): void {
       const found = find(target.id)
       return found !== undefined && sharedWith(ctx, sender.ownerId ?? 'owner', found.ownerId ?? 'owner')
     },
+    reaches: (fromId, toId) => {
+      const from = find(fromId)
+      const to = find(toId)
+      return from !== undefined && to !== undefined && sharedWith(ctx, from.ownerId ?? 'owner', to.ownerId ?? 'owner')
+    },
     thread: () => SessionId(`agent-thread-${randomUUID()}`),
     prepare: async (target, sessionId) => { await ctx.persistentAgents.bind(sessionId, PersistentAgentId(target.id)) },
   }
