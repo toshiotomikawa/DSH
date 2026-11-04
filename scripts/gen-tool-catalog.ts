@@ -74,6 +74,8 @@ import * as StagehandBrowserTools from '@deepseek-ai/dsh-experimental-browser-us
 import TeamService from '@deepseek-ai/dsh-agent-team'
 import * as ToolTeam from '@deepseek-ai/dsh-tool-agent-team'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
+import * as StorageTables from '@deepseek-ai/dsh-storage-tables'
+import * as ToolTables from '@deepseek-ai/dsh-tool-tables'
 import type PluginManager from '@deepseek-ai/dsh-plugin-manager'
 import * as PluginManagerTools from '@deepseek-ai/dsh-plugin-manager/tools'
 import type PluginMarket from '@deepseek-ai/dsh-plugin-market'
@@ -650,6 +652,20 @@ const TOOL_PACKAGES: ToolPackage[] = [
     scope: ctx => catalogChildScopes.get(ctx) as Agent,
     note:
       'Four task-board tools share the subagent tree’s root Session. Enabling Team mode on the root Session adds task-board guidance alongside standard subagent delegation and control tools. Standard subagent controls provide required identity independently of Team mode.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-tables',
+    dir: 'tool-tables',
+    source: 'packages/storage/tool-tables/src/index.ts',
+    requires: ['ctx.tools', 'ctx.tables'],
+    writes: ['tool/call', 'shared tables database (tables-shared.sqlite) create, alter, drop, insert, update or delete', 'tool/result'],
+    async mount(ctx) {
+      // Schema harvest never starts the SQL child process: it spawns lazily on the first call.
+      await ctx.plugin(StorageTables, { path: ':memory:' })
+      await ctx.plugin(ToolTables)
+    },
+    note:
+      'One database shared by every agent, separate from the document storage: `table_*` tools manage the schema, `data_query` runs a single SELECT and `data_execute`/`data_batch` single INSERT, UPDATE or DELETE statements with parameters only. Each row carries criado_em, atualizado_em, revisao and autor; `AND revisao = ?` in a WHERE gives compare-and-set updates. Commands run in a child process killed after the deadline (default 5 s).',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-todo',
