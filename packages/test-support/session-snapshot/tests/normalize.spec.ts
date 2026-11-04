@@ -127,10 +127,11 @@ describe('normalizeStdout', () => {
     }
     const raw = JSON.stringify({
       cwd: longCwd,
+      quoted: `Current working directory: ${JSON.stringify(longCwd)}.`,
       path: `${longCwd}\\nested\\proof.txt`,
     })
     const frame = JSON.parse(normalizeStdout(raw, aliasedCtx)) as { cwd: string; path: string }
-    expect(frame).toEqual({ cwd: '{{cwd}}', path: '{{cwd}}/nested/proof.txt' })
+    expect(frame).toEqual({ cwd: '{{cwd}}', quoted: 'Current working directory: "{{cwd}}".', path: '{{cwd}}/nested/proof.txt' })
   })
 
   it('canonicalizes only cwd-rooted path separators', () => {

@@ -102,27 +102,41 @@ export function serializeRecord(version: number, value: unknown): string {
 }
 
 /**
- * Parse one per-record document, validating its version stamp. A document
- * that is malformed or stamped with an unaccepted version is FOREIGN and
- * reads as absent — the per-record contract: one bad or stale record file
- * must not brick the whole unit, and an unaccepted version stamp discards the
- * record instead of migrating it (the whole-unit format rejects instead,
- * because there is exactly one document).
+ * Outcome of reading one per-record document. `damaged` is a document that
+ * exists but is not a record envelope this reader understands (bad JSON, not
+ * an object, or no numeric version stamp): the caller decides whether that is
+ * disposable or authoritative data. `foreign` is a well-formed envelope
+ * stamped with an unaccepted version, which the per-record contract discards
+ * instead of migrating.
+ */
+export type RecordRead =
+  | { readonly kind: 'record'; readonly value: unknown }
+  | { readonly kind: 'damaged' }
+  | { readonly kind: 'foreign' }
+
+/**
+ * Read one per-record document and keep the reason it was not a record. A
+ * `foreign` stamp reads as absent — one stale record file must not brick the
+ * whole unit, and migrating records the owner never vouched for would restamp
+ * them as current (the whole-unit format rejects instead, because there is
+ * exactly one document). A `damaged` document is reported so an authoritative
+ * domain can quarantine it rather than mistake corruption for absence.
  * @param text - Raw per-record document content.
  * @param versions - Accepted unit versions (the current one plus the
- * descriptor's compatibleVersions); any other stamp discards the
- * document.
- * @returns the record value, or `undefined` for a foreign document.
+ * descriptor's compatibleVersions).
+ * @returns the record value, or why the document was not read as one.
  */
-export function parseRecord(text: string, versions: readonly number[]): unknown {
+export function readRecordDocument(text: string, versions: readonly number[]): RecordRead {
   let document: unknown
   try {
     document = JSON.parse(text)
   } catch {
-    return undefined
+    return { kind: 'damaged' }
   }
-  if (typeof document !== 'object' || document === null) return undefined
+  if (typeof document !== 'object' || document === null) return { kind: 'damaged' }
   const { version: stamped, record } = document as Record<string, unknown>
-  if (typeof stamped !== 'number' || !versions.includes(stamped)) return undefined
-  return record
+  if (typeof stamped !== 'number') return { kind: 'damaged' }
+  if (!versions.includes(stamped)) return { kind: 'foreign' }
+  if (!('record' in document)) return { kind: 'damaged' }
+  return { kind: 'record', value: record }
 }

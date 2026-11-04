@@ -55,16 +55,23 @@ export interface DomainSpec {
    */
   readonly compatibleVersions?: readonly number[]
   /**
-   * What `open` does with a stored table record that fails its zod schema.
-   * Absent (the default), the whole open rejects with `invalid-record` —
-   * right for authoritative data. `'backup-and-skip'` is for domains whose
-   * records are disposable derived data: the backend moves the record's
-   * document aside (`KvUnit.backupRecord`), the failure is logged with
-   * its cause, and the open continues with the record absent. A backend
-   * without `backupRecord` (no per-record document to move) falls back
-   * to the rejecting default. The global slot always rejects.
+   * What `open` does with a stored table record that fails its zod schema, or
+   * with a per-record document the backend reports as damaged (present but
+   * unreadable). Absent (the default), the whole open rejects with
+   * `invalid-record` for a schema failure, and a damaged document is logged
+   * and read as absent — the per-record contract for disposable data.
+   * `'backup-and-skip'` is for domains whose records are disposable derived
+   * data: the backend moves the record's document aside
+   * (`KvUnit.backupRecord`), the failure is logged with its cause, and the
+   * open continues with the record absent. A backend without `backupRecord`
+   * (no per-record document to move) falls back to the rejecting default.
+   * `'quarantine'` is for authoritative records that must never be mistaken
+   * for absent: the document is left in place, the failure is logged, the
+   * open continues without that record, and its key is listed by
+   * `Domain.quarantined` so the owner can refuse reads and writes for it
+   * until a human restores the file. The global slot always rejects.
    */
-  readonly invalidRecords?: 'backup-and-skip'
+  readonly invalidRecords?: 'backup-and-skip' | 'quarantine'
   /** Optional global singleton slot. */
   readonly global?: DomainGlobalSpec<unknown>
   /** Table declarations keyed by table name; each name must match `UNIT_NAME_RE`. */
@@ -128,8 +135,8 @@ export function defineDomain<S extends DomainSpec>(spec: S): S {
   }
   if (spec.invalidRecords !== undefined) {
     const policy: string = spec.invalidRecords
-    if (policy !== 'backup-and-skip') {
-      throw new Error(`domain '${spec.name}' invalidRecords must be 'backup-and-skip' when present, got ${policy}`)
+    if (policy !== 'backup-and-skip' && policy !== 'quarantine') {
+      throw new Error(`domain '${spec.name}' invalidRecords must be 'backup-and-skip' or 'quarantine' when present, got ${policy}`)
     }
   }
   for (const table of Object.keys(spec.tables)) {

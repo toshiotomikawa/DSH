@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agent memory",
+    "description": "Stores isolated memories and commits changes after a successful turn."
+  }
+}

@@ -87,10 +87,12 @@ export class DomainFacility {
    * (`backend-not-found` passes through from the hub); require its `kv` facet
    * (`facet-unsupported`); open the unit projected from the spec (backend
    * `version-mismatch`/`malformed-medium` pass through); load and validate
-   * every stored record against the spec's zod schemas (`invalid-record`
-   * with the offending table and key — unless the spec declares
-   * `invalidRecords: 'backup-and-skip'` and the unit can move documents aside, in
-   * which case the failing record is backed up, logged, and skipped);
+   * every stored record against the spec's zod schemas, and account for every
+   * document the backend reports as damaged (`invalid-record` with the
+   * offending table and key — unless the spec declares
+   * `invalidRecords: 'backup-and-skip'`, which backs the document up, logs it,
+   * and skips it, or `invalidRecords: 'quarantine'`, which leaves it in place,
+   * logs it, skips it, and lists the key on `Domain.quarantined`);
    * construct the domain.
    *
    * Lifecycle: the CALLER owns the returned handle and closes it via
@@ -118,6 +120,45 @@ export class DomainFacility {
       try {
         const snapshot = await unit.loadAll()
         const tables = new Map<string, Map<string, unknown>>()
+        const quarantined = new Map<string, Set<string>>()
+        const quarantine = (table: string, key: string): void => {
+          const keys = quarantined.get(table) ?? new Set<string>()
+          keys.add(key)
+          quarantined.set(table, keys)
+        }
+        // A damaged document is absent from every table: the backend reported
+        // it so an authoritative domain can quarantine instead of mistaking
+        // corruption for an empty record.
+        for (const { table, key } of snapshot.damaged ?? []) {
+          if (spec.tables[table] === undefined) continue
+          if (spec.invalidRecords === 'quarantine') {
+            this.ctx.logger.error(
+              `domain '${spec.name}': stored record '${key}' in table '${table}' is damaged; `
+              + 'left in place and quarantined',
+            )
+            quarantine(table, key)
+            continue
+          }
+          if (spec.invalidRecords !== 'backup-and-skip') {
+            this.ctx.logger.warn(
+              `domain '${spec.name}': stored record '${key}' in table '${table}' is damaged; treated as absent`,
+            )
+            continue
+          }
+          if (unit.backupRecord === undefined) {
+            throw new DomainError(
+              'invalid-record',
+              `domain '${spec.name}': stored record '${key}' in table '${table}' is damaged `
+              + 'and the backend cannot move its document aside',
+              { detail: { table, key } },
+            )
+          }
+          const moved = await unit.backupRecord(table, key)
+          this.ctx.logger.error(
+            `domain '${spec.name}': stored record '${key}' in table '${table}' is damaged; `
+            + `moved to '${moved}' and treated as absent`,
+          )
+        }
         for (const [table, tableSpec] of Object.entries(spec.tables)) {
           const records = new Map<string, unknown>()
           for (const [key, raw] of Object.entries(snapshot.tables[table] ?? {})) {
@@ -125,6 +166,17 @@ export class DomainFacility {
             try {
               parsed = parseRecord(spec.name, table, key, () => tableSpec.valueSchema.parse(raw))
             } catch (error) {
+              // Quarantine policy (authoritative data): keep the document
+              // where it is and mark the key unusable, so the owner never
+              // mistakes it for an absent record or overwrites it.
+              if (spec.invalidRecords === 'quarantine') {
+                this.ctx.logger.error(
+                  `domain '${spec.name}': stored record '${key}' in table '${table}' failed schema validation; `
+                  + `left in place and quarantined. Cause: ${String((error as DomainError).cause)}`,
+                )
+                quarantine(table, key)
+                continue
+              }
               // Backup-and-skip policy (disposable derived data): move the record's
               // document aside, log the concrete failure, and open without the
               // record. Backends that cannot move a document keep the loud path.
@@ -152,7 +204,7 @@ export class DomainFacility {
         // The onClosed hook runs strictly after teardown completes: writes
         // landing during the drain still emit domain/changed, and the name
         // frees up for reopening only once the domain is fully closed.
-        const domain: DomainImpl = new DomainImpl(this.ctx, spec, unit, tables, globalValue, () => {
+        const domain: DomainImpl = new DomainImpl(this.ctx, spec, unit, tables, globalValue, quarantined, () => {
           this.domains.delete(spec.name)
           this.reserved.delete(spec.name)
         })

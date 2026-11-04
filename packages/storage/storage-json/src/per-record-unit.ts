@@ -14,8 +14,11 @@
  * version outside the accepted set (the descriptor's current version plus
  * its `compatibleVersions`) reads as an absent record — one bad or stale
  * file never bricks the whole unit, and an unaccepted version stamp discards
- * the record instead of migrating it. Record keys become path segments, so
- * they must be path-safe (`[a-zA-Z0-9_-]+`); an unsafe key rejects at write.
+ * the record instead of migrating it. A malformed document is additionally
+ * returned in `damaged`, so an authoritative caller can quarantine it
+ * instead of treating corruption as absence. Record keys become path
+ * segments, so they must be path-safe (`[a-zA-Z0-9_-]+`); an unsafe key
+ * rejects at write.
  *
  * Legacy bootstrap: when the new tree has no declared table directory or
  * global document, a whole-unit file `<root>/<name>.json` seeds
@@ -33,7 +36,7 @@ import type { Dirent } from 'node:fs'
 import { StorageError } from '@deepseek-ai/dsh-storage'
 import type { KvUnit, KvUnitDescriptor } from '@deepseek-ai/dsh-storage'
 import { fsyncDirectory, writeAtomic } from './atomic.ts'
-import { parseRecord, serializeRecord } from './format.ts'
+import { readRecordDocument, serializeRecord } from './format.ts'
 import type { UnitState } from './format.ts'
 
 /** Keys become path segments in this layout; this set is path-safe on every OS. */
@@ -57,23 +60,32 @@ export async function openPerRecordUnit(
   return new PerRecordJsonUnit(descriptor, join(root, descriptor.name), onClose)
 }
 
+/** One damaged record document: a file that exists but is not a readable record. */
+export interface DamagedRecord {
+  /** Declared table holding the document. */
+  readonly table: string
+  /** Record key taken from the document file name. */
+  readonly key: string
+}
+
 /**
  * Read every record document under the unit directory: each declared table's
  * `<key>.json` files plus `global.json`. A missing directory is the empty
  * unit (materialization defers to the first write); a foreign document
- * (missing, malformed, or stamped with an unaccepted version) reads as an absent
- * record, per the per-record contract.
+ * (missing, or stamped with an unaccepted version) reads as an absent
+ * record, while a malformed one reads as absent AND is listed in `damaged`.
  * @param descriptor - Static identity and shape of the unit.
  * @param dir - Absolute unit directory path.
- * @returns the authoritative state reconstructed from the tree.
+ * @returns the authoritative state reconstructed from the tree, plus every damaged document.
  */
-async function loadPerRecordState(descriptor: KvUnitDescriptor, dir: string): Promise<UnitState> {
+async function loadPerRecordState(descriptor: KvUnitDescriptor, dir: string): Promise<{ state: UnitState; damaged: DamagedRecord[] }> {
   const versions = acceptedStamps(descriptor)
   const state: UnitState = {
     version: descriptor.version,
     global: null,
     tables: new Map(descriptor.tables.map(table => [table, new Map<string, unknown>()])),
   }
+  const damaged: DamagedRecord[] = []
   let entries: Dirent[] | undefined
   try {
     entries = await readdir(dir, { withFileTypes: true })
@@ -88,19 +100,22 @@ async function loadPerRecordState(descriptor: KvUnitDescriptor, dir: string): Pr
       if (entry.isDirectory()) {
         const records = state.tables.get(entry.name)
         if (records !== undefined) {
-          await loadTableRecords(records, versions, join(dir, entry.name))
+          await loadTableRecords(records, versions, join(dir, entry.name), entry.name, damaged)
           return true
         }
       }
       if (entry.name === 'global.json' && descriptor.hasGlobal) {
-        const global = await readRecord(join(dir, entry.name), versions)
+        const global = await readGlobalDocument(join(dir, entry.name), versions)
         if (global !== undefined) state.global = global
         return true
       }
       return false
     }))).some(Boolean)
   if (!hasNewState) await bootstrapLegacyUnit(descriptor, dir, state)
-  return state
+  return {
+    state,
+    damaged: damaged.sort((a, b) => a.table.localeCompare(b.table) || a.key.localeCompare(b.key)),
+  }
 }
 
 /** The version stamps this unit reads as its own: current plus declared compatible versions. */
@@ -159,29 +174,43 @@ async function bootstrapLegacyUnit(descriptor: KvUnitDescriptor, dir: string, st
 }
 
 /**
- * Read one declared table's record documents into `records`.
+ * Read one declared table's record documents into `records`, listing every
+ * damaged document instead of silently dropping it.
  */
-async function loadTableRecords(records: Map<string, unknown>, versions: readonly number[], dir: string): Promise<void> {
+async function loadTableRecords(
+  records: Map<string, unknown>, versions: readonly number[], dir: string, table: string, damaged: DamagedRecord[],
+): Promise<void> {
   const files = await readdir(dir, { withFileTypes: true })
-  const loaded = await Promise.all(files.map(async (file) => {
+  await Promise.all(files.map(async (file) => {
     if (!file.name.endsWith('.json')) return
     const key = file.name.slice(0, -'.json'.length)
     if (!SAFE_KEY_RE.test(key)) return
-    const record = await readRecord(join(dir, file.name), versions)
-    if (record !== undefined) return [key, record] as const
+    const path = join(dir, file.name)
+    let text: string
+    try {
+      text = await readFile(path, 'utf8')
+    } catch {
+      // The document exists but cannot be read (permissions, or a directory
+      // where a file belongs): damaged, not absent.
+      damaged.push({ table, key })
+      return
+    }
+    const read = readRecordDocument(text, versions)
+    if (read.kind === 'record') records.set(key, read.value)
+    else if (read.kind === 'damaged') damaged.push({ table, key })
   }))
-  for (const record of loaded) {
-    if (record !== undefined) records.set(...record)
-  }
 }
 
-/** Read one record document; a foreign (unreadable or stale) one reads as absent. */
-async function readRecord(path: string, versions: readonly number[]): Promise<unknown> {
+/** Read one global-slot document; a foreign (unreadable, stale or malformed) one reads as absent. */
+async function readGlobalDocument(path: string, versions: readonly number[]): Promise<unknown> {
+  let text: string
   try {
-    return parseRecord(await readFile(path, 'utf8'), versions)
+    text = await readFile(path, 'utf8')
   } catch {
     return undefined
   }
+  const read = readRecordDocument(text, versions)
+  return read.kind === 'record' ? read.value : undefined
 }
 
 /**
@@ -204,14 +233,14 @@ export class PerRecordJsonUnit implements KvUnit {
   ) {}
 
   /** Re-read the tree: the directory is the authoritative state. */
-  async loadAll(): Promise<{ tables: Record<string, Record<string, unknown>>; global: unknown }> {
+  async loadAll(): Promise<{ tables: Record<string, Record<string, unknown>>; global: unknown; damaged?: readonly DamagedRecord[] }> {
     this.assertOpen()
-    const state = await loadPerRecordState(this.descriptor, this.dir)
+    const { state, damaged } = await loadPerRecordState(this.descriptor, this.dir)
     const tables: Record<string, Record<string, unknown>> = {}
     for (const [table, records] of state.tables) {
       tables[table] = Object.fromEntries(records)
     }
-    return { tables, global: state.global }
+    return { tables, global: state.global, ...damaged.length === 0 ? {} : { damaged } }
   }
 
   /** Durably replace one record: its own document, atomically. */

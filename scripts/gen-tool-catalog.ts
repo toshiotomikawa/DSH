@@ -6,7 +6,7 @@
  * `.agents/notes/archived/process/2026-07-02-tool-schema-catalog.md`.
  */
 
-import { globSync, readFileSync, writeFileSync } from 'node:fs'
+import { globSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
@@ -73,6 +73,12 @@ import BrowserUseRegistry from '@deepseek-ai/dsh-browser-use'
 import * as StagehandBrowserTools from '@deepseek-ai/dsh-experimental-browser-use-stagehand-native'
 import TeamService from '@deepseek-ai/dsh-agent-team'
 import * as ToolTeam from '@deepseek-ai/dsh-tool-agent-team'
+import Storage from '@deepseek-ai/dsh-storage'
+import * as JsonStorage from '@deepseek-ai/dsh-storage-json'
+import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
+import * as PersistentAgents from '@deepseek-ai/dsh-agent-registry'
+import * as AgentMemory from '@deepseek-ai/dsh-agent-memory'
+import * as ToolAgentMemory from '@deepseek-ai/dsh-tool-agent-memory'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import * as StorageTables from '@deepseek-ai/dsh-storage-tables'
 import * as ToolTables from '@deepseek-ai/dsh-tool-tables'
@@ -620,6 +626,29 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'The kind-agnostic background-job controller: background bash commands and PTY sends are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers\' `ctx.jobs.start()`.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-agent-memory',
+    dir: 'tool-agent-memory',
+    source: 'packages/agents/tool-agent-memory/src/index.ts',
+    requires: ['ctx.tools', 'ctx.persistentAgents', 'ctx.agentMemory', 'a bound persistent-agent session'],
+    writes: ['tool/call', 'tool/result', 'agent_memory book on successful turn/end'],
+    async mount(ctx) {
+      const parent = resolve('.dsh-test')
+      mkdirSync(parent, { recursive: true })
+      const root = mkdtempSync(resolve(parent, 'catalog-memories-'))
+      ctx.effect(() => () => rmSync(root, { recursive: true, force: true }))
+      await ctx.plugin(LlmRuntime)
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(Storage)
+      await ctx.plugin(JsonStorage, { root })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(PersistentAgents)
+      await ctx.plugin(AgentMemory, { maxMemories: 256, maxMemoryBytes: 8192, essentialBytes: 8192 })
+      await ctx.plugin(ToolAgentMemory)
+    },
+    note: 'Memories are isolated by the calling session’s persistent agentId. Mutations are staged and committed atomically after successful turn completion; interrupted turns are discarded. Saved data never grants authority.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-agent-team',

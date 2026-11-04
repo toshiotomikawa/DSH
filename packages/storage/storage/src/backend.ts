@@ -89,9 +89,16 @@ export interface KvUnit {
   /**
    * Read the full current snapshot.
    * @returns every table's records keyed by table name, plus the global
-   * singleton (`null` when never written or not declared).
+   * singleton (`null` when never written or not declared). A `per-record`
+   * unit also lists documents that exist but could not be read as records;
+   * it still serves them as absent, and the caller decides how loud that is
+   * (an authoritative domain must not mistake corruption for absence).
    */
-  loadAll(): Promise<{ tables: Record<string, Record<string, unknown>>; global: unknown }>
+  loadAll(): Promise<{
+    tables: Record<string, Record<string, unknown>>
+    global: unknown
+    damaged?: readonly { table: string; key: string }[]
+  }>
 
   /**
    * Upsert one record durably. Overwrite semantics: an existing key is replaced.
