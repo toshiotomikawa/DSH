@@ -252,8 +252,50 @@ function toJsonSafe(value: unknown): unknown {
   return value
 }
 
-function plainRow(row: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, toJsonSafe(value)]))
+function plainRow(row: Record<string, unknown>, maxValueBytes: number): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(row).map(([key, value]) => {
+    const size = typeof value === 'string' ? Buffer.byteLength(value) : value instanceof Uint8Array ? value.byteLength : 0
+    if (size > maxValueBytes) fail('valor_grande', `a coluna '${key}' devolveria um valor maior que o teto de ${maxValueBytes} bytes`)
+    return [key, toJsonSafe(value)]
+  }))
+}
+
+/** Placeholders a statement expects: plain `?` count (or highest `?N`) and distinct named parameters. */
+function placeholders(sql: string): { positional: number; named: Set<string> } {
+  let positional = 0
+  let highest = 0
+  const named = new Set<string>()
+  let i = 0
+  while (i < sql.length) {
+    const ch = sql.charAt(i)
+    const next = sql.charAt(i + 1)
+    if (ch === "'" || ch === '"' || ch === '`') {
+      // A doubled quote closes and reopens the literal, which this loop handles as two literals.
+      const end = sql.indexOf(ch, i + 1)
+      i = end === -1 ? sql.length : end + 1
+    } else if (ch === '[') {
+      const end = sql.indexOf(']', i + 1)
+      i = end === -1 ? sql.length : end + 1
+    } else if (ch === '-' && next === '-') {
+      const end = sql.indexOf('\n', i)
+      i = end === -1 ? sql.length : end + 1
+    } else if (ch === '/' && next === '*') {
+      const end = sql.indexOf('*/', i + 2)
+      i = end === -1 ? sql.length : end + 2
+    } else if (ch === '?') {
+      const digits = /^\d+/.exec(sql.slice(i + 1))
+      if (digits === null) positional++
+      else highest = Math.max(highest, Number(digits[0]))
+      i += 1 + (digits?.[0].length ?? 0)
+    } else if (ch === ':' || ch === '@' || ch === '$') {
+      const word = (/^[A-Za-z_]\w*|/.exec(sql.slice(i + 1)) as RegExpExecArray)[0]
+      if (word !== '') named.add(word)
+      i += 1 + word.length
+    } else {
+      i++
+    }
+  }
+  return { positional: Math.max(positional, highest), named }
 }
 
 /** The relational engine. One instance owns one connection. */
@@ -439,7 +481,8 @@ export class TablesEngine {
         this.db.exec(`ALTER TABLE ${ident(row.nome)} ADD COLUMN ${this.columnSql(column, false)}`)
         declared.push(column)
         const names = declared.map(existing => existing.nome).concat(primaryKey.length === 0 ? ['id'] : [])
-        this.db.exec(`DROP TRIGGER ${ident(`${row.nome}__au`)}; ${this.triggersSql(row.nome, names, true)}`)
+        for (const suffix of ['ai', 'au', 'bi', 'bu']) this.db.exec(`DROP TRIGGER ${ident(`${row.nome}__${suffix}`)}`)
+        this.db.exec(this.triggersSql(row.nome, names))
         this.db.prepare('UPDATE _dsh_meta SET colunas = ? WHERE nome = ?').run(JSON.stringify(declared), row.nome)
         return
       }
@@ -503,7 +546,7 @@ export class TablesEngine {
       fail('argumento_invalido', `limite deve ser um inteiro entre 1 e ${MAX_PAGE}`)
     }
     if (typeof request.sql !== 'string' || request.sql.trim() === '') fail('argumento_invalido', 'sql deve ser um texto não vazio')
-    const binding = this.bind(request.parametros)
+    const binding = this.bind(request.parametros, request.sql)
     const { statement } = this.prepare(request.sql, 'query')
     const rows: Record<string, unknown>[] = []
     let truncated = false
@@ -515,7 +558,7 @@ export class TablesEngine {
           truncated = true
           break
         }
-        rows.push(plainRow(row))
+        rows.push(plainRow(row, this.options.maxValueBytes))
       }
     } catch (error) {
       throw this.mapError(error)
@@ -548,7 +591,7 @@ export class TablesEngine {
     }
     const prepared = requests.map((request, indice) => {
       try {
-        const binding = this.bind(request.parametros)
+        const binding = this.bind(request.parametros, request.sql)
         const item = this.prepare(request.sql, 'execute')
         if (item.writeAction !== constants.SQLITE_INSERT && request.permitirTudo !== true && !hasTopLevelWhere(request.sql)) {
           fail('sem_where', 'UPDATE e DELETE sem WHERE são recusados; acrescente WHERE ou passe permitir_tudo: true')
@@ -640,15 +683,24 @@ export class TablesEngine {
       + `${column.padrao === undefined ? '' : ` DEFAULT ${this.defaultLiteral(column)}`}${check[column.tipo] ?? ''}`
   }
 
-  /** Triggers that stamp `autor` on insert and bump `revisao`, `atualizado_em`, `autor` on update. */
-  private triggersSql(table: string, userColumns: readonly string[], onlyUpdate = false): string {
+  /**
+   * Triggers that own the automatic columns and the value ceiling: insert stamps `autor`, `revisao`, `criado_em`,
+   * `atualizado_em`; update bumps `revisao`, `atualizado_em`, `autor`; both abort on a value above the ceiling.
+   */
+  private triggersSql(table: string, userColumns: readonly string[]): string {
     const author = '(SELECT agente FROM _dsh_ctx WHERE id = 1)'
-    const insert = `CREATE TRIGGER ${ident(`${table}__ai`)} AFTER INSERT ON ${ident(table)} BEGIN `
-      + `UPDATE ${ident(table)} SET autor = COALESCE(autor, ${author}) WHERE rowid = NEW.rowid; END;`
+    const t = ident(table)
+    const names = (suffix: string) => ident(`${table}__${suffix}`)
+    const columns = userColumns.map(ident).join(', ')
+    const tooBig = userColumns.map(column => `length(CAST(NEW.${ident(column)} AS BLOB)) > ${this.options.maxValueBytes}`).join(' OR ')
+    const guard = `WHEN ${tooBig} BEGIN SELECT RAISE(ABORT, 'valor_grande'); END;`
+    const insert = `CREATE TRIGGER ${names('ai')} AFTER INSERT ON ${t} BEGIN `
+      + `UPDATE ${t} SET autor = ${author}, revisao = 1, criado_em = ${NOW_SQL}, atualizado_em = ${NOW_SQL} WHERE rowid = NEW.rowid; END;`
     // `UPDATE OF` lists only user columns, so the stamping UPDATEs below never re-fire the trigger.
-    const update = `CREATE TRIGGER ${ident(`${table}__au`)} AFTER UPDATE OF ${userColumns.map(ident).join(', ')} ON ${ident(table)} BEGIN `
-      + `UPDATE ${ident(table)} SET revisao = OLD.revisao + 1, atualizado_em = ${NOW_SQL}, autor = ${author} WHERE rowid = NEW.rowid; END;`
-    return onlyUpdate ? update : `${insert} ${update}`
+    const update = `CREATE TRIGGER ${names('au')} AFTER UPDATE OF ${columns} ON ${t} BEGIN `
+      + `UPDATE ${t} SET revisao = OLD.revisao + 1, atualizado_em = ${NOW_SQL}, autor = ${author} WHERE rowid = NEW.rowid; END;`
+    return `${insert} ${update} CREATE TRIGGER ${names('bi')} BEFORE INSERT ON ${t} ${guard} `
+      + `CREATE TRIGGER ${names('bu')} BEFORE UPDATE OF ${columns} ON ${t} ${guard}`
   }
 
   private transaction(body: () => void): void {
@@ -658,7 +710,10 @@ export class TablesEngine {
       throw this.mapError(error)
     }
     try {
+      const before = this.dbBytes()
       body()
+      // A write that would grow the file past the ceiling is rolled back, not merely refused next time.
+      if (this.dbBytes() > Math.max(before, this.options.maxDbBytes)) this.checkSize()
       this.db.exec('COMMIT')
     } catch (error) {
       this.db.exec('ROLLBACK')
@@ -666,17 +721,23 @@ export class TablesEngine {
     }
   }
 
-  private checkSize(): void {
+  private dbBytes(): number {
     const pages = (this.db.prepare('PRAGMA page_count').get() as { page_count: number }).page_count
     const size = (this.db.prepare('PRAGMA page_size').get() as { page_size: number }).page_size
-    if (pages * size > this.options.maxDbBytes) {
+    return pages * size
+  }
+
+  private checkSize(): void {
+    if (this.dbBytes() > this.options.maxDbBytes) {
       fail('banco_cheio', `o banco passou do teto de ${this.options.maxDbBytes} bytes; consultas continuam permitidas, mas gravações estão recusadas`)
     }
   }
 
-  private bind(params: SqlParams | undefined): { positional: SQLInputValue[]; named: Record<string, SQLInputValue>[] } {
+  private bind(params: SqlParams | undefined, sql: unknown): { positional: SQLInputValue[]; named: Record<string, SQLInputValue>[] } {
+    const expected = typeof sql === 'string' ? placeholders(sql) : { positional: 0, named: new Set<string>() }
     const convert = (value: unknown): SQLInputValue => {
-      if (value === null || value === undefined) return null
+      if (value === undefined) return fail('argumento_invalido', 'parâmetro indefinido; use null para um valor vazio')
+      if (value === null) return null
       if (typeof value === 'boolean') return value ? 1 : 0
       if (typeof value === 'number') return value
       if (typeof value === 'string') {
@@ -688,9 +749,27 @@ export class TablesEngine {
       if (typeof value === 'object') return convert(JSON.stringify(value))
       return fail('argumento_invalido', `tipo de parâmetro sem suporte: ${typeof value}`)
     }
-    if (params === undefined) return { positional: [], named: [] }
-    if (isList(params)) return { positional: params.map(convert), named: [] }
-    return { positional: [], named: [Object.fromEntries(Object.entries(params).map(([key, value]) => [key, convert(value)]))] }
+    const count = (kind: string, want: number, got: number) => {
+      if (want !== got) fail('argumento_invalido', `o SQL espera ${want} ${kind} e recebeu ${got}; nada foi gravado`)
+    }
+    if (params === undefined) {
+      count('parâmetros posicionais', expected.positional, 0)
+      count('parâmetros nomeados', expected.named.size, 0)
+      return { positional: [], named: [] }
+    }
+    if (isList(params)) {
+      count('parâmetros posicionais', expected.positional, params.length)
+      count('parâmetros nomeados (lista dada)', expected.named.size, 0)
+      return { positional: Array.from(params, convert), named: [] }
+    }
+    const entries = Object.entries(params).map(([key, value]) => [key.replace(/^[:@$]/, ''), convert(value)] as const)
+    count('parâmetros posicionais (objeto dado)', expected.positional, 0)
+    const given = new Set(entries.map(([key]) => key))
+    for (const name of expected.named) {
+      if (!given.has(name)) fail('argumento_invalido', `falta o parâmetro nomeado '${name}'; nada foi gravado`)
+    }
+    count('parâmetros nomeados', expected.named.size, given.size)
+    return { positional: [], named: [Object.fromEntries(entries)] }
   }
 
   /** Prepare exactly one statement of the allowed family; the SQLite authorizer is the authority. */
@@ -701,13 +780,21 @@ export class TablesEngine {
       ...mode === 'execute' ? [constants.SQLITE_INSERT, constants.SQLITE_UPDATE, constants.SQLITE_DELETE] : [],
     ])
     const writes = new Set<number>([constants.SQLITE_INSERT, constants.SQLITE_UPDATE, constants.SQLITE_DELETE])
+    const known = new Set((this.db.prepare('SELECT nome FROM _dsh_meta').all() as unknown as { nome: string }[]).map(item => item.nome))
+    // The automatic columns belong to the service; only its triggers may write them.
+    const stamped = new Set<string>(AUTO_COLUMNS)
     let writeAction: number | undefined
     let selects = false as boolean
-    this.db.setAuthorizer((action, table, _column, _database, inner) => {
+    this.db.setAuthorizer((action, table, column, _database, inner) => {
       const nested = typeof inner === 'string'
       const tableName = typeof table === 'string' ? table : ''
-      const internal = RESERVED_PREFIXES.some(prefix => tableName.startsWith(prefix))
-      if (!nested && internal && (action === constants.SQLITE_READ || writes.has(action))) return constants.SQLITE_DENY
+      // Writes reach only the user's tables. Reads also see CTE names, so the hidden catalog is a denylist:
+      // internal tables, the file-revealing pragma_* table-valued functions and dbstat never pass.
+      const lowered = tableName.toLowerCase()
+      const hidden = RESERVED_PREFIXES.some(prefix => lowered.startsWith(prefix)) || lowered.startsWith('pragma_') || lowered === 'dbstat'
+      if (!nested && action === constants.SQLITE_READ && hidden) return constants.SQLITE_DENY
+      if (!nested && writes.has(action) && !known.has(tableName)) return constants.SQLITE_DENY
+      if (!nested && action === constants.SQLITE_UPDATE && stamped.has(column as string)) return constants.SQLITE_DENY
       if (!allowed.has(action)) return constants.SQLITE_DENY
       if (!nested && writes.has(action)) writeAction ??= action
       if (!nested && action === constants.SQLITE_SELECT) selects = true
@@ -749,6 +836,9 @@ export class TablesEngine {
     }
     if (primary === 5 || primary === 6) {
       return new TablesError('ocupado', 'o banco está ocupado por outro agente; tente de novo em instantes')
+    }
+    if (message.includes('valor_grande')) {
+      return new TablesError('valor_grande', `um valor passou do teto de ${this.options.maxValueBytes} bytes; nada foi gravado`)
     }
     if (primary === 19) return new TablesError('restricao', `restrição violada, nada foi gravado: ${message}`)
     const missing = /^no such table: (?:main\.)?(\S+)/.exec(message)

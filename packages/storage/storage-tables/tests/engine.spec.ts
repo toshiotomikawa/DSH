@@ -161,7 +161,7 @@ describe('criterion 2: parameters are never interpolated', () => {
     expect(result.linhas[0]).toMatchObject({ titulo: 'a', corpo: null, nota: 1, bruto: 'QQ==' })
     expect(result.linhas[1]).toMatchObject({ corpo: '{"k":[1,2]}' })
     expect(engine.query({ sql: 'SELECT :a AS a, :b AS b', parametros: { a: null, b: 2 } }).linhas).toEqual([{ a: null, b: 2 }])
-    expect(engine.query({ sql: 'SELECT ? AS a', parametros: [undefined as never] }).linhas).toEqual([{ a: null }])
+    expect(codeOf(() => engine.query({ sql: 'SELECT ? AS a', parametros: [undefined as never] }))).toBe('argumento_invalido')
     expect(codeOf(() => engine.query({ sql: 'SELECT 1 AS a', parametros: [1] }))).toBe('argumento_invalido')
   })
 
@@ -333,13 +333,35 @@ describe('criterion 7: compare-and-set on revisao', () => {
     expect(engine.query({ sql: 'SELECT revisao, autor FROM notas' }).linhas).toEqual([{ revisao: 3, autor: 'c' }])
   })
 
-  it('stamps the author on insert and keeps an explicit one', () => {
+  it('stamps the author on insert and overrides any value the agent tries to write (finding 1)', () => {
     engine.createTable(NOTES, 'a')
     engine.execute({ sql: "INSERT INTO notas (titulo) VALUES ('t')" }, 'maria')
-    engine.execute({ sql: "INSERT INTO notas (titulo, autor) VALUES ('u', 'outro')" }, 'maria')
-    expect(engine.query({ sql: 'SELECT autor, revisao FROM notas ORDER BY id' }).linhas).toEqual([
-      { autor: 'maria', revisao: 1 }, { autor: 'outro', revisao: 1 },
-    ])
+    engine.execute({
+      sql: "INSERT INTO notas (titulo, autor, revisao, criado_em) VALUES ('u', 'outro', 99, '1999-01-01T00:00:00.000Z')",
+    }, 'maria')
+    const rows = engine.query({ sql: 'SELECT autor, revisao, criado_em FROM notas ORDER BY id' }).linhas
+    expect(rows.map(row => [row.autor, row.revisao])).toEqual([['maria', 1], ['maria', 1]])
+    expect(rows[1]?.criado_em).not.toBe('1999-01-01T00:00:00.000Z')
+  })
+
+  it('refuses UPDATEs of the automatic columns, direct or through ON CONFLICT (finding 1)', () => {
+    engine.createTable({ ...NOTES, unicas: [['titulo']] }, 'a')
+    engine.execute({ sql: "INSERT INTO notas (titulo) VALUES ('t')" }, 'maria')
+    engine.execute({ sql: "UPDATE notas SET corpo = 'x' WHERE id = 1" }, 'maria')
+    for (const column of ['autor', 'revisao', 'criado_em', 'atualizado_em']) {
+      expect(codeOf(() => engine.execute({ sql: `UPDATE notas SET ${column} = 'x' WHERE id = 1` }, 'atacante')), column).toBe('sql_recusado')
+    }
+    expect(codeOf(() => engine.execute({
+      sql: "INSERT INTO notas (titulo) VALUES ('t') ON CONFLICT (titulo) DO UPDATE SET revisao = 1",
+    }, 'atacante'))).toBe('sql_recusado')
+    expect(engine.query({ sql: 'SELECT autor, revisao FROM notas' }).linhas).toEqual([{ autor: 'maria', revisao: 2 }])
+  })
+
+  it('REPLACE cannot plant its own revisao or autor (finding 1)', () => {
+    engine.createTable(NOTES, 'a')
+    engine.execute({ sql: "INSERT INTO notas (titulo) VALUES ('t')" }, 'maria')
+    engine.execute({ sql: "REPLACE INTO notas (id, titulo, autor, revisao) VALUES (1, 'r', 'via-replace', 7)" }, 'atacante')
+    expect(engine.query({ sql: 'SELECT autor, revisao FROM notas' }).linhas).toEqual([{ autor: 'atacante', revisao: 1 }])
   })
 })
 
@@ -488,16 +510,30 @@ describe('alter table', () => {
 })
 
 describe('criterion 11: size ceiling', () => {
-  it('refuses writes above the ceiling but keeps answering queries', () => {
-    const small = open({ path: join(dir, 'cheio.sqlite'), maxDbBytes: 40_000 })
-    small.createTable({ nome: 'n', colunas: [{ nome: 'v', tipo: 'texto' }] }, 'a')
-    small.execute({ sql: 'INSERT INTO n (v) VALUES (hex(zeroblob(60000)))' }, 'a')
+  it('refuses every write once the file is above the ceiling but keeps answering queries', () => {
+    const path = join(dir, 'cheio.sqlite')
+    const big = open({ path })
+    big.createTable({ nome: 'n', colunas: [{ nome: 'v', tipo: 'texto' }] }, 'a')
+    for (let i = 0; i < 12; i++) big.execute({ sql: 'INSERT INTO n (v) VALUES (hex(zeroblob(2000)))' }, 'a')
+    big.close()
+    const small = open({ path, maxDbBytes: 40_000 })
     expect(codeOf(() => small.execute({ sql: "INSERT INTO n (v) VALUES ('x')" }, 'a'))).toBe('banco_cheio')
     expect(codeOf(() => small.batch([{ sql: "INSERT INTO n (v) VALUES ('x')" }], 'a'))).toBe('banco_cheio')
     expect(codeOf(() => small.createTable({ nome: 'm', colunas: [{ nome: 'v', tipo: 'texto' }] }, 'a'))).toBe('banco_cheio')
     expect(codeOf(() => small.alterTable({ tabela: 'n', adicionarColuna: { nome: 'z', tipo: 'texto' } }, 'a'))).toBe('banco_cheio')
-    expect(small.query({ sql: 'SELECT count(*) AS c FROM n' }).linhas).toEqual([{ c: 1 }])
+    expect(small.query({ sql: 'SELECT count(*) AS c FROM n' }).linhas).toEqual([{ c: 12 }])
     expect(small.listTables()).toHaveLength(1)
+    small.close()
+  })
+
+  it('rolls back the very write that crosses the ceiling (finding 5)', () => {
+    const small = open({ path: join(dir, 'limite.sqlite'), maxDbBytes: 32_768, maxValueBytes: 100_000 })
+    small.createTable({ nome: 'n', colunas: [{ nome: 'v', tipo: 'texto' }] }, 'a')
+    expect(codeOf(() => small.execute({ sql: 'INSERT INTO n (v) VALUES (hex(zeroblob(40000)))' }, 'a'))).toBe('banco_cheio')
+    expect(codeOf(() => small.batch([{ sql: 'INSERT INTO n (v) VALUES (hex(zeroblob(40000)))' }], 'a'))).toBe('banco_cheio')
+    expect(small.query({ sql: 'SELECT count(*) AS c FROM n' }).linhas).toEqual([{ c: 0 }])
+    small.execute({ sql: "INSERT INTO n (v) VALUES ('cabe')" }, 'a')
+    expect(small.query({ sql: 'SELECT count(*) AS c FROM n' }).linhas).toEqual([{ c: 1 }])
     small.close()
   })
 })
@@ -550,5 +586,65 @@ describe('busy database', () => {
       blocker.close()
       impatient.close()
     }
+  })
+})
+
+describe('admission hardening', () => {
+  it('refuses pragma_* functions and other catalog readers (finding 3)', () => {
+    engine.createTable(NOTES, 'a')
+    for (const sql of [
+      'SELECT * FROM pragma_database_list', "SELECT * FROM PRAGMA_table_info('_dsh_meta')", 'SELECT * FROM pragma_table_list',
+      "SELECT * FROM pragma_index_list('_dsh_meta')", 'SELECT * FROM dbstat', 'SELECT * FROM sqlite_schema',
+      'SELECT * FROM _DSH_META', 'WITH c AS (SELECT 1 AS x) SELECT * FROM c, pragma_database_list',
+    ]) {
+      expect(codeOf(() => engine.query({ sql })), sql).toBe('sql_recusado')
+    }
+    expect(engine.query({ sql: 'WITH c(x) AS (SELECT 1) SELECT x FROM c' }).linhas).toEqual([{ x: 1 }])
+    expect(engine.query({ sql: 'SELECT count(*) AS n FROM notas' }).linhas).toEqual([{ n: 0 }])
+  })
+
+  it('treats a missing parameter as an error and writes nothing (finding 2)', () => {
+    engine.createTable(NOTES, 'a')
+    const insert = 'INSERT INTO notas (titulo, corpo) VALUES (?, ?)'
+    expect(codeOf(() => engine.execute({ sql: insert, parametros: ['so-um'] }, 'a'))).toBe('argumento_invalido')
+    expect(codeOf(() => engine.execute({ sql: insert }, 'a'))).toBe('argumento_invalido')
+    expect(codeOf(() => engine.execute({ sql: insert, parametros: ['a', 'b', 'c'] }, 'a'))).toBe('argumento_invalido')
+    expect(codeOf(() => engine.query({ sql: 'SELECT :ausente AS a, :b AS b', parametros: { b: 1 } }))).toBe('argumento_invalido')
+    expect(codeOf(() => engine.query({ sql: 'SELECT :a AS a', parametros: { a: 1, extra: 2 } }))).toBe('argumento_invalido')
+    expect(codeOf(() => engine.query({ sql: 'SELECT ? AS a, ? AS b' }))).toBe('argumento_invalido')
+    expect(codeOf(() => engine.query({ sql: 'SELECT :a AS a', parametros: [1] }))).toBe('argumento_invalido')
+    expect(codeOf(() => engine.query({ sql: 'SELECT ? AS a', parametros: { a: 1 } }))).toBe('argumento_invalido')
+    expect(engine.query({ sql: 'SELECT count(*) AS n FROM notas' }).linhas).toEqual([{ n: 0 }])
+  })
+
+  it('counts placeholders outside literals, comments and brackets', () => {
+    const named = "SELECT '?' AS a, 1 AS \"?\", 2 AS [?], ':x' AS d /* ? */ , @w AS w, $v AS v, :u AS w2 -- ? :z\n, 'it''s ?' AS q"
+    expect(engine.query({ sql: named, parametros: { w: 1, v: 2, u: 3 } }).linhas).toHaveLength(1)
+    expect(engine.query({ sql: "SELECT '?' AS a, 3 AS `?`, ?2 AS e, ?1 AS y", parametros: [1, 2] }).linhas).toEqual([{ a: '?', '?': 3, e: 2, y: 1 }])
+    expect(codeOf(() => engine.query({ sql: 'SELECT ?1, ?1', parametros: [1, 2] }))).toBe('argumento_invalido')
+    expect(engine.query({ sql: 'SELECT ?1 AS a, ?1 AS b', parametros: [5] }).linhas).toEqual([{ a: 5, b: 5 }])
+    expect(engine.query({ sql: 'SELECT :a AS a', parametros: { ':a': 3 } }).linhas).toEqual([{ a: 3 }])
+    expect(engine.query({ sql: "SELECT 'x' AS a /* aberto ? ", parametros: [] }).linhas).toHaveLength(1)
+    expect(engine.query({ sql: 'SELECT 1 AS a -- ?', parametros: [] }).linhas).toHaveLength(1)
+    expect(codeOf(() => engine.query({ sql: "SELECT 'aberto ?", parametros: [] }))).toBe('argumento_invalido')
+    expect(codeOf(() => engine.query({ sql: 'SELECT 1 $', parametros: [] }))).toBe('argumento_invalido')
+    expect(codeOf(() => engine.batch([{ sql: 5 as never, parametros: [1] }], 'a'))).toBe('argumento_invalido')
+    expect(codeOf(() => engine.query({ sql: 'SELECT [aberto ?', parametros: [] }))).toBe('argumento_invalido')
+  })
+
+  it('enforces the value ceiling on the final stored value, not only on parameters (finding 4)', () => {
+    const tight = open({ path: join(dir, 'teto.sqlite'), maxValueBytes: 32 })
+    tight.createTable({ nome: 'n', colunas: [{ nome: 'v', tipo: 'texto' }, { nome: 'w', tipo: 'texto' }] }, 'a')
+    expect(codeOf(() => tight.execute({ sql: 'INSERT INTO n (v) VALUES (hex(zeroblob(40)))' }, 'a'))).toBe('valor_grande')
+    expect(codeOf(() => tight.execute({ sql: 'INSERT INTO n (v) VALUES (?)', parametros: ['x'.repeat(40)] }, 'a'))).toBe('valor_grande')
+    tight.execute({ sql: "INSERT INTO n (v) VALUES ('ok')" }, 'a')
+    expect(codeOf(() => tight.execute({ sql: 'UPDATE n SET w = hex(zeroblob(40)) WHERE id = 1' }, 'a'))).toBe('valor_grande')
+    expect(codeOf(() => tight.execute({ sql: "UPDATE n SET v = hex(zeroblob(40)) WHERE v = 'ok'" }, 'a'))).toBe('valor_grande')
+    tight.alterTable({ tabela: 'n', adicionarColuna: { nome: 'z', tipo: 'texto' } }, 'a')
+    expect(codeOf(() => tight.execute({ sql: 'UPDATE n SET z = hex(zeroblob(40)) WHERE id = 1' }, 'a'))).toBe('valor_grande')
+    expect(tight.query({ sql: 'SELECT v, w, z FROM n' }).linhas).toEqual([{ v: 'ok', w: null, z: null }])
+    expect(codeOf(() => tight.query({ sql: 'SELECT hex(zeroblob(40)) AS grande' }))).toBe('valor_grande')
+    expect(codeOf(() => tight.query({ sql: 'SELECT zeroblob(40) AS grande' }))).toBe('valor_grande')
+    tight.close()
   })
 })
