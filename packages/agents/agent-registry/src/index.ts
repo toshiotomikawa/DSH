@@ -1,6 +1,6 @@
 /** Durable named agents, independent of their live session identities. @module */
 import { randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { open } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import sharp from 'sharp'
@@ -22,7 +22,7 @@ export function PersistentAgentId(value: string): PersistentAgentId {
 
 const routeSchema = z.object({
   provider: z.string().min(1), model: z.string().min(1),
-  reasoningEffort: z.string().min(1).optional(), account: z.string().optional(),
+  reasoningEffort: z.string().min(1).optional(),
 }).strict()
 const editableSchema = z.object({
   name: z.string().trim().min(1), title: z.string(), description: z.string(), instructions: z.string(), firstTask: z.string(),
@@ -41,8 +41,26 @@ const profileSchema = editableSchema.extend({
 const bindingSchema = z.object({ agentId: z.string().transform(PersistentAgentId), ownerId: z.string().optional() })
 const agentsDomain = defineDomain({ name: 'agents', version: 1, layout: 'per-record', tables: {
   profiles: domainTable<PersistentAgentId, z.infer<typeof profileSchema>>(profileSchema),
-  sessions: domainTable<SessionId, z.infer<typeof bindingSchema>>(bindingSchema),
+  sessions: domainTable<string, z.infer<typeof bindingSchema>>(bindingSchema),
 } })
+
+/** Largest avatar document accepted from disk, before any decoding. */
+const AVATAR_MAX_BYTES = 512 * 1024
+
+/**
+ * Durable document key for one session. The key is a path segment, and
+ * Windows folds case, so the raw id would map `Ab` and `ab` to one file.
+ * The encoding is injective: an id that is already a safe lowercase segment
+ * keeps its readable form behind `r-`, and anything else (capitals, separators,
+ * non-ASCII) is hex-encoded behind `h-`; the two prefixes keep the branches
+ * disjoint.
+ * @param id - live session id.
+ * @returns path-safe, case-insensitive-safe key.
+ */
+function sessionKey(id: SessionId): string {
+  const text = String(id)
+  return /^[a-z0-9_-]+$/.test(text) ? `r-${text}` : `h-${Buffer.from(text, 'utf8').toString('hex')}`
+}
 
 /** Persisted agent configuration. Reservations never trigger a model switch. */
 export type AgentProfile = z.infer<typeof profileSchema>
@@ -144,7 +162,7 @@ export class PersistentAgents {
     const run = this.bindingTail.then(async () => {
       const previous = this.metadataOf(sessionId)
       if (previous && previous.agentId !== agentId) throw new Error('Session already belongs to a different persistent agent')
-      await this.domain.table('sessions').put(sessionId, { agentId, ...(profile.ownerId === undefined ? {} : { ownerId: profile.ownerId }) })
+      await this.domain.table('sessions').put(sessionKey(sessionId), { agentId, ...(profile.ownerId === undefined ? {} : { ownerId: profile.ownerId }) })
     })
     this.bindingTail = run.then(() => {}, () => {})
     await run
@@ -155,7 +173,7 @@ export class PersistentAgents {
    * @returns agentId and optional ownerId, or undefined.
    */
   metadataOf(sessionId: SessionId): { agentId: PersistentAgentId; ownerId?: string | undefined } | undefined {
-    return structuredClone(this.domain.table('sessions').get(sessionId))
+    return structuredClone(this.domain.table('sessions').get(sessionKey(sessionId)))
   }
 
   /** Resolve the authenticated tool caller, never a model-supplied id.
@@ -180,6 +198,9 @@ export class PersistentAgents {
   }
 
   private async validateRoutes(profile: AgentProfile): Promise<void> {
+    if (profile.automaticFallback && profile.reserves.length === 0) {
+      throw new Error('Automatic fallback consent requires at least one reserve')
+    }
     for (const route of [profile.model, ...profile.reserves]) {
       const models = await this.ctx.llm.listModels(route.provider)
       if (!models.some(model => model.id === route.model)) throw new Error(`Unknown model: ${route.provider}/${route.model}`)
@@ -191,8 +212,18 @@ export class PersistentAgents {
   private async avatar(input: z.infer<typeof patchSchema>, previous: AgentProfile['avatar']): Promise<AgentProfile['avatar']> {
     if (input.avatarSeed !== undefined) return { kind: 'generated', value: input.avatarSeed }
     if (input.avatarPath === undefined) return previous
-    const bytes = await readFile(input.avatarPath)
-    if (bytes.length > 512 * 1024) throw new Error('Avatar exceeds 512 KB')
+    // One bounded read: the buffer caps what reaches memory, and a larger file
+    // is detected by the extra byte rather than by reading all of it first.
+    const file = await open(input.avatarPath, 'r')
+    let bytes: Buffer
+    try {
+      const buffer = Buffer.alloc(AVATAR_MAX_BYTES + 1)
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, 0)
+      if (bytesRead > AVATAR_MAX_BYTES) throw new Error('Avatar exceeds 512 KB')
+      bytes = buffer.subarray(0, bytesRead)
+    } finally {
+      await file.close()
+    }
     const metadata = await sharp(bytes, { limitInputPixels: 16_777_216 }).metadata()
     if (!['png', 'jpeg', 'webp'].includes(metadata.format)) throw new Error('Avatar must be PNG, JPEG or WebP')
     await sharp(bytes, { limitInputPixels: 16_777_216 }).raw().toBuffer()

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { describe, it, expect, onTestFinished } from 'vitest'
@@ -17,7 +17,7 @@ async function fixture() {
 }
 
 describe('durable persistent profiles', () => {
-  it('preserves identity, first task, history and pending references across edits and reopen (1,2,5)', async () => {
+  it('preserves identity, first task, history and pending references across edits and reopen (1)', async () => {
     const { ctx, root, registryFiber } = await fixture()
     const profile = await ctx.persistentAgents.create({ name: 'One', title: 'Old', instructions: 'Literal {{keep}}', firstTask: 'First', ownerId: 'owner', reserves: [inherited], automaticFallback: true }, inherited)
     const agent = await live(ctx, 'conversation', profile.id)
@@ -25,14 +25,11 @@ describe('durable persistent profiles', () => {
     agent.session.append('turn/start', { turn: 1 })
     agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
     const history = agent.session.snapshotEvents()
-    const routine = { agentId: profile.id, pending: true }
-    const message = { recipientId: profile.id, pending: true }
     const changed = await ctx.persistentAgents.update(profile.id, 1, { title: 'New' })
     expect(changed).toEqual({ ...profile, title: 'New', revision: 2, updatedAt: changed.updatedAt })
     const renamed = await ctx.persistentAgents.update(profile.id, 2, { name: 'Renamed', avatarSeed: 'stable' })
     expect(renamed.avatar).toEqual({ kind: 'generated', value: 'stable' })
-    expect(routine.agentId).toBe(renamed.id)
-    expect(message.recipientId).toBe(renamed.id)
+    expect(renamed.id).toBe(profile.id)
     expect(agent.session.snapshotEvents()).toEqual(history)
     await ctx.sessions.flush(agent.session)
     await registryFiber.dispose()
@@ -49,6 +46,34 @@ describe('durable persistent profiles', () => {
     expect(await reopened.ctx.persistentAgents.selection(profile.id)).toEqual(inherited)
     expect(agent.model.current()).toEqual(inherited)
     expect(await readFile(join(root, 'data/agents/profiles', `${profile.id}.json`), 'utf8')).toContain('Renamed')
+  })
+
+  it('keeps same-named agents distinct and resolves session references by id after a rename (2)', async () => {
+    const { ctx } = await fixture()
+    const first = await ctx.persistentAgents.create({ name: 'Twin' }, inherited)
+    const second = await ctx.persistentAgents.create({ name: 'Twin' }, inherited)
+    expect(first.id).not.toBe(second.id)
+    const session = await live(ctx, 'twin-session', first.id)
+    await ctx.persistentAgents.update(first.id, 1, { name: 'Renamed twin' })
+    expect(ctx.persistentAgents.metadataOf(session.id)).toEqual({ agentId: first.id })
+    expect(ctx.persistentAgents.get(first.id).name).toBe('Renamed twin')
+    expect(ctx.persistentAgents.get(second.id).name).toBe('Twin')
+  })
+
+  it('keeps session ids that differ only in case as separate durable documents (high 1)', async () => {
+    const { ctx, registryFiber, root } = await fixture()
+    const upper = await ctx.persistentAgents.create({ name: 'Upper' }, inherited)
+    const lower = await ctx.persistentAgents.create({ name: 'Lower' }, inherited)
+    await ctx.persistentAgents.bind(SessionId('Session'), upper.id)
+    await ctx.persistentAgents.bind(SessionId('session'), lower.id)
+    // Windows folds case, so the two bindings must not share one file.
+    expect(await readdir(join(root, 'data/agents/sessions'))).toHaveLength(2)
+    await registryFiber.dispose()
+    await ctx.fiber.dispose()
+    const reopened = await harness(root)
+    onTestFinished(() => reopened.ctx.fiber.dispose())
+    expect(reopened.ctx.persistentAgents.metadataOf(SessionId('Session'))?.agentId).toBe(upper.id)
+    expect(reopened.ctx.persistentAgents.metadataOf(SessionId('session'))?.agentId).toBe(lower.id)
   })
 
   it('validates models, effort, partial batches and stale profile revisions before writing (3,5)', async () => {
@@ -72,19 +97,22 @@ describe('durable persistent profiles', () => {
     expect(() => ctx.persistentAgents.of(unbound.agent)).toThrow('no persistent agent')
   })
 
-  it('stores supported explicit effort and validates every reserve without switching', async () => {
+  it('stores supported explicit effort, validates every reserve and rejects unusable consent or account (4)', async () => {
     const { ctx } = await fixture()
     const adapter = new Adapter([], { efforts: [{ id: ReasoningEffortId('medium'), name: 'Medium' }] })
     ctx.llm.registerAdapter(['effort'], adapter)
-    const model = { provider: 'effort', model: 'test', reasoningEffort: 'medium', account: 'account-1' }
-    const profile = await ctx.persistentAgents.create({ name: 'Effort', model, reserves: [inherited] }, inherited)
+    const model = { provider: 'effort', model: 'test', reasoningEffort: 'medium' }
+    const profile = await ctx.persistentAgents.create({ name: 'Effort', model, reserves: [inherited], automaticFallback: true }, inherited)
     expect(await ctx.persistentAgents.selection(profile.id)).toEqual({ provider: 'effort', model: 'test', reasoningEffort: 'medium' })
     await expect(ctx.persistentAgents.update(profile.id, 1, { reserves: [{ provider: 'mock', model: 'absent' }] })).rejects.toThrow('Unknown model')
     expect(ctx.persistentAgents.get(profile.id).model).toEqual(model)
-    const inheritedProfile = await ctx.persistentAgents.create({ name: 'Inherited effort', model: { account: 'alternate' } }, model)
-    expect(inheritedProfile.model).toEqual({ ...model, account: 'alternate' })
-    const changed = await ctx.persistentAgents.update(inheritedProfile.id, 1, { model: { account: 'new-account' } })
-    expect(changed.model).toEqual({ ...model, account: 'new-account' })
+    // Consent without a usable reserve would silently promise a switch that cannot happen.
+    await expect(ctx.persistentAgents.create({ name: 'No reserve', automaticFallback: true }, inherited)).rejects.toThrow('requires at least one reserve')
+    await expect(ctx.persistentAgents.update(profile.id, 1, { automaticFallback: true, reserves: [] })).rejects.toThrow('requires at least one reserve')
+    // The native loop has no account selector, so a route must not store one it cannot honour.
+    const withAccount = { provider: 'mock', model: 'test', account: 'ghost' }
+    await expect(ctx.persistentAgents.create({ name: 'Account', model: withAccount }, inherited)).rejects.toThrow('account')
+    expect(ctx.persistentAgents.get(profile.id).model).toEqual(model)
   })
 
   it('serializes session binding and rejects concurrent stale edits', async () => {
