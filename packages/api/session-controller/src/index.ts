@@ -493,8 +493,8 @@ export class SessionController extends TypertRemoteService {
   }
 
   /**
-   * Read one image from the attachment store after gateway authorization.
-   * @param request - image reference and gateway permission scope; Session existence is not checked.
+   * Read one image the addressed Session logged, after gateway authorization.
+   * @param request - image reference and the Session whose permission scope the gateway checked.
    * @returns the durable attachment reference and base64-encoded bytes.
    */
   @Remote('attachment')
