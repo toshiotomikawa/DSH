@@ -152,11 +152,18 @@ describe('managed headless lifecycle', () => {
   })
   it('validates deployment bounds before registering', async () => {
     const f = await setup()
-    for (const patch of [{ timeoutMs:0 },{ disposeGraceMs:Infinity },{ maxOutputBytes:NaN },{ maxOutputBytes:2_000_000_000 },{ maxOutputBytes:MAX_OUTPUT_BYTES + 1 },{ logDirectory:'relative' },{ minimumRemainingPercent:101 }]) {
-      expect(()=>{ register(f.ctx,{ ...f.config,...patch },product) }).toThrow()
+    const registerProvider = vi.fn()
+    const fakeCtx = { subagents: { registerProvider } } as unknown as Context
+    for (const patch of [{ timeoutMs:0 },{ disposeGraceMs:Infinity },{ logDirectory:'relative' },{ minimumRemainingPercent:101 }]) {
+      expect(()=>{ register(fakeCtx,{ ...f.config,...patch },product) }).toThrow()
     }
+    for (const value of [NaN, MAX_OUTPUT_BYTES + 1, 2_000_000_000]) {
+      expect(()=>{ register(fakeCtx,{ ...f.config,maxOutputBytes:value },product) }).toThrow('invalid maxOutputBytes')
+    }
+    expect(registerProvider).not.toHaveBeenCalled()
     expect(failure('x').diagnostic).toContain('x')
-    expect(() => { register(f.ctx, { ...f.config, maxOutputBytes: MAX_OUTPUT_BYTES, providerName: 'cap-ok' }, product) }).toThrow('registerProvider')
+    expect(() => { register(fakeCtx, { ...f.config, maxOutputBytes: MAX_OUTPUT_BYTES, providerName: 'cap-ok' }, product) }).not.toThrow()
+    expect(registerProvider).toHaveBeenCalledTimes(1)
   })
   it('rejects non-text input before spawning',async()=>{
     const f=await setup()

@@ -1342,6 +1342,24 @@ describe('dsh-subagent-acp', () => {
     )
   })
 
+  it('refuses a .cmd command before starting a child', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
+    await mountWorkingDirectoryFixture(ctx)
+    await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(LocalSubprocessRuntime)
+    await ctx.plugin(acp, {
+      providerName: 'acp',
+      command: 'acp-agent.cmd',
+      args: [],
+      permission: 'reject',
+      env: {},
+    })
+    await expect(startExternalActivation(ctx, 'acp', request())).rejects.toThrow(
+      `subagent-acp: ${expectedFailure('stage: initialize; category: configuration')}`,
+    )
+  })
+
   it('keeps permission diagnostics isolated across concurrent runs', async () => {
     const start = (permission: 'allow' | 'reject', kind: 'edit' | 'execute') => startAcpRun(
       request(),
