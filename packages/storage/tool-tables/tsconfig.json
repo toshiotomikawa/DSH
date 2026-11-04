@@ -22,6 +22,9 @@
     },
     {
       "path": "../storage-tables"
+    },
+    {
+      "path": "../../typert/protocol"
     }
   ]
 }

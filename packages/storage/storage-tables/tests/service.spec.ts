@@ -1,5 +1,5 @@
 /* oxlint-disable typescript/no-unsafe-assignment -- asymmetric matchers return any. */
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -257,5 +257,51 @@ describe('configuration and plugin', () => {
     expect((await service.listTables(AGENT)).length).toBe(1)
     await ctx.fiber.dispose()
     expect(await codeOf(service.listTables(AGENT))).toBe('interno')
+  })
+})
+
+describe('one database file per account', () => {
+  const A = { agent: 'agente-a', ownerId: 'a' } as const
+  const B = { agent: 'agente-b', ownerId: 'b' } as const
+
+  it('keeps private tables inside the account file and shares only the shared file', async () => {
+    const tables = open()
+    expect((await tables.createTable(NOTES, A)).escopo).toBe('privada')
+    expect((await tables.createTable({ nome: 'comum', colunas: NOTES.colunas }, AGENT)).escopo).toBe('compartilhada')
+    expect((await tables.listTables(A)).map(table => [table.nome, table.escopo]))
+      .toEqual([['comum', 'compartilhada'], ['notas', 'privada']])
+    expect((await tables.listTables(B)).map(table => table.nome)).toEqual(['comum'])
+    // Only the files this principal may open exist: A's own file, never B's.
+    expect(existsSync(join(dir, 'data', 'tables-a.sqlite'))).toBe(true)
+    expect(existsSync(join(dir, 'data', 'tables-b.sqlite'))).toBe(false)
+    expect((await tables.tableSchema('notas', A)).escopo).toBe('privada')
+    expect(await codeOf(tables.tableSchema('notas', B))).toBe('nao_existe')
+    expect((await tables.query({ sql: 'SELECT count(*) AS n FROM notas' }, A)).linhas).toEqual([{ n: 0 }])
+    expect(await codeOf(tables.query({ sql: 'SELECT * FROM notas' }, B))).toBe('nao_existe')
+    expect((await tables.query({ sql: 'SELECT count(*) AS n FROM comum' }, { ...B, scope: 'compartilhada' })).linhas).toEqual([{ n: 0 }])
+    // B cannot alter or drop A's private table, and A's table survives the attempt.
+    expect(await codeOf(tables.dropTable({ tabela: 'notas', confirmar: 'notas' }, B))).toBe('nao_existe')
+    expect((await tables.alterTable({ tabela: 'notas', adicionarColuna: { nome: 'extra', tipo: 'texto' } }, A)).colunas.map(column => column.nome)).toContain('extra')
+    expect((await tables.tableSchema('notas', A)).colunas.map(column => column.nome)).toContain('extra')
+  })
+
+  it('falls back to the owner private file and encodes an unsafe account id as a path segment', async () => {
+    const tables = open()
+    await tables.createTable(NOTES, { ...AGENT, scope: 'privada' })
+    // The default scope for the host account is the shared file; the locate path finds its private table.
+    expect((await tables.tableSchema('notas', AGENT)).escopo).toBe('privada')
+    await tables.createTable(NOTES, { agent: 'agente-c', ownerId: 'Conta A/1' })
+    expect(readdirSync(join(dir, 'data')).some(name => /^tables-~[0-9a-f]+\.sqlite$/u.test(name))).toBe(true)
+    expect(await codeOf(tables.tableSchema('notas', { agent: 'agente-c', ownerId: 'Conta A/1' }))).toBe('ok')
+  })
+
+  it('keeps one in-memory database per scope when no file is configured', async () => {
+    const memory = new StorageTables.TablesService({ path: ':memory:' })
+    services.push(memory)
+    await memory.createTable(NOTES, A)
+    expect((await memory.listTables(A)).map(table => table.escopo)).toEqual(['privada'])
+    expect(await codeOf(memory.tableSchema('notas', B))).toBe('nao_existe')
+    expect((await memory.createTable(NOTES, { ...B, scope: 'compartilhada' })).escopo).toBe('compartilhada')
+    expect((await memory.listTables(A)).map(table => table.escopo)).toEqual(['privada', 'compartilhada'])
   })
 })

@@ -19,6 +19,11 @@ declare module '@deepseek-ai/cordis' {
        * @returns after durable ownership publication.
        */
       assign(sessionId: Branded<'SessionId'>, ownerId: string): Promise<void>
+      /** Read the owner fixed for a stored Session.
+       * @param sessionId - Session identity.
+       * @returns its account id, or undefined while no ownership record exists.
+       */
+      ownerOf(sessionId: Branded<'SessionId'>): string | undefined
     }
   }
 }

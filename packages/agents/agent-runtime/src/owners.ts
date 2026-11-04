@@ -61,6 +61,15 @@ export class SessionOwners extends Service {
       (record.ownerId ?? 'owner') === ownerId ? [SessionId(record.sessionId)] : [])
   }
 
+  /** Read the owner fixed for a stored Session.
+   * @param sessionId - Session identity.
+   * @returns its account id, or undefined while no ownership record exists.
+   */
+  ownerOf(sessionId: SessionId): string | undefined {
+    const record = this.domain.table('sessions').get(this.key(sessionId))
+    return record === undefined ? undefined : record.ownerId ?? 'owner'
+  }
+
   /** Drain writes before releasing storage.
    * @returns after storage is closed.
    */

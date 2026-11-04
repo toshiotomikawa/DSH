@@ -123,6 +123,8 @@ export interface ExecuteResult {
 export interface EngineOptions {
   /** Database file path, or `:memory:`. */
   readonly path: string
+  /** Scope recorded on every table this file holds; the shared file is the default. */
+  readonly scope?: 'privada' | 'compartilhada'
   /** Ceiling for the whole database file; writes beyond it are refused. */
   readonly maxDbBytes: number
   /** Ceiling for one bound text value, in UTF-8 bytes. */
@@ -402,7 +404,7 @@ export class TablesEngine {
       this.db.exec(this.triggersSql(name, declared.map(column => column.nome).concat(primaryKey.length === 0 ? ['id'] : [])))
       this.db.prepare(
         'INSERT INTO _dsh_meta (nome, criador, escopo, criado_em, colunas, chave_primaria, indices) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      ).run(name, agent, 'compartilhada', new Date().toISOString(), JSON.stringify(declared), JSON.stringify(primaryKey), JSON.stringify(uniqueInfo))
+      ).run(name, agent, this.options.scope ?? 'compartilhada', new Date().toISOString(), JSON.stringify(declared), JSON.stringify(primaryKey), JSON.stringify(uniqueInfo))
     })
     return this.tableSchema(name)
   }
