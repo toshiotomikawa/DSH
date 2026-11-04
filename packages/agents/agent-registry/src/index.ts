@@ -75,7 +75,8 @@ function sessionKey(id: SessionId): string {
 /** Persisted agent configuration. Reservations never trigger a model switch. */
 export type AgentProfile = z.infer<typeof profileSchema>
 /** A flat sidebar group owned by one account; membership never grants access. */
-export type AgentSection = z.infer<typeof sectionSchema>/** Partial profile edit; omitted fields retain their current value. */
+export type AgentSection = z.infer<typeof sectionSchema>
+/** Partial profile edit; omitted fields retain their current value. */
 export type AgentPatch = z.input<typeof patchSchema>
 /** Route inherited from the creator when creation fields are omitted. */
 export type AgentRoute = z.infer<typeof routeSchema>

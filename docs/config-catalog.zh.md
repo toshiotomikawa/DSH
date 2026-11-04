@@ -3668,7 +3668,7 @@ export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 
 ## `@deepseek-ai/dsh-storage-tables`
 
-- `source`: [`packages/storage/storage-tables/src/index.ts:36`](../packages/storage/storage-tables/src/index.ts)
+- `source`: [`packages/storage/storage-tables/src/index.ts:37`](../packages/storage/storage-tables/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
