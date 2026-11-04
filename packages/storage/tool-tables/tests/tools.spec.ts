@@ -1,5 +1,5 @@
 /* oxlint-disable typescript/no-explicit-any, typescript/no-unsafe-member-access, typescript/no-unsafe-call -- JSON parsed from text. */
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -17,13 +17,13 @@ let dir: string
 let ctx: Context
 let counter = 0
 
-async function boot(provide?: (ctx: Context) => void): Promise<Context> {
+async function boot(provide?: (ctx: Context) => void | Promise<void>): Promise<Context> {
   const context = new Context()
   await context.plugin(SystemPrompt)
   await context.plugin(ToolRuntime)
   await context.plugin(NativeToolExecutor)
   if (provide === undefined) await context.plugin(StorageTables, { path: join(dir, 'tables-shared.sqlite'), commandTimeoutMs: 20_000 })
-  else provide(context)
+  else await provide(context)
   await context.plugin(ToolTables)
   return context
 }
@@ -74,7 +74,7 @@ describe('tool registration', () => {
       'data_batch', 'data_execute', 'data_query', 'table_alter', 'table_create', 'table_drop', 'table_list', 'table_schema',
     ])
     const query = ctx.tools.schemas().find(schema => schema.name === 'data_query')
-    expect(Object.keys((query?.parameters as { properties: object }).properties)).toEqual(['sql', 'parametros', 'limite'])
+    expect(Object.keys((query?.parameters as { properties: object }).properties)).toEqual(['sql', 'parametros', 'limite', 'escopo'])
   })
 })
 
@@ -213,5 +213,25 @@ describe('non-typed failures', () => {
     expect(outcome.isError).toBe(true)
     expect(outcome.text).toContain('banco quebrou')
     await other.fiber.dispose()
+  })
+})
+
+describe('per-account table files', () => {
+  it('routes an account to its own file and never opens another account file', async () => {
+    await ctx.fiber.dispose()
+    ctx = await boot(async (context) => {
+      context.provide('sessionOwners', { ownerOf: (id: string) => id.startsWith('conta-a') ? 'a' : 'b' } as never)
+      await context.plugin(StorageTables, { path: join(dir, 'tables-shared.sqlite'), commandTimeoutMs: 20_000 })
+    })
+    expect((await call('table_create', NOTES, 'conta-a')).json.escopo).toBe('privada')
+    expect((await call('table_list', {}, 'conta-b')).json.tabelas).toEqual([])
+    expect((await call('table_schema', { tabela: 'notas' }, 'conta-b')).text).toContain('nao_existe:')
+    expect((await call('table_schema', { tabela: 'notas' }, 'conta-a')).isError).toBe(false)
+    expect((await call('table_create', { ...NOTES, nome: 'comum', escopo: 'compartilhada' }, 'conta-b')).json.escopo).toBe('compartilhada')
+    expect((await call('table_list', {}, 'conta-a')).json.tabelas.map((table: { nome: string }) => table.nome)).toEqual(['comum', 'notas'])
+    const files = readdirSync(dir)
+    expect(files).toContain('tables-a.sqlite')
+    expect(files).toContain('tables-shared.sqlite')
+    expect(files).not.toContain('tables-b.sqlite')
   })
 })

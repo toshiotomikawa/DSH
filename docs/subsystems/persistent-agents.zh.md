@@ -1,5 +1,7 @@
 # 持久智能体
 
+[English](persistent-agents.md) | 中文
+
 此可选能力提供 `ctx.persistentAgents` 和 `ctx.agentMemory`，不会修改上游默认配置。先加载存储、模型和会话服务，再全局加载 agent-registry、agent-memory 和 tool-agent-memory。省略的模型字段继承调用方指定的配置；主模型和备用模型都通过适配器目录验证。路由只保存提供方、模型和可选推理强度：原生循环没有账户选择器，因此账户标签会被拒绝，而不是保存后被静默丢弃。备用顺序和切换同意仅保存和显示，不自动切换；同意至少需要一个有效备用。
 
 ## 身份
@@ -289,6 +291,37 @@ async update(id: PersistentAgentId, expectedRevision: number, input: AgentPatch)
  * @returns explicit per-item outcome.
  */
 async updateMany( edits: readonly { id: PersistentAgentId; revision: number; patch: AgentPatch }[], ): Promise<({ id: PersistentAgentId; profile: AgentProfile } | { id: PersistentAgentId; error: string })[]>
+
+/** Sidebar groups visible to the caller; membership never grants access.
+ * @returns detached sections, oldest first.
+ */
+listSections(): AgentSection[]
+
+/** Create one sidebar group for the authenticated account.
+ * @param name - display name, 1 to 40 characters.
+ * @returns the stored section.
+ */
+async createSection(name: string): Promise<AgentSection>
+
+/** Rename one visible section; agent membership and profile ids do not change.
+ * @param id - section id.
+ * @param name - new display name, 1 to 40 characters.
+ * @returns the stored section.
+ */
+async renameSection(id: string, name: string): Promise<AgentSection>
+
+/** Delete one visible section; its agents survive and become ungrouped.
+ * @param id - section id.
+ * @returns the deleted id.
+ */
+async deleteSection(id: string): Promise<{ id: string }>
+
+/** Move one visible agent into a section, or remove its grouping with null.
+ * @param agentId - profile id.
+ * @param sectionId - visible section id, or null to ungroup.
+ * @returns the saved profile.
+ */
+async assignSection(agentId: PersistentAgentId, sectionId: string | null): Promise<AgentProfile>
 
 /** Attach durable metadata without changing a Session header or its history.
  * @param sessionId - conversation id.

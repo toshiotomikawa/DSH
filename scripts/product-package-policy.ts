@@ -16,7 +16,6 @@ export interface ProductPackagePolicy {
  * Optional integrations may be reached by an optional bundle without becoming default capabilities.
  */
 export const PRODUCT_PACKAGE_POLICY: Readonly<Record<string, ProductPackagePolicy>> = {
-  'packages/agents/agent-runtime': { category: 'optional', reason: 'Fork-only identity adapters for mailbox and routines, enabled by deployment.' },
   'packages/agents/agent-routine': { category: 'optional', reason: 'Fork-only persistent agent routines, enabled by deployment.' },
   'packages/agents/tool-agent-routine': { category: 'optional', reason: 'Fork-only routine tools for persistent agents.' },
   'packages/storage/storage-tables': { category: 'optional', reason: 'Fork-only shared table service, mounted by an explicit deployment patch.' },

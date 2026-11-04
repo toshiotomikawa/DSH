@@ -280,6 +280,32 @@ describe('the shipped Web composition', () => {
     }
   })
 
+  it('filters Session calls by the authenticated account through the composed policy', async () => {
+    // The owner policy is a shipped row of this composition, not a test mount:
+    // the two principals below reach the real Gateway, Session Controller and
+    // Session index that Web boots.
+    expect(ctx.get('sessionOwners')).toBeDefined()
+    const a = SessionId('account-a-session')
+    const b = SessionId('account-b-session')
+    ctx.sessions.create(a, { meta: { cwd: process.cwd() } })
+    ctx.sessions.create(b, { meta: { cwd: process.cwd() } })
+    await ctx.sessionOwners.assign(a, 'a')
+    await ctx.sessionOwners.assign(b, 'b')
+    const list = async (principal: { kind: 'owner' } | { kind: 'account'; ownerId: string }) => {
+      const peer = {
+        id: `peer-${principal.kind}` as never, ctx, principal, signal: new AbortController().signal,
+        interactions: 'none' as const, dispose: async () => {},
+      }
+      const value = await ctx.typertGateway.invoke({
+        peer: peer as never, namespace: 'session', method: 'list', args: { _request: {} },
+      }) as { items: { sessionId: SessionId }[] }
+      return value.items.map(item => item.sessionId).sort()
+    }
+    expect(await list({ kind: 'account', ownerId: 'a' })).toEqual([a])
+    expect(await list({ kind: 'account', ownerId: 'b' })).toEqual([b])
+    expect(await list({ kind: 'owner' })).toEqual([a, b].sort())
+  })
+
   it('supplies both shipped presets, and only those, from the system root', async () => {
     const listed = await ctx.agentPresets.list()
 

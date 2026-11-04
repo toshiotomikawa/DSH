@@ -2437,6 +2437,36 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'explicit per-item outcome.',
       },
       {
+        signature: 'listSections(): AgentSection[]',
+        description: 'Sidebar groups visible to the caller; membership never grants access.',
+        parameters: [],
+        returns: 'detached sections, oldest first.',
+      },
+      {
+        signature: 'async createSection(name: string): Promise<AgentSection>',
+        description: 'Create one sidebar group for the authenticated account.',
+        parameters: [{ name: 'name', description: 'display name, 1 to 40 characters.' }],
+        returns: 'the stored section.',
+      },
+      {
+        signature: 'async renameSection(id: string, name: string): Promise<AgentSection>',
+        description: 'Rename one visible section; agent membership and profile ids do not change.',
+        parameters: [{ name: 'id', description: 'section id.' }, { name: 'name', description: 'new display name, 1 to 40 characters.' }],
+        returns: 'the stored section.',
+      },
+      {
+        signature: 'async deleteSection(id: string): Promise<{ id: string }>',
+        description: 'Delete one visible section; its agents survive and become ungrouped.',
+        parameters: [{ name: 'id', description: 'section id.' }],
+        returns: 'the deleted id.',
+      },
+      {
+        signature: 'async assignSection(agentId: PersistentAgentId, sectionId: string | null): Promise<AgentProfile>',
+        description: 'Move one visible agent into a section, or remove its grouping with null.',
+        parameters: [{ name: 'agentId', description: 'profile id.' }, { name: 'sectionId', description: 'visible section id, or null to ungroup.' }],
+        returns: 'the saved profile.',
+      },
+      {
         signature: 'async bind(sessionId: SessionId, agentId: PersistentAgentId): Promise<void>',
         description: 'Attach durable metadata without changing a Session header or its history.',
         parameters: [{ name: 'sessionId', description: 'conversation id.' }, { name: 'agentId', description: 'profile id.' }],
@@ -4106,14 +4136,14 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the stored schema.',
       },
       {
-        signature: 'listTables(call: CallContext): Promise<TableSummary[]>',
-        description: 'List tables with creator and row count.',
+        signature: 'async listTables(call: CallContext): Promise<TableSummary[]>',
+        description: 'List every table visible to the caller: the shared file plus the caller\'s own private file.',
         parameters: [{ name: 'call', description: 'caller identity and cancellation.' }],
-        returns: 'one summary per table.',
+        returns: 'one summary per table, ordered by name.',
       },
       {
         signature: 'tableSchema(tabela: string, call: CallContext): Promise<TableSchema>',
-        description: 'Describe one table.',
+        description: 'Describe one table, preferring the caller\'s scope and then the other visible file.',
         parameters: [{ name: 'tabela', description: 'table name.' }, { name: 'call', description: 'caller identity and cancellation.' }],
         returns: 'the table schema.',
       },
@@ -4131,19 +4161,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'query(request: QueryRequest, call: CallContext): Promise<QueryResult>',
-        description: 'Run one SELECT.',
+        description: 'Run one SELECT against one visible scope.',
         parameters: [{ name: 'request', description: 'query request.' }, { name: 'call', description: 'caller identity and cancellation.' }],
         returns: 'the query result.',
       },
       {
         signature: 'execute(request: ExecuteRequest, call: CallContext): Promise<ExecuteResult>',
-        description: 'Run one INSERT, UPDATE or DELETE.',
+        description: 'Run one INSERT, UPDATE or DELETE against one visible scope.',
         parameters: [{ name: 'request', description: 'execution request.' }, { name: 'call', description: 'caller identity and cancellation.' }],
         returns: 'the execution summary.',
       },
       {
         signature: 'batch(requests: readonly ExecuteRequest[], call: CallContext): Promise<ExecuteResult[]>',
-        description: 'Run several writes atomically.',
+        description: 'Run several writes atomically against one visible scope.',
         parameters: [{ name: 'requests', description: 'execution requests.' }, { name: 'call', description: 'caller identity and cancellation.' }],
         returns: 'one summary per request.',
       },
@@ -4160,8 +4190,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'a disposer.',
       },
       {
-        signature: 'close(): Promise<void>',
-        description: 'Stop the SQL child process.',
+        signature: 'async close(): Promise<void>',
+        description: 'Stop every SQL child process.',
         parameters: [],
       },
     ],
@@ -5899,6 +5929,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AgentRoute = z.infer<typeof routeSchema>;',
   },
   {
+    name: 'AgentSection',
+    declaration: 'export type AgentSection = z.infer<typeof sectionSchema>;',
+  },
+  {
     name: 'AgentSetup',
     declaration: 'export type AgentSetup = (agentCtx: Context, agent: Agent) => AgentSetupCommit | Promise<AgentSetupCommit | void> | void;',
   },
@@ -6156,7 +6190,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CallContext',
-    declaration: 'export interface CallContext {\n    readonly agent: string;\n    readonly signal?: AbortSignal;\n}',
+    declaration: 'export interface CallContext {\n    readonly agent: string;\n    readonly ownerId?: string;\n    readonly scope?: TableScope;\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'ChangeRequestCheck',
@@ -9889,6 +9923,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TableSchema',
     declaration: 'export interface TableSchema {\n    readonly nome: string;\n    readonly criador: string;\n    readonly escopo: \'compartilhada\' | \'privada\';\n    readonly criadoEm: string;\n    readonly colunas: readonly ColumnInfo[];\n    readonly chavePrimaria: readonly string[];\n    readonly indices: readonly IndexInfo[];\n}',
+  },
+  {
+    name: 'TableScope',
+    declaration: 'export type TableScope = \'privada\' | \'compartilhada\';',
   },
   {
     name: 'TableSummary',

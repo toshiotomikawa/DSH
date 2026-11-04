@@ -285,14 +285,14 @@ The `ctx.tables` service.
 createTable(request: CreateTableRequest, call: CallContext): Promise<TableSchema>
 
 /**
- * List tables with creator and row count.
+ * List every table visible to the caller: the shared file plus the caller's own private file.
  * @param call - caller identity and cancellation.
- * @returns one summary per table.
+ * @returns one summary per table, ordered by name.
  */
-listTables(call: CallContext): Promise<TableSummary[]>
+async listTables(call: CallContext): Promise<TableSummary[]>
 
 /**
- * Describe one table.
+ * Describe one table, preferring the caller's scope and then the other visible file.
  * @param tabela - table name.
  * @param call - caller identity and cancellation.
  * @returns the table schema.
@@ -316,7 +316,7 @@ alterTable(request: AlterTableRequest, call: CallContext): Promise<TableSchema>
 dropTable(request: DropTableRequest, call: CallContext): Promise<{ readonly tabela: string }>
 
 /**
- * Run one SELECT.
+ * Run one SELECT against one visible scope.
  * @param request - query request.
  * @param call - caller identity and cancellation.
  * @returns the query result.
@@ -324,7 +324,7 @@ dropTable(request: DropTableRequest, call: CallContext): Promise<{ readonly tabe
 query(request: QueryRequest, call: CallContext): Promise<QueryResult>
 
 /**
- * Run one INSERT, UPDATE or DELETE.
+ * Run one INSERT, UPDATE or DELETE against one visible scope.
  * @param request - execution request.
  * @param call - caller identity and cancellation.
  * @returns the execution summary.
@@ -332,7 +332,7 @@ query(request: QueryRequest, call: CallContext): Promise<QueryResult>
 execute(request: ExecuteRequest, call: CallContext): Promise<ExecuteResult>
 
 /**
- * Run several writes atomically.
+ * Run several writes atomically against one visible scope.
  * @param requests - execution requests.
  * @param call - caller identity and cancellation.
  * @returns one summary per request.
@@ -352,8 +352,8 @@ auditLog(): readonly AuditEvent[]
  */
 onAudit(listener: (event: AuditEvent) => void): () => void
 
-/** Stop the SQL child process. */
-close(): Promise<void>
+/** Stop every SQL child process. */
+async close(): Promise<void>
 ```
 
 Source: [`packages/storage/storage-tables/src/index.ts`](../../packages/storage/storage-tables/src/index.ts)

@@ -117,6 +117,14 @@
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
 
+    # Account ownership: the Session owner sidecar plus the `remote-access`
+    # account policy. Shipped ON so an authenticated account learns nothing
+    # about sessions, search hits or persistent agents of another account; a
+    # single-account host keeps the owner principal unfiltered. Disable this row
+    # to return to the owner-only DSH behaviour.
+    - id: fork-owner-policy
+      name: '@deepseek-ai/dsh-agent-runtime/owners'
+
     # One background job's observation record streamed over Typert Remote;
     # the roster rides the session control stream above.
     - id: job-controller

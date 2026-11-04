@@ -1,5 +1,7 @@
 # Persistent agents
 
+English | [中文](persistent-agents.zh.md)
+
 This optional fork capability adds `ctx.persistentAgents` and `ctx.agentMemory`. It leaves upstream profiles unchanged. Load `agent-registry` and `agent-memory` globally after storage, LLM and session services, then `tool-agent-memory` for the four model-facing tools. The registry inherits omitted model fields from the creator's supplied route and validates both primary and reserve models against the registered adapter catalog. A route stores only provider, model and optional reasoning effort: the native loop has no account selector, so an account label is rejected instead of saved and silently dropped. Reserve routes and automatic-fallback consent are saved and returned without switching models automatically; consent requires at least one valid reserve.
 
 For mailbox and routine integration, load `agent-runtime` globally after the registry, memory, agents and system-prompt services, before `agent-mailbox` and `agent-routine`. It supplies the real directory and routine bridge, binds new mailbox and runner sessions before creation, and mounts the identity persona with essential memories. `exec.agent.id` is a session id; tools resolve its persistent owner through registry metadata. The scheduler's trusted reminder is only a delivery receipt for a routine: the runtime cancels its carrier before any provider call, and the routine engine alone admits the execution. Regular scheduler reminders retain their ordinary behavior.
@@ -9,6 +11,10 @@ Only the `[SCHEDULE REMINDER]` delivery envelope is a carrier; `[SCHEDULE CHANGE
 ## Identity
 
 Create profiles through `persistentAgents.create(fields, inheritedRoute)`. Read a profile before `update(id, expectedRevision, fields)`; omitted fields remain unchanged, including nested model fields. Updates use compare-and-set. `updateMany` returns a result or error for every input item. Profiles contain separate name, title, description, instructions and first-task fields, stable id, timestamps, revision, avatar and optional ownerId. Creation saves the first task without starting a model turn. Permission metadata identifies the deployment as the policy owner; this package does not claim to enforce a separate profile policy. Permission management is outside M6a.
+
+Profiles may belong to one flat sidebar section owned by the same account. `listSections`, `createSection(name)`, `renameSection(id, name)`, `deleteSection(id)` and `assignSection(agentId, sectionId | null)` change only the grouping: profile id, instructions, conversations, memory and routines survive a move, and deleting a section leaves its agents ungrouped. Names are 1 to 40 characters; an unknown or foreign section id fails with the same `Unknown section` error. Sections never grant access, and the sidebar UI that renders them is deferred.
+
+Explicit sharing is directional. The optional owners plugin provides `ctx.accountGrants` with `grant(ownerId, granteeId)`, `revoke` and `allows`. The persistent-agent directory and mailbox show another account's agents only when that account granted the caller, and interruption follows the same grant; same-owner calls need no grant. Grant creation has no tool or UI yet.
 
 The optional `@deepseek-ai/dsh-tool-agent-memory/preset` row takes `{ agentId }` inside an agent preset. It injects literal profile text and essential memory data, validates the selected model before activation and binds the resulting session. `persistentAgents.metadataOf(sessionId)` exposes agentId and optional ownerId. These bindings live in the `agents` storage domain alongside profiles: no upstream Session header, event format or reader changes are needed. Session ids are stored under an injective, path-safe encoding (`r-` plus a lowercase-safe id, `h-` plus the hex form otherwise), so ids that differ only in case remain separate documents on case-insensitive filesystems. Renaming a profile leaves all bindings and id-based routine/message references intact. Mailbox and routine execution belong to M6b and M6c.
 
@@ -289,6 +295,37 @@ async update(id: PersistentAgentId, expectedRevision: number, input: AgentPatch)
  * @returns explicit per-item outcome.
  */
 async updateMany( edits: readonly { id: PersistentAgentId; revision: number; patch: AgentPatch }[], ): Promise<({ id: PersistentAgentId; profile: AgentProfile } | { id: PersistentAgentId; error: string })[]>
+
+/** Sidebar groups visible to the caller; membership never grants access.
+ * @returns detached sections, oldest first.
+ */
+listSections(): AgentSection[]
+
+/** Create one sidebar group for the authenticated account.
+ * @param name - display name, 1 to 40 characters.
+ * @returns the stored section.
+ */
+async createSection(name: string): Promise<AgentSection>
+
+/** Rename one visible section; agent membership and profile ids do not change.
+ * @param id - section id.
+ * @param name - new display name, 1 to 40 characters.
+ * @returns the stored section.
+ */
+async renameSection(id: string, name: string): Promise<AgentSection>
+
+/** Delete one visible section; its agents survive and become ungrouped.
+ * @param id - section id.
+ * @returns the deleted id.
+ */
+async deleteSection(id: string): Promise<{ id: string }>
+
+/** Move one visible agent into a section, or remove its grouping with null.
+ * @param agentId - profile id.
+ * @param sectionId - visible section id, or null to ungroup.
+ * @returns the saved profile.
+ */
+async assignSection(agentId: PersistentAgentId, sectionId: string | null): Promise<AgentProfile>
 
 /** Attach durable metadata without changing a Session header or its history.
  * @param sessionId - conversation id.

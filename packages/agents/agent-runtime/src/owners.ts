@@ -15,6 +15,12 @@ const metadata = z.object({
 const ownership = defineDomain({ name: 'session_owners', version: 1, layout: 'per-record', invalidRecords: 'quarantine', tables: {
   sessions: domainTable<string, z.infer<typeof metadata>>(metadata),
 } })
+const share = z.object({
+  ownerId: z.string().min(1), granteeId: z.string().min(1), createdAt: z.number(),
+}).strict()
+const shares = defineDomain({ name: 'account_grants', version: 1, layout: 'per-record', tables: {
+  grants: domainTable<string, z.infer<typeof share>>(share),
+} })
 
 /** Loader plugin name. */
 export const name = 'agent-owner-policy'
@@ -73,6 +79,15 @@ export class SessionOwners extends Service {
       record.denied === true || (record.ownerId ?? 'owner') !== ownerId ? [] : [SessionId(record.sessionId)])
   }
 
+  /** Read the owner fixed for a stored Session.
+   * @param sessionId - Session identity.
+   * @returns its account id, or undefined while no ownership record exists.
+   */
+  ownerOf(sessionId: SessionId): string | undefined {
+    const record = this.domain.table('sessions').get(this.key(sessionId))
+    return record === undefined ? undefined : record.ownerId ?? 'owner'
+  }
+
   /** Drain writes before releasing storage.
    * @returns after storage is closed.
    */
@@ -87,6 +102,50 @@ export class SessionOwners extends Service {
   private key(id: string): string { return `s-${Buffer.from(id, 'utf8').toString('hex')}` }
 }
 
+/** Explicit, directional permission to reach another account's agents. */
+export class AccountGrants extends Service {
+  /** @param ctx - plugin context.
+   * @param domain - exclusively opened grant domain.
+   */
+  constructor(ctx: Context, private readonly domain: Domain<typeof shares>) { super(ctx, 'accountGrants') }
+
+  /** Let one account address the granting account's agents.
+   * @param ownerId - account that owns the shared agents.
+   * @param granteeId - account admitted to reach them.
+   * @returns after durable publication.
+   */
+  async grant(ownerId: string, granteeId: string): Promise<void> {
+    await this.domain.table('grants').put(this.key(ownerId, granteeId), { ownerId, granteeId, createdAt: Date.now() })
+  }
+
+  /** Withdraw one grant; absent grants are a no-op.
+   * @param ownerId - account that owns the shared agents.
+   * @param granteeId - account losing access.
+   * @returns after durable removal.
+   */
+  async revoke(ownerId: string, granteeId: string): Promise<void> {
+    await this.domain.table('grants').delete(this.key(ownerId, granteeId))
+  }
+
+  /** Whether one account may reach another account's agents.
+   * @param ownerId - account that owns the agents.
+   * @param granteeId - candidate caller.
+   * @returns true only for an explicit stored grant.
+   */
+  allows(ownerId: string, granteeId: string): boolean {
+    return this.domain.table('grants').get(this.key(ownerId, granteeId)) !== undefined
+  }
+
+  /** Drain writes before releasing storage.
+   * @returns after storage is closed.
+   */
+  async close(): Promise<void> { await this.domain.close() }
+
+  private key(ownerId: string, granteeId: string): string {
+    return `g-${Buffer.from(`${ownerId}\u0000${granteeId}`, 'utf8').toString('hex')}`
+  }
+}
+
 /** Mount opt-in ownership without changing the published Session log format.
  * @param ctx - services for metadata, Session discovery and Remote policy registration.
  * @returns after existing Session ownership is ready for account callers.
@@ -95,6 +154,9 @@ export async function apply(ctx: Context): Promise<void> {
   const domain = await ctx.storageDomain.open(ownership)
   const owners = new SessionOwners(ctx, domain)
   ctx.effect(() => () => owners.close())
+  const grantDomain = await ctx.storageDomain.open(shares)
+  const grants = new AccountGrants(ctx, grantDomain)
+  ctx.effect(() => () => grants.close())
   if (domain.quarantined('sessions').length > 0) throw new Error('Session ownership metadata is damaged; restore it before enabling account access')
   const ensure = (id: SessionId): void => {
     void owners.ensure(id).catch((error: unknown) => { ctx.logger.error(error) })

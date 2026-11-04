@@ -18,7 +18,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { describe, it, expect, onTestFinished, vi } from 'vitest'
-import { harness, Adapter, inherited } from '../../agent-registry/tests/harness.ts'
+import { harness, live, Adapter, inherited } from '../../agent-registry/tests/harness.ts'
 import { textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import * as Runtime from '../src/index.ts'
 
@@ -110,8 +110,22 @@ describe('persistent agent host integration', () => {
     expect(await readFile(join(f.root, 'data/agent_memory/books', `${f.a.id}.json`), 'utf8')).toContain('"ownerId": "owner"')
     vi.restoreAllMocks()
   })
-  it('refuses generic calendar edits that bypass routine ownership and the three-minute floor', async () => {
+  it('admits another owner to directory and interruption only through an explicit grant', async () => {
     const f = await fixture()
+    const shared = await f.ctx.persistentAgents.create({ name: 'Shared', ownerId: 'a' }, inherited)
+    const callerProfile = await f.ctx.persistentAgents.create({ name: 'Caller B', ownerId: 'b' }, inherited)
+    const caller = await live(f.ctx, 'caller-b', callerProfile.id)
+    onTestFinished(() => caller.ctx.fiber.dispose())
+    expect(f.ctx.agentDirectory.visible(caller).map(item => item.id)).toEqual([callerProfile.id])
+    f.ctx.provide('accountGrants', {
+      allows: (owner: string, grantee: string) => owner === 'a' && grantee === 'b',
+    } as never)
+    expect(f.ctx.agentDirectory.visible(caller).map(item => item.id).sort()).toEqual([callerProfile.id, shared.id].sort())
+    expect(f.ctx.agentDirectory.mayInterrupt(caller, f.ctx.agentDirectory.find(shared.id)!)).toBe(true)
+    // The grant is directional: the host-account agent learns nothing about either account's profiles.
+    expect(f.ctx.agentDirectory.visible(f.agent).map(item => item.id)).not.toContain(callerProfile.id)
+  })
+  it('refuses generic calendar edits that bypass routine ownership and the three-minute floor', async () => {    const f = await fixture()
     f.ctx.provide('sessionController', {} as Context['sessionController'])
     await f.ctx.plugin(ScheduleTools)
     const routine = await f.ctx.agentRoutines.engine.createRoutine({

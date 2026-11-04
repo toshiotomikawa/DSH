@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import sharp from 'sharp'
-import { describe, it, expect, onTestFinished } from 'vitest'
+import { describe, it, expect, onTestFinished, vi } from 'vitest'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { PersistentAgentId } from '../src/index.ts'
@@ -29,7 +29,7 @@ describe('durable persistent profiles', () => {
     const reopened = await harness(root)
     onTestFinished(() => reopened.ctx.fiber.dispose())
     const assignments: string[] = []
-    reopened.ctx.provide('sessionOwners', { assign: async (_id, ownerId) => { assignments.push(ownerId) } })
+    reopened.ctx.provide('sessionOwners', { assign: async (_id, ownerId) => { assignments.push(ownerId) }, ownerOf: () => undefined })
     const invocation = (ownerId: string) => reopened.ctx.extend({ invocation: {
       peer: { principal: { kind: 'account', ownerId } },
     } as never })
@@ -166,5 +166,156 @@ describe('durable persistent profiles', () => {
     await sharp({ create: { width: 2, height: 2, channels: 3, background: '#fff' } }).gif().toFile(image)
     await expect(ctx.persistentAgents.update(original.id, 1, { avatarPath: image })).rejects.toThrow('PNG, JPEG or WebP')
     expect(ctx.persistentAgents.get(original.id)).toEqual(original)
+  })
+})
+
+describe('flat sidebar sections', () => {
+  it('groups and renames without touching identity, and ungroups members when deleted', async () => {
+    const { ctx } = await fixture()
+    const a = await ctx.persistentAgents.create({ name: 'A' }, inherited)
+    const b = await ctx.persistentAgents.create({ name: 'B' }, inherited)
+    const ungrouped = await ctx.persistentAgents.create({ name: 'C' }, inherited)
+    const section = await ctx.persistentAgents.createSection('  Trabalho  ')
+    expect(section).toMatchObject({ name: 'Trabalho', ownerId: 'owner', revision: 1 })
+    await ctx.persistentAgents.createSection('Segundo')
+    expect(ctx.persistentAgents.listSections().map(item => item.name)).toEqual(['Trabalho', 'Segundo'])
+    expect((await ctx.persistentAgents.create({ name: 'Created grouped', sectionId: section.id }, inherited)).sectionId).toBe(section.id)
+    await expect(ctx.persistentAgents.create({ name: 'Foreign group', sectionId: 'missing' }, inherited)).rejects.toThrow('Unknown section')
+    expect((await ctx.persistentAgents.assignSection(a.id, section.id)).sectionId).toBe(section.id)
+    expect((await ctx.persistentAgents.update(ungrouped.id, 1, { sectionId: section.id })).sectionId).toBe(section.id)
+    expect((await ctx.persistentAgents.update(ungrouped.id, 2, { sectionId: null })).sectionId).toBeUndefined()
+    const renamed = await ctx.persistentAgents.renameSection(section.id, 'Pessoal')
+    expect(renamed).toMatchObject({ name: 'Pessoal', revision: 2 })
+    expect(ctx.persistentAgents.get(a.id)).toMatchObject({ id: a.id, name: 'A', sectionId: section.id })
+    expect((await ctx.persistentAgents.assignSection(a.id, null)).sectionId).toBeUndefined()
+    await ctx.persistentAgents.assignSection(a.id, section.id)
+    await ctx.persistentAgents.assignSection(b.id, section.id)
+    await ctx.persistentAgents.deleteSection(section.id)
+    expect(ctx.persistentAgents.listSections().map(item => item.name)).toEqual(['Segundo'])
+    expect(ctx.persistentAgents.get(a.id).sectionId).toBeUndefined()
+    expect(ctx.persistentAgents.get(a.id).name).toBe('A')
+    expect(ctx.persistentAgents.get(b.id).sectionId).toBeUndefined()
+    expect(ctx.persistentAgents.get(b.id).name).toBe('B')
+    await expect(ctx.persistentAgents.createSection('')).rejects.toThrow()
+    await expect(ctx.persistentAgents.createSection('x'.repeat(41))).rejects.toThrow()
+    await expect(ctx.persistentAgents.assignSection(a.id, 'missing')).rejects.toThrow('Unknown section')
+  })
+
+  it('keeps a concurrent profile edit when deleting its section (audit 2)', async () => {
+    const { ctx } = await fixture()
+    const profile = await ctx.persistentAgents.create({ name: 'Original' }, inherited)
+    const section = await ctx.persistentAgents.createSection('Trabalho')
+    await ctx.persistentAgents.assignSection(profile.id, section.id)
+    const table = (ctx.persistentAgents as unknown as {
+      domain: { table(name: string): {
+        put(key: string, value: unknown): Promise<unknown>
+        update(key: string, fn: (stored: never) => unknown): Promise<unknown>
+      } }
+    }).domain.table('profiles')
+    const merge = table.update.bind(table)
+    const write = table.put.bind(table)
+    let edited = false
+    const concurrentEdit = async (): Promise<void> => {
+      if (edited) return
+      edited = true
+      // The edit lands between the section delete's snapshot and its write.
+      await ctx.persistentAgents.update(profile.id, ctx.persistentAgents.get(profile.id).revision, { description: 'edited meanwhile' })
+    }
+    const put = vi.spyOn(table, 'put').mockImplementation(async (key, value) => {
+      if (key === profile.id) await concurrentEdit()
+      return write(key, value)
+    })
+    const update = vi.spyOn(table, 'update').mockImplementation(async (key, fn) => {
+      if (key === profile.id) await concurrentEdit()
+      return merge(key, fn)
+    })
+    try {
+      await ctx.persistentAgents.deleteSection(section.id)
+    } finally {
+      put.mockRestore()
+      update.mockRestore()
+    }
+    const after = ctx.persistentAgents.get(profile.id)
+    expect(after.sectionId).toBeUndefined()
+    expect(after.description).toBe('edited meanwhile')
+  })
+
+  it('keeps sections inside the authenticated account and lets the host account see them', async () => {
+    const { ctx } = await fixture()
+    const as = (ownerId: string) => ctx.extend({ invocation: { peer: { principal: { kind: 'account', ownerId } } } as never })
+    const a = as('a')
+    const b = as('b')
+    const sectionA = await a.persistentAgents.createSection('Only A')
+    const profileB = await b.persistentAgents.create({ name: 'B agent' }, inherited)
+    expect(await b.persistentAgents.listSections()).toEqual([])
+    expect(ctx.persistentAgents.listSections().map(section => section.id)).toEqual([sectionA.id])
+    await expect(b.persistentAgents.assignSection(profileB.id, sectionA.id)).rejects.toThrow('Unknown section')
+    await expect(b.persistentAgents.renameSection(sectionA.id, 'stolen')).rejects.toThrow('Unknown section')
+    await expect(b.persistentAgents.deleteSection(sectionA.id)).rejects.toThrow('Unknown section')
+    expect((await a.persistentAgents.create({ name: 'A agent' }, inherited)).ownerId).toBe('a')
+  })
+
+  it('persists a section and its membership across a registry reopen', async () => {
+    const { ctx, root, registryFiber } = await fixture()
+    const profile = await ctx.persistentAgents.create({ name: 'Persisted' }, inherited)
+    const section = await ctx.persistentAgents.createSection('Kept')
+    await ctx.persistentAgents.assignSection(profile.id, section.id)
+    const agent = await live(ctx, 'sectioned', profile.id)
+    expect(ctx.persistentAgents.of(agent)).toBe(profile.id)
+    await registryFiber.dispose()
+    await ctx.fiber.dispose()
+    const reopened = await harness(root)
+    onTestFinished(() => reopened.ctx.fiber.dispose())
+    expect(reopened.ctx.persistentAgents.listSections()).toEqual([{ ...section, revision: 1 }])
+    expect(reopened.ctx.persistentAgents.get(profile.id).sectionId).toBe(section.id)
+  })
+
+  it('reads legacy ownerless sections and profiles as the host account', async () => {
+    const { ctx, root, registryFiber } = await fixture()
+    const section = await ctx.persistentAgents.createSection('Legacy group')
+    const profile = await ctx.persistentAgents.create({ name: 'Legacy member' }, inherited)
+    await registryFiber.dispose()
+    for (const path of [join(root, 'data/agents/sections', `${section.id}.json`), join(root, 'data/agents/profiles', `${profile.id}.json`)]) {
+      const stored = JSON.parse(await readFile(path, 'utf8')) as { record: { ownerId?: string } }
+      delete stored.record.ownerId
+      await writeFile(path, JSON.stringify(stored))
+    }
+    await ctx.fiber.dispose()
+    const reopened = await harness(root)
+    onTestFinished(() => reopened.ctx.fiber.dispose())
+    const legacy = reopened.ctx.persistentAgents
+    expect(legacy.listSections().map(item => item.id)).toEqual([section.id])
+    const asOwner = reopened.ctx.extend({ invocation: { peer: { principal: { kind: 'account', ownerId: 'owner' } } } as never })
+    expect(asOwner.persistentAgents.listSections().map(item => item.id)).toEqual([section.id])
+    expect((await legacy.assignSection(profile.id, section.id)).sectionId).toBe(section.id)
+    expect((await legacy.update(profile.id, 2, { sectionId: section.id })).sectionId).toBe(section.id)
+    expect((await legacy.update(profile.id, 3, { ownerId: 'owner' })).ownerId).toBe('owner')
+    await expect(legacy.update(profile.id, 4, { ownerId: 'other' })).rejects.toThrow('Agent owner cannot be changed')
+    expect((await legacy.renameSection(section.id, 'Renamed legacy')).name).toBe('Renamed legacy')
+  })
+
+  it('refuses a stale rename after a concurrent section revision change', async () => {
+    const { ctx } = await fixture()
+    const section = await ctx.persistentAgents.createSection('Race group')
+    const outcomes = await Promise.allSettled([
+      ctx.persistentAgents.renameSection(section.id, 'First'),
+      ctx.persistentAgents.renameSection(section.id, 'Second'),
+    ])
+    expect(outcomes.map(outcome => outcome.status).sort()).toEqual(['fulfilled', 'rejected'])
+    const rejected = outcomes.find(outcome => outcome.status === 'rejected')
+    expect(rejected).toMatchObject({ reason: expect.objectContaining({ message: 'Section revision conflict; read the sections again' }) })
+  })
+
+  it('refuses a stale section assignment after a concurrent revision change', async () => {
+    const { ctx } = await fixture()
+    const profile = await ctx.persistentAgents.create({ name: 'Race' }, inherited)
+    const section = await ctx.persistentAgents.createSection('Race group')
+    const outcomes = await Promise.allSettled([
+      ctx.persistentAgents.assignSection(profile.id, section.id),
+      ctx.persistentAgents.assignSection(profile.id, section.id),
+    ])
+    expect(outcomes.map(outcome => outcome.status).sort()).toEqual(['fulfilled', 'rejected'])
+    const rejected = outcomes.find(outcome => outcome.status === 'rejected')
+    expect(rejected).toMatchObject({ reason: expect.objectContaining({ message: 'Agent revision conflict; read the profile again' }) })
   })
 })

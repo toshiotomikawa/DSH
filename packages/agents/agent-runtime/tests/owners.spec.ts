@@ -233,4 +233,33 @@ describe('account ownership through the Host service', () => {
     expect(ctx.remoteAccess.decide({ principal: A, action: 'session/list', resources: [{ kind: 'global' }] })).toEqual({ kind: 'deny', reason: 'no-allow' })
     expect(await readFile(path, 'utf8')).toBe('damaged')
   })
+
+  it('stores directional grants between accounts and keeps them across a reload', async () => {
+    const { ctx } = await fixture()
+    expect(ctx.accountGrants.allows('a', 'b')).toBe(false)
+    await ctx.accountGrants.grant('a', 'b')
+    expect(ctx.accountGrants.allows('a', 'b')).toBe(true)
+    expect(ctx.accountGrants.allows('b', 'a')).toBe(false)
+    await ctx.loader.root.update([])
+    await ctx.loader.await()
+    expect(ctx.get('accountGrants')).toBeUndefined()
+    await ctx.loader.root.update([{ id: 'owners', name: 'cordis:owners' }])
+    await ctx.loader.await()
+    expect(ctx.accountGrants.allows('a', 'b')).toBe(true)
+    await ctx.accountGrants.revoke('a', 'b')
+    expect(ctx.accountGrants.allows('a', 'b')).toBe(false)
+  })
+
+  it('reads a missing or ownerless sidecar record as the host owner', async () => {
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    ctx.provide('remoteAccess', { invalidate: () => {} } as unknown as Context['remoteAccess'])
+    const get = vi.fn().mockReturnValueOnce(undefined).mockReturnValueOnce({ sessionId: 'x' })
+    const close = vi.fn().mockResolvedValue(undefined)
+    const domain = { table: () => ({ get }), close } as unknown as ConstructorParameters<typeof Owners.SessionOwners>[1]
+    const owners = new Owners.SessionOwners(ctx, domain)
+    expect(owners.ownerOf(SessionId('x'))).toBeUndefined()
+    expect(owners.ownerOf(SessionId('x'))).toBe('owner')
+    await owners.close()
+  })
 })
