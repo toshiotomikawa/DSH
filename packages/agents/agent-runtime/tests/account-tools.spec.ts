@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -23,7 +23,7 @@ async function fixture() {
   await ctx.plugin(Storage)
   await ctx.plugin(JsonStorage, { root: join(root, 'data') })
   await ctx.plugin(StorageDomain, { backend: 'json' })
-  await ctx.plugin(Accounts)
+  await ctx.plugin(Accounts, { tokenDirectory: join(root, 'tokens') })
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(NativeToolExecutor)
@@ -49,10 +49,11 @@ describe('account administration tools', () => {
     const { accounts, bind, agentOf, run } = await fixture()
     const admin = await accounts.create('Admin', 'administrator')
     const member = await accounts.create('Member')
+    const adminToken = (await readFile(admin.tokenFile, 'utf8')).trim()
     const asAdmin = bind('admin-session', admin.account.id)
     const listed = await run('account_list', {}, asAdmin)
     expect(listed.isError).toBe(false)
-    expect(JSON.stringify(listed)).not.toContain(admin.token)
+    expect(JSON.stringify(listed)).not.toContain(adminToken)
     expect(listed.isError ? undefined : listed.value).toEqual([
       { id: admin.account.id, name: 'Admin', role: 'administrator', state: 'active' },
       { id: member.account.id, name: 'Member', role: 'member', state: 'active' },
@@ -62,18 +63,28 @@ describe('account administration tools', () => {
     expect((await run('account_list', {}, null)).isError).toBe(true)
   })
 
-  it('creates an account as a member by default and returns the token once', async () => {
-    const { accounts, bind, run } = await fixture()
+  it('creates an account as a member by default and returns only the token file path', async () => {
+    const { ctx, accounts, bind, run } = await fixture()
     const admin = await accounts.create('Admin', 'administrator')
     const asAdmin = bind('admin-session', admin.account.id)
+    const logged: string[] = []
+    for (const level of ['error', 'warn', 'info', 'debug'] as const) {
+      ctx.logger[level] = (...args: unknown[]) => { logged.push(args.map(String).join(' ')) }
+    }
     const created = await run('account_create', { name: 'New' }, asAdmin)
     expect(created.isError).toBe(false)
-    const value = (created.isError ? {} : created.value) as { id: string; role: string; token: string }
+    const value = (created.isError ? {} : created.value) as { id: string; role: string; token_file: string }
     expect(value.role).toBe('member')
-    expect(value.token).toMatch(/^[A-Za-z0-9_-]{43}$/u)
+    expect(JSON.stringify(created)).not.toContain('token":"')
+    const token = (await readFile(value.token_file, 'utf8')).trim()
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/u)
+    // Neither the model-facing value, the rendered content nor any log line carries the secret.
+    expect(JSON.stringify(created)).not.toContain(token)
+    expect(logged.join('\n')).not.toContain(token)
+    expect(accounts.authenticate(token)).toMatchObject({ id: value.id })
     const elevated = await run('account_create', { name: 'Boss', role: 'administrator' }, asAdmin)
     expect(elevated.isError ? undefined : elevated.value).toMatchObject({ role: 'administrator' })
-    expect(JSON.stringify(await run('account_list', {}, asAdmin))).not.toContain(value.token)
+    expect(JSON.stringify(await run('account_list', {}, asAdmin))).not.toContain(token)
   })
 
   it('disables, reactivates and archives one named account as an administrator', async () => {

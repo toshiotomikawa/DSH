@@ -137,15 +137,6 @@
     - id: fork-account-tools
       name: '@deepseek-ai/dsh-agent-runtime/account-tools'
 
-    # Accounts and their entry credentials: a token minted when the account is
-    # created is stored only as a hash, and a request presenting it as a Bearer
-    # credential is admitted as that `account` principal. Disabling an account
-    # ends its open Peers. With no accounts stored, admission is unchanged.
-    - id: fork-accounts
-      name: '@deepseek-ai/dsh-agent-runtime/accounts'
-    - id: fork-account-auth
-      name: '@deepseek-ai/dsh-agent-runtime/account-auth'
-
     # One background job's observation record streamed over Typert Remote;
     # the roster rides the session control stream above.
     - id: job-controller

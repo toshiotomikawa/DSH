@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import Typert from '@deepseek-ai/dsh-typert-registry'
@@ -29,7 +29,7 @@ async function fixture() {
   await ctx.plugin(Query, { path: ':memory:' })
   await createSessionTestController(ctx, { defaultModelSelection: () => inherited, cwd: root })
   await ctx.plugin(Gateway)
-  await ctx.plugin(Accounts)
+  await ctx.plugin(Accounts, { tokenDirectory: join(root, 'tokens') })
   await ctx.plugin((pluginCtx) => {
     new HostConnectionService(pluginCtx, [], {
       isAuthenticated: () => false, authenticateApi: () => undefined,
@@ -49,7 +49,8 @@ describe('sender identity of an authenticated account', () => {
   it('records the token account as the message sender even when the text claims another name', async () => {
     const { ctx, root } = await fixture()
     const created = await ctx.accounts.create('Ada', 'administrator')
-    const admitted = ctx.connection.admit({ headers: { host: HOST, authorization: `Bearer ${created.token}` } })
+    const token = (await readFile(created.tokenFile, 'utf8')).trim()
+    const admitted = ctx.connection.admit({ headers: { host: HOST, authorization: `Bearer ${token}` } })
     if (!('peer' in admitted)) throw new Error('account token was refused')
     const peer = admitted.peer
     expect(peer.principal).toEqual({ kind: 'account', ownerId: created.account.id })
@@ -98,11 +99,12 @@ describe('sender identity of an authenticated account', () => {
   it('ends the account connection within the disable call and refuses the token afterwards', async () => {
     const { ctx } = await fixture()
     const created = await ctx.accounts.create('Ada')
-    const admitted = ctx.connection.admit({ headers: { host: HOST, authorization: `Bearer ${created.token}` } })
+    const token = (await readFile(created.tokenFile, 'utf8')).trim()
+    const admitted = ctx.connection.admit({ headers: { host: HOST, authorization: `Bearer ${token}` } })
     if (!('peer' in admitted)) throw new Error('account token was refused')
     await ctx.accounts.disable(created.account.id)
     await vi.waitFor(() => { expect(admitted.peer.signal.aborted).toBe(true) })
-    expect(ctx.connection.admit({ headers: { host: HOST, authorization: `Bearer ${created.token}` } }))
+    expect(ctx.connection.admit({ headers: { host: HOST, authorization: `Bearer ${token}` } }))
       .toEqual({ rejection: 401 })
   })
 })

@@ -58,21 +58,29 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'account_create',
     description:
-      'Create one account and issue its entry token. The token is shown exactly once, in this result; '
-      + 'hand it to the account holder through a private channel and expect it to stay in this conversation. '
+      'Create one account and write its entry token to a restricted file outside the workspace. '
+      + 'The result carries only that file path: hand it to the account holder through a private channel, '
+      + 'then delete the file. The token text must never be copied into a message or a file inside the workspace. '
       + 'Only an administrator account may create accounts.',
     parameters: {
       name: { type: 'string', required: true, description: 'Display name; another account may share it.' },
       role: { type: 'string', enum: ['administrator', 'member'], description: 'Defaults to member.' },
     },
     output: {
-      schema: { type: 'object', additionalProperties: false, properties: { ...accountValue.properties, token: { type: 'string', required: true } } },
-      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: { ...accountValue.properties, token_file: { type: 'string', required: true } },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Account ${value.id} created. Entry token written to ${value.token_file}. `
+          + 'Hand that file to the account holder privately, then delete it.',
+      }],
     },
     async execute(args, exec) {
       administratorOf(ctx, exec.agent)
-      const { account, token } = await ctx.accounts.create(args.name, args.role ?? 'member')
-      return { id: account.id, name: account.name, role: account.role, state: account.state, token }
+      const { account, tokenFile } = await ctx.accounts.create(args.name, args.role ?? 'member')
+      return { id: account.id, name: account.name, role: account.role, state: account.state, token_file: tokenFile }
     },
   })), 'accounts.create()')
   ctx.effect(() => ctx.tools.register(defineTool({

@@ -1,8 +1,17 @@
 /** Durable accounts and one server-issued entry credential per account. @module */
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
+import { mkdir, unlink, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import { defineDomain, domainTable, type Domain } from '@deepseek-ai/dsh-storage-domain'
+
+/** Where the one-time entry tokens are written, outside the Session workspace. */
+export interface Config {
+  /** Token directory; defaults to `$DSH_HOME/accounts/tokens`. */
+  readonly tokenDirectory?: string
+}
 
 /** Who may administer accounts. */
 export type AccountRole = 'administrator' | 'member'
@@ -37,6 +46,31 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex')
 }
 
+/**
+ * Directory of one-time entry tokens: the Host home, never the Session
+ * workspace, so the agent's file tools do not reach it. On Windows the
+ * inherited ACL of `DSH_HOME` under the user profile restricts the file to the
+ * owning user; `0o600` is the POSIX mode.
+ */
+function tokenDirectory(config: Config): string {
+  return config.tokenDirectory ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'accounts', 'tokens')
+}
+
+/**
+ * Write one entry token to its restricted file. `wx` refuses to overwrite, so a
+ * repeated account id never hides an existing credential.
+ * @param directory - token directory outside the Session workspace.
+ * @param accountId - stable account id naming the file.
+ * @param token - plaintext entry token, written once.
+ * @returns absolute path of the written file.
+ */
+export async function writeEntryToken(directory: string, accountId: string, token: string): Promise<string> {
+  const file = join(directory, `${accountId}.token`)
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  await writeFile(file, `${token}\n`, { mode: 0o600, flag: 'wx' })
+  return file
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Durable accounts and their entry credentials. */
@@ -59,30 +93,41 @@ export const inject = ['storageDomain']
 
 /** Account records and the hash-only entry credential of each account. */
 export class Accounts extends Service {
+  private readonly tokens: string
+
   /** @param ctx - plugin context.
    * @param domain - exclusively opened account domain.
+   * @param config - optional token-directory override for tests and non-default homes.
    */
-  constructor(ctx: Context, private readonly domain: Domain<typeof accountsDomain>) { super(ctx, 'accounts') }
+  constructor(ctx: Context, private readonly domain: Domain<typeof accountsDomain>, config: Config = {}) {
+    super(ctx, 'accounts')
+    this.tokens = tokenDirectory(config)
+  }
 
   /**
-   * Create one active account and issue its entry token, which is returned once
-   * and stored only as its SHA-256 hash.
+   * Create one active account and issue its entry token. The token is written
+   * once to a restricted file and only its SHA-256 hash is stored, so the
+   * plaintext never enters the returned value, a Session log or a log line.
    * @param displayName - name shown to people; another account may share it.
    * @param role - administrator or member.
-   * @returns the stored account and the plaintext token, never readable again.
+   * @returns the stored account and the absolute path of its token file.
    */
-  async create(displayName: string, role: AccountRole = 'member'): Promise<{ account: Account; token: string }> {
+  async create(displayName: string, role: AccountRole = 'member'): Promise<{ account: Account; tokenFile: string }> {
     const now = Date.now()
     const token = randomBytes(32).toString('base64url')
     const account = accountSchema.parse({
       id: randomUUID(), name: nameSchema.parse(displayName), role, state: 'active',
       revision: 1, createdAt: now, updatedAt: now,
     })
-    // The credential lands first: a crash then leaves an account that cannot sign in
-    // instead of an account whose token is unknown.
-    await this.domain.table('credentials').put(account.id, { accountId: account.id, hash: hashToken(token), createdAt: now })
-    await this.domain.table('accounts').put(account.id, account)
-    return { account: structuredClone(account), token }
+    const tokenFile = await writeEntryToken(this.tokens, account.id, token)
+    try {
+      await this.domain.table('credentials').put(account.id, { accountId: account.id, hash: hashToken(token), createdAt: now })
+      await this.domain.table('accounts').put(account.id, account)
+    } catch (error) {
+      await unlink(tokenFile)
+      throw error
+    }
+    return { account: structuredClone(account), tokenFile }
   }
 
   /**
@@ -147,19 +192,22 @@ export class Accounts extends Service {
   }
 
   /**
-   * Resolve one presented entry token. Archived and disabled accounts prove nothing.
+   * Resolve one presented entry token. Every stored credential is compared so
+   * a disabled account's token takes the same path as an unknown one. Archived
+   * and disabled accounts prove nothing.
    * @param token - plaintext token from the connection.
    * @returns the active account, or undefined for an unknown, ended, or empty token.
    */
   authenticate(token: string): Account | undefined {
     if (token === '') return undefined
     const digest = createHash('sha256').update(token, 'utf8').digest()
+    let matched: string | undefined
     for (const [, credential] of this.domain.table('credentials').entries()) {
-      if (!timingSafeEqual(digest, Buffer.from(credential.hash, 'hex'))) continue
-      const account = this.domain.table('accounts').get(credential.accountId)
-      return account?.state === 'active' ? structuredClone(account) : undefined
+      if (timingSafeEqual(digest, Buffer.from(credential.hash, 'hex'))) matched = credential.accountId
     }
-    return undefined
+    if (matched === undefined) return undefined
+    const account = this.domain.table('accounts').get(matched)
+    return account?.state === 'active' ? structuredClone(account) : undefined
   }
 
   /**
@@ -190,9 +238,10 @@ export class Accounts extends Service {
 /**
  * Mount the account domain.
  * @param ctx - injected storage service.
+ * @param config - optional token-directory override.
  */
-export async function apply(ctx: Context): Promise<void> {
+export async function apply(ctx: Context, config: Config = {}): Promise<void> {
   const domain = await ctx.storageDomain.open(accountsDomain)
-  const accounts = new Accounts(ctx, domain)
+  const accounts = new Accounts(ctx, domain, config)
   ctx.effect(() => () => accounts.close())
 }

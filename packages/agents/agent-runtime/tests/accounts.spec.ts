@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import Storage from '@deepseek-ai/dsh-storage'
@@ -18,17 +19,26 @@ async function fixture() {
   await ctx.plugin(Storage)
   await ctx.plugin(JsonStorage, { root: join(root, 'data') })
   await ctx.plugin(StorageDomain, { backend: 'json' })
-  await ctx.plugin(Accounts)
+  await ctx.plugin(Accounts, { tokenDirectory: join(root, 'tokens') })
   onTestFinished(() => ctx.fiber.dispose())
   return { ctx, root, accounts: ctx.accounts }
 }
 
+/** Mint an account and read back the token the operator would deliver. */
+async function mint(accounts: Accounts.Accounts, name: string, role?: Accounts.AccountRole) {
+  const created = await accounts.create(name, role)
+  const token = (await readFile(created.tokenFile, 'utf8')).trim()
+  return { ...created, token }
+}
+
 describe('accounts domain', () => {
-  it('creates an active account, shows its token once and stores only the hash', async () => {
+  it('creates an active account, writes its token to a restricted file and stores only the hash', async () => {
     const { ctx, root, accounts } = await fixture()
-    const { account, token } = await accounts.create('Ada', 'administrator')
+    const { account, token, tokenFile } = await mint(accounts, 'Ada', 'administrator')
     expect(account).toMatchObject({ name: 'Ada', role: 'administrator', state: 'active', revision: 1 })
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/u)
+    expect(tokenFile.startsWith(join(root, 'tokens'))).toBe(true)
+    if (process.platform !== 'win32') expect(((await stat(tokenFile)).mode & 0o777)).toBe(0o600)
     expect(accounts.list()).toEqual([account])
     expect(accounts.get(account.id)).toEqual(account)
     // The plaintext token never reaches durable storage.
@@ -38,9 +48,44 @@ describe('accounts domain', () => {
     await ctx.fiber.dispose()
   })
 
+  it('removes the token file when the account record cannot be saved', async () => {
+    const { root, accounts } = await fixture()
+    const table = ((accounts as unknown as {
+      domain: { table(name: string): { put(key: string, record: unknown): Promise<void> } }
+    }).domain).table('credentials')
+    const publish = table.put.bind(table)
+    table.put = async () => { throw new Error('disk full') }
+    await expect(accounts.create('Doomed')).rejects.toThrow('disk full')
+    table.put = publish
+    expect(await readdir(join(root, 'tokens'))).toEqual([])
+  })
+
+  it('defaults the token directory to DSH_HOME, then the user home', () => {
+    const saved = process.env.DSH_HOME
+    try {
+      process.env.DSH_HOME = 'C:/dsh-home'
+      const home = new Accounts.Accounts(new Context(), {} as never)
+      expect((home as unknown as { tokens: string }).tokens).toBe(join('C:/dsh-home', 'accounts', 'tokens'))
+      delete process.env.DSH_HOME
+      const user = new Accounts.Accounts(new Context(), {} as never)
+      expect((user as unknown as { tokens: string }).tokens).toBe(join(homedir(), '.dsh', 'accounts', 'tokens'))
+    } finally {
+      if (saved === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = saved
+    }
+  })
+
+  it('never overwrites an existing token file', async () => {
+    const { root } = await fixture()
+    const file = await Accounts.writeEntryToken(join(root, 'tokens'), 'account-1', 'first-token')
+    await expect(Accounts.writeEntryToken(join(root, 'tokens'), 'account-1', 'second-token'))
+      .rejects.toMatchObject({ code: 'EEXIST' })
+    expect((await readFile(file, 'utf8')).trim()).toBe('first-token')
+  })
+
   it('authenticates only active accounts and never an empty or unknown token', async () => {
     const { accounts } = await fixture()
-    const { account, token } = await accounts.create('Member')
+    const { account, token } = await mint(accounts, 'Member')
     expect(account.role).toBe('member')
     expect(accounts.authenticate('')).toBeUndefined()
     expect(accounts.authenticate('wrong')).toBeUndefined()
@@ -57,7 +102,7 @@ describe('accounts domain', () => {
     const { accounts } = await fixture()
     expect(() => accounts.get('missing')).toThrow('Unknown account: missing')
     await expect(accounts.disable('missing')).rejects.toThrow('Unknown account: missing')
-    const { account } = await accounts.create('One')
+    const { account } = await mint(accounts, 'One')
     await expect(accounts.reactivate(account.id)).rejects.toThrow('is not disabled')
     await accounts.archive(account.id)
     await expect(accounts.archive(account.id)).rejects.toThrow('is already archived')
@@ -67,8 +112,8 @@ describe('accounts domain', () => {
   it('keeps archived records readable and lists accounts oldest first', async () => {
     const { accounts } = await fixture()
     const clock = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
-    const first = await accounts.create('Same')
-    const second = await accounts.create('Same')
+    const first = await mint(accounts, 'Same')
+    const second = await mint(accounts, 'Same')
     clock.mockRestore()
     expect(second.account.id).not.toBe(first.account.id)
     const archived = await accounts.archive(second.account.id)
@@ -77,15 +122,39 @@ describe('accounts domain', () => {
       .map(id => id === second.account.id ? 'archived' : 'active')
     expect(accounts.list().map(account => account.state)).toEqual(expected)
     expect(accounts.isAdministrator(first.account.id)).toBe(false)
-    const admin = await accounts.create('Admin', 'administrator')
+    const admin = await mint(accounts, 'Admin', 'administrator')
     expect(accounts.isAdministrator(admin.account.id)).toBe(true)
     await accounts.disable(admin.account.id)
     expect(accounts.isAdministrator(admin.account.id)).toBe(false)
   })
 
+  it('scans every credential so a disabled token and an unknown one take the same path', async () => {
+    const { accounts } = await fixture()
+    const first = await mint(accounts, 'First')
+    const second = await mint(accounts, 'Second')
+    await accounts.disable(first.account.id)
+    await accounts.disable(second.account.id)
+    const table = ((accounts as unknown as {
+      domain: { table(name: string): { entries(): Iterable<[string, unknown]> } }
+    }).domain).table('credentials')
+    const original = table.entries.bind(table)
+    let visits = 0
+    table.entries = function* (): IterableIterator<[string, unknown]> {
+      for (const entry of original()) { visits++; yield entry }
+    }
+    expect(accounts.authenticate('unknown-token')).toBeUndefined()
+    expect(visits).toBe(2)
+    for (const token of [first.token, second.token]) {
+      visits = 0
+      expect(accounts.authenticate(token)).toBeUndefined()
+      expect(visits).toBe(2)
+    }
+    table.entries = original
+  })
+
   it('refuses a transition whose revision moved under it', async () => {
     const { accounts } = await fixture()
-    const { account } = await accounts.create('Racy')
+    const { account } = await mint(accounts, 'Racy')
     const domain = (accounts as unknown as {
       domain: { table(name: string): {
         get(key: string): unknown

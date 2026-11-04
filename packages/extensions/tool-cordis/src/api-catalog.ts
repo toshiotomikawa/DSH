@@ -87,10 +87,10 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Account records and the hash-only entry credential of each account.',
     methods: [
       {
-        signature: 'async create(displayName: string, role: AccountRole = \'member\'): Promise<{ account: Account; token: string }>',
-        description: 'Create one active account and issue its entry token, which is returned once and stored only as its SHA-256 hash.',
+        signature: 'async create(displayName: string, role: AccountRole = \'member\'): Promise<{ account: Account; tokenFile: string }>',
+        description: 'Create one active account and issue its entry token. The token is written once to a restricted file and only its SHA-256 hash is stored, so the plaintext never enters the returned value, a Session log or a log line.',
         parameters: [{ name: 'displayName', description: 'name shown to people; another account may share it.' }, { name: 'role', description: 'administrator or member.' }],
-        returns: 'the stored account and the plaintext token, never readable again.',
+        returns: 'the stored account and the absolute path of its token file.',
       },
       {
         signature: 'list(): Account[]',
@@ -125,7 +125,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'authenticate(token: string): Account | undefined',
-        description: 'Resolve one presented entry token. Archived and disabled accounts prove nothing.',
+        description: 'Resolve one presented entry token. Every stored credential is compared so a disabled account\'s token takes the same path as an unknown one. Archived and disabled accounts prove nothing.',
         parameters: [{ name: 'token', description: 'plaintext token from the connection.' }],
         returns: 'the active account, or undefined for an unknown, ended, or empty token.',
       },

@@ -50,13 +50,14 @@ Account records and the hash-only entry credential of each account.
 
 ```ts cordis-catalog
 /**
- * Create one active account and issue its entry token, which is returned once
- * and stored only as its SHA-256 hash.
+ * Create one active account and issue its entry token. The token is written
+ * once to a restricted file and only its SHA-256 hash is stored, so the
+ * plaintext never enters the returned value, a Session log or a log line.
  * @param displayName - name shown to people; another account may share it.
  * @param role - administrator or member.
- * @returns the stored account and the plaintext token, never readable again.
+ * @returns the stored account and the absolute path of its token file.
  */
-async create(displayName: string, role: AccountRole = 'member'): Promise<{ account: Account; token: string }>
+async create(displayName: string, role: AccountRole = 'member'): Promise<{ account: Account; tokenFile: string }>
 
 /**
  * Read every account, oldest first.
@@ -95,7 +96,9 @@ async reactivate(id: string): Promise<Account>
 async archive(id: string): Promise<Account>
 
 /**
- * Resolve one presented entry token. Archived and disabled accounts prove nothing.
+ * Resolve one presented entry token. Every stored credential is compared so
+ * a disabled account's token takes the same path as an unknown one. Archived
+ * and disabled accounts prove nothing.
  * @param token - plaintext token from the connection.
  * @returns the active account, or undefined for an unknown, ended, or empty token.
  */
