@@ -45,6 +45,11 @@ declare module '@deepseek-ai/cordis' {
        * @returns true only for an explicit stored grant.
        */
       allows(ownerId: string, granteeId: string): boolean
+      /** Accounts that one owner has admitted.
+       * @param ownerId - account that owns the shared agents.
+       * @returns grantee ids, oldest grant first.
+       */
+      list(ownerId: string): string[]
     }
   }
 }

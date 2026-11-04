@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-tool-agent-mailbox",
-  "description": "Model tools to send messages between persistent agents.",
+  "description": "Model tools to message persistent agents, share them with other accounts and group them in sections.",
   "version": "0.2.2-alpha.3",
   "publishConfig": {
     "access": "public"
@@ -31,8 +31,10 @@
   "dependencies": {
     "@deepseek-ai/dsh-agent": "workspace:*",
     "@deepseek-ai/dsh-agent-mailbox": "workspace:*",
+    "@deepseek-ai/dsh-agent-registry": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
-    "@deepseek-ai/dsh-tools": "workspace:*"
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

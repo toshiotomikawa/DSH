@@ -1,5 +1,5 @@
 ---
-description: "Model tools to send messages between persistent agents."
+description: "Model tools to message persistent agents, share them with other accounts and group them in sections."
 kind: "package-reference"
 ---
 
@@ -7,11 +7,11 @@ kind: "package-reference"
 
 ## Summary
 
-Registers `agent_send_message`, `agent_list` and `agent_interrupt` over the durable `agent-mailbox` service. Tool names carry the `agent_` prefix so they never collide with the subagent-tree controls.
+Registers `agent_send_message`, `agent_list` and `agent_interrupt` over the durable `agent-mailbox` service, plus `agent_grant_access`, `agent_revoke_access`, `agent_list_grants`, `agent_list_sections` and `agent_move_section` for sharing agents between accounts and grouping them. Tool names carry the `agent_` prefix so they never collide with the subagent-tree controls.
 
 ## Use this package
 
-Mount where the calling persistent agent should see the mailbox tools, beside `tools` and `agentMailbox`. The [`agent-mailbox`](../agent-mailbox/README.md) package owns persistence, delivery, visibility and authority; these tools add no authority of their own. Replies name the original message with `reply_to_message_id`; a new thread accepts exactly one recipient.
+Mount where the calling persistent agent should see the mailbox tools, beside `tools` and `agentMailbox`. The [`agent-mailbox`](../agent-mailbox/README.md) package owns persistence, delivery, visibility and authority; these tools add no authority of their own. The account of the caller always comes from its persistent agent, never from an argument: only that account can grant or revoke access to its agents, and a foreign agent, section or grant answers exactly like a missing one. A grant is one-way and works only where the `accountGrants` service of the owner policy is mounted; a revoke cuts access on the next call. Replies name the original message with `reply_to_message_id`; a new thread accepts exactly one recipient.
 
 ## Model Experience
 

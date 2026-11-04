@@ -4,16 +4,29 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-mailbox'
+import { PersistentAgentId } from '@deepseek-ai/dsh-agent-registry'
+import type {} from '@deepseek-ai/dsh-typert-protocol'
 import { SessionId } from '@deepseek-ai/dsh-session'
 
 /** Cordis plugin name. */
 export const name = 'tool-agent-mailbox'
-/** Tool registry and the durable mailbox service. */
-export const inject = ['tools', 'agentMailbox']
+/** Tool registry, the durable mailbox service and the persistent-agent registry that names the caller's account. */
+export const inject = ['tools', 'agentMailbox', 'persistentAgents']
 
 function caller(agent: Agent | undefined): Agent {
   if (agent === undefined) throw new Error('Mailbox tools require a live persistent agent session')
   return agent
+}
+
+/** Account of the authenticated caller; never a model-supplied value. */
+function accountOf(ctx: Context, agent: Agent | undefined): string {
+  return ctx.persistentAgents.get(ctx.persistentAgents.of(caller(agent))).ownerId ?? 'owner'
+}
+
+function grants(ctx: Context): NonNullable<Context['accountGrants']> {
+  const service = ctx.get('accountGrants')
+  if (service === undefined) throw new Error('Account grants are not enabled')
+  return service
 }
 
 const deliveryValue = {
@@ -43,7 +56,7 @@ const summaryValue = {
   },
 } as const
 
-/** Register `agent_send_message`, `agent_list` and `agent_interrupt`.
+/** Register the mailbox tools and the account tools for grants and sections.
  * @param ctx - injected services.
  */
 export function apply(ctx: Context): void {
@@ -146,4 +159,108 @@ export function apply(ctx: Context): void {
       )
     },
   })), 'agentMailbox.interrupt()')
+  ctx.effect(() => ctx.tools.register(defineTool({
+    name: 'agent_grant_access',
+    description:
+      'Let another account address the agents of your own account through agent_list and agent_send_message. '
+      + 'Only your own account can grant; the grant is one-way and does not give the other account your conversations, memories or tables. '
+      + 'Granting again is harmless.',
+    parameters: { account_id: { type: 'string', required: true, description: 'Account that gains access to your agents.' } },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { account_id: { type: 'string', required: true } } },
+      render: (_args, value) => [{ type: 'text', text: `access granted to ${value.account_id}` }],
+    },
+    async execute(args, exec) {
+      const owner = accountOf(ctx, exec.agent)
+      const grantee = args.account_id.trim()
+      if (grantee === '') throw new Error('account_id must not be empty')
+      if (grantee === owner) throw new Error('An account already reaches its own agents')
+      await grants(ctx).grant(owner, grantee)
+      return { account_id: grantee }
+    },
+  })), 'accountGrants.grant()')
+  ctx.effect(() => ctx.tools.register(defineTool({
+    name: 'agent_revoke_access',
+    description:
+      'Withdraw access you granted to another account; it takes effect at once. '
+      + 'Unknown grants, including ones that belong to other accounts, are reported as not found.',
+    parameters: { account_id: { type: 'string', required: true, description: 'Account that loses access to your agents.' } },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { account_id: { type: 'string', required: true } } },
+      render: (_args, value) => [{ type: 'text', text: `access revoked from ${value.account_id}` }],
+    },
+    async execute(args, exec) {
+      const owner = accountOf(ctx, exec.agent)
+      const service = grants(ctx)
+      const grantee = args.account_id.trim()
+      if (!service.allows(owner, grantee)) throw new Error(`Unknown grant: ${args.account_id}`)
+      await service.revoke(owner, grantee)
+      return { account_id: grantee }
+    },
+  })), 'accountGrants.revoke()')
+  ctx.effect(() => ctx.tools.register(defineTool({
+    name: 'agent_list_grants',
+    description: 'List the accounts you have granted access to your agents, oldest first.',
+    parameters: {},
+    output: {
+      schema: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { account_id: { type: 'string', required: true } } } },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    execute(_args, exec) {
+      return Promise.resolve(grants(ctx).list(accountOf(ctx, exec.agent)).map(account_id => ({ account_id })))
+    },
+  })), 'accountGrants.list()')
+  ctx.effect(() => ctx.tools.register(defineTool({
+    name: 'agent_list_sections',
+    description: 'List the sidebar sections of your account with the ids of the agents in each. Sections only group agents; membership never grants access.',
+    parameters: {},
+    output: {
+      schema: {
+        type: 'array',
+        items: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            id: { type: 'string', required: true },
+            name: { type: 'string', required: true },
+            agent_ids: { type: 'array', required: true, items: { type: 'string' } },
+          },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    execute(_args, exec) {
+      const owner = accountOf(ctx, exec.agent)
+      const members = ctx.persistentAgents.list().filter(profile => (profile.ownerId ?? 'owner') === owner)
+      return Promise.resolve(ctx.persistentAgents.listSections().filter(section => (section.ownerId ?? 'owner') === owner).map(section => ({
+        id: section.id,
+        name: section.name,
+        agent_ids: members.filter(profile => profile.sectionId === section.id).map(profile => profile.id),
+      })))
+    },
+  })), 'persistentAgents.listSections()')
+  ctx.effect(() => ctx.tools.register(defineTool({
+    name: 'agent_move_section',
+    description:
+      'Move one of your agents into one of your sections, or leave section_id out to take it out of its section. '
+      + 'Only grouping changes: the agent keeps its id, profile, history, memory and routines.',
+    parameters: {
+      agent_id: { type: 'string', required: true, description: 'Stable id of your agent.' },
+      section_id: { type: 'string', description: 'Id from agent_list_sections; omit to leave the agent without a section.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: { agent_id: { type: 'string', required: true }, section_id: { type: 'string' } },
+      },
+      render: (_args, value) => [{ type: 'text', text: value.section_id === undefined ? `${value.agent_id} has no section` : `${value.agent_id} moved to ${value.section_id}` }],
+    },
+    async execute(args, exec) {
+      const owner = accountOf(ctx, exec.agent)
+      const id = PersistentAgentId(args.agent_id)
+      // A foreign agent answers exactly like a missing one.
+      if ((ctx.persistentAgents.get(id).ownerId ?? 'owner') !== owner) throw new Error(`Unknown persistent agent: ${id}`)
+      const saved = await ctx.persistentAgents.assignSection(id, args.section_id ?? null)
+      return { agent_id: saved.id, ...(saved.sectionId === undefined ? {} : { section_id: saved.sectionId }) }
+    },
+  })), 'persistentAgents.assignSection()')
 }
