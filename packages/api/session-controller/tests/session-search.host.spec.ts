@@ -7,9 +7,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
+import RemoteAccessService from '@deepseek-ai/dsh-api-remote-access'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import type { PeerId, PeerScope, RemoteInvocation } from '@deepseek-ai/dsh-typert-protocol'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import {
   SessionQueryEngine,
@@ -182,6 +184,52 @@ describe('session.search', () => {
       limit: 20,
     })
     expect(exec.signal).toBe(signal)
+  })
+
+  it('applies the Remote policy of the calling account to search visibility', async () => {
+    const base = await baseContext()
+    base.sessions.create(sid('allowed'), { meta: header('allowed') })
+    base.sessions.create(sid('denied'), { meta: header('denied') })
+    installSearchQuery(base, () => Promise.resolve({
+      items: [{ ...hit('denied', 0) }, { ...hit('allowed', 1) }],
+    }))
+    new RemoteAccessService(base)
+    base.remoteAccess.registerPolicy('account', {
+      bindings: () => [
+        {
+          role: { name: 'test:account-search', resource: 'global', actions: ['session/search'] },
+          resource: { kind: 'global' },
+        },
+        {
+          role: { name: 'test:account-owned-session', resource: 'session', actions: ['session/search'] },
+          resource: { kind: 'session', id: sid('allowed') },
+        },
+      ],
+    })
+    const peer: PeerScope = {
+      id: 'account-peer' as PeerId,
+      ctx: base,
+      principal: { kind: 'account', ownerId: 'a' },
+      interactions: 'answer',
+      signal: new AbortController().signal,
+      dispose: async () => {},
+    }
+    const invocation: RemoteInvocation = {
+      peer,
+      request: { namespace: 'session', method: 'search', args: {} },
+      service: 'sessionController',
+      signal: new AbortController().signal,
+      uplink: <In>(): AsyncIterable<In> => ({ async *[Symbol.asyncIterator]() {} }),
+    }
+    const ctx = base.extend({ invocation })
+    const list = new ApiSessionList(ctx, 8)
+    await list.initialize()
+
+    await expect(list.search('anything', new AbortController().signal)).resolves.toEqual({
+      items: [{ sessionId: sid('allowed'), snippet: 'match 1' }],
+      hasMore: false,
+    })
+    await ctx.fiber.dispose()
   })
 
   it('rejects invalid wire queries before invoking the search provider', async () => {

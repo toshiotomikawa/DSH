@@ -13,6 +13,8 @@ Stores isolated memories and commits changes after a successful turn.
 
 Mount the registry and memory services globally beside `storage-domain`, `llm`, `sessions` and `agents`. Mount the tool plugin where memory tools should be available. Bind a session to a persistent profile before using its memory tools. The optional `@deepseek-ai/dsh-tool-agent-memory/preset` row takes `agentId` and belongs inside an agent preset; its persona shadows the deployment prefix. See [persistent agents](../../../docs/subsystems/persistent-agents.md) for configuration and transaction semantics.
 
+New memory books copy the persistent profile owner, defaulting to `owner` for legacy profiles. Ownership remains book-level metadata; this package does not implement account authentication.
+
 ## Model Experience
 
 ### Persistent identity and memories
@@ -32,7 +34,8 @@ The prompt prefix stays stable while the profile and essential selection are unc
 ## Known Limitations and Deferred Work
 
 - No automatic model fallback, provider-account switching, permission elevation, mailbox or routine execution.
-- The optional ownerId field is stored without access filtering until M7.
+- Owner metadata is inherited from the profile; account authentication and sharing are deferred.
+- Tool access follows the live session-to-agent binding.
 - Coordination is process-local, matching storage-domain.
 - Session agentId metadata lives in the agents domain rather than changing upstream session headers.
 - Memory commits are observed after completed turn/end; tools report staging, and the next agent prompt waits for admitted commits.

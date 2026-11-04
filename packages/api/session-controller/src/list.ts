@@ -2,7 +2,7 @@
 
 import { performance } from 'node:perf_hooks'
 import { scheduler } from 'node:timers/promises'
-import type { Context } from '@deepseek-ai/cordis'
+import { symbols, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { ImageAttachmentLimits } from '@deepseek-ai/dsh-attachment'
 import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
@@ -76,6 +76,8 @@ export function truncateUnicodeCodePoints(value: string, maximum: number): strin
 
 /** Owns list projection registration, bounded cold summaries, and authorized search. */
 export class ApiSessionList {
+  /** Preserve the Remote caller when this controller is reached through its parent service. */
+  readonly [symbols.tracker]: { property: string } = { property: 'ctx' }
   private listMetadata!: ProjectionHandle<SessionListMetadata>
 
   /**
@@ -214,7 +216,8 @@ export class ApiSessionList {
       const visible = await provider.listSessions(signal)
       signal.throwIfAborted()
       const visibleIds = new Set(visible
-        .filter(record => record.header.cwd !== undefined)
+        .filter(record => record.header.cwd !== undefined
+          && (this.ctx.invocation === undefined || this.ctx.remoteAccess.allows({ kind: 'session', id: record.header.id })))
         .map(record => record.header.id))
       if (visibleIds.size === 0) return { items: [], hasMore: false }
       const authorized: SessionSearchItem[] = []

@@ -392,7 +392,7 @@ export class AgentMailbox {
       ...(input.newThread === true ? { newThread: true } : {}),
       ...(input.title === undefined ? {} : { title: input.title }),
       ...(key === undefined ? {} : { key }),
-      ...(sender.ownerId === undefined ? {} : { ownerId: sender.ownerId }),
+      ownerId: sender.ownerId ?? 'owner',
       deliveries: targets.map((target) => {
         const sessionId = thread === undefined ? target.sessionId : thread
         return {
@@ -417,7 +417,8 @@ export class AgentMailbox {
     // oxlint-disable-next-line typescript/no-non-null-assertion
     const original = this.mustMessage(input.replyToMessageId!)
     const delivery = original.deliveries.find(item => item.recipientId === sender.id)
-    if (delivery === undefined) throw new Error('Only a recipient of the original message can reply to it')
+    // A message the caller cannot answer must look exactly like a missing one.
+    if (delivery === undefined) throw new Error(`Unknown message: ${original.id}`)
     if (this.hasReply(original.id, sender.id)) throw new Error('This request was already answered')
     const message: Message = {
       id: randomUUID(),
@@ -429,7 +430,7 @@ export class AgentMailbox {
       createdAt: Date.now(),
       replyToMessageId: original.id,
       ...(key === undefined ? {} : { key }),
-      ...(sender.ownerId === undefined ? {} : { ownerId: sender.ownerId }),
+      ownerId: sender.ownerId ?? 'owner',
       deliveries: [{
         recipientId: original.senderId,
         sessionId: original.senderSessionId,

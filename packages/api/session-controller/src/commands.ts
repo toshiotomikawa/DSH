@@ -16,7 +16,7 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import type { MessageSource } from '@deepseek-ai/dsh-llm'
 import { buildForkSeed } from '@deepseek-ai/dsh-session/fork'
-import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SessionLogOffset, SessionSeq, deriveEventMessage } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
@@ -358,18 +358,28 @@ export class SessionCommandController {
   }
 
   /**
-   * Read one durable image using the supplied reference without consulting Session history.
-   * @param request - image reference and gateway permission scope; Session existence is not checked.
+   * Read one durable image. Under account ownership the addressed Session's own
+   * log must carry its reference; a known hash is not a grant.
+   * @param request - image reference and the Session whose permission scope the gateway checked.
    * @returns the durable attachment reference and base64-encoded bytes.
    */
   async attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue> {
     try {
+      // Multi-account hosts pay one log read per image; without the ownership
+      // policy the endpoint keeps its store-scoped upstream behavior.
+      if (this.ctx.get('sessionOwners') !== undefined
+        && !await this.referencesImage(request.sessionId, request.attachment.attachmentId)) {
+        throw new RemoteError('session/attachment-invalid', 'Image attachment is not part of this Session.', {
+          reason: 'ATTACHMENT_NOT_FOUND',
+        })
+      }
       const stored = await this.ctx.attachments.readImage(request.attachment)
       return {
         attachment: stored.ref,
         data: Buffer.from(stored.data).toString('base64'),
       }
     } catch (error) {
+      if (remoteErrorOf(error) !== undefined) throw error
       if (error instanceof AttachmentError) {
         throw new RemoteError('session/attachment-invalid', error.message, { reason: error.code })
       }
@@ -481,6 +491,23 @@ export class SessionCommandController {
     const found = await this.agents.resolveAgent(sessionId)
     if ('error' in found) throw found.error
     return found.agent
+  }
+
+  /**
+   * Whether one Session's durable log carries an image with the supplied id.
+   * @param sessionId - Session the caller was authorized for.
+   * @param attachmentId - content id from the request.
+   * @returns true when a logged message references that image; a missing Session has none.
+   */
+  private async referencesImage(sessionId: SessionId, attachmentId: string): Promise<boolean> {
+    try {
+      using observed = await this.ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
+      return observed.events.some(event => deriveEventMessage(event)?.content
+        .some(block => block.type === 'image' && block.attachment.attachmentId === attachmentId) === true)
+    } catch (error) {
+      if (error instanceof SessionQueryError && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') return false
+      throw error
+    }
   }
 
   private rejectCreation(error: unknown): never {

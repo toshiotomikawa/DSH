@@ -76,8 +76,8 @@ export function apply(ctx: Context): void {
   const owned = (exec: ToolExecution, id: string): void => {
     const caller = agentOf(exec, undefined)
     const routine = engine().list().find(item => item.id === id)
-    if (routine === undefined) throw new RoutineError('rotina_inexistente', `rotina "${id}" não existe`)
-    if (routine.agentId !== caller) throw new RoutineError('agente_nao_autorizado', `a rotina "${id}" pertence a outro agente`)
+    // Another agent's routine must look exactly like a missing one.
+    if (routine === undefined || routine.agentId !== caller) throw new RoutineError('rotina_inexistente', `rotina "${id}" não existe`)
   }
 
   ctx.tools.register(defineTool({

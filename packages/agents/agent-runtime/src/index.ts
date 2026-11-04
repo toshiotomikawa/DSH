@@ -49,15 +49,20 @@ export function apply(ctx: Context): void {
   const directory: MailboxDirectory = {
     find, describe,
     visible: (caller) => {
-      describe(caller)
-      return ctx.persistentAgents.list().map(profile => find(profile.id)).filter(target => target !== undefined)
+      const sender = describe(caller)
+      return ctx.persistentAgents.list().filter(profile => (profile.ownerId ?? 'owner') === (sender.ownerId ?? 'owner'))
+        .map(profile => find(profile.id)).filter(target => target !== undefined)
     },
-    mayInterrupt: (caller, target) => { describe(caller); return find(target.id) !== undefined },
+    mayInterrupt: (caller, target) => {
+      const sender = describe(caller)
+      const found = find(target.id)
+      return found !== undefined && (found.ownerId ?? 'owner') === (sender.ownerId ?? 'owner')
+    },
     thread: () => SessionId(`agent-thread-${randomUUID()}`),
     prepare: async (target, sessionId) => { await ctx.persistentAgents.bind(sessionId, PersistentAgentId(target.id)) },
   }
   const bridge: RoutineBridge = {
-    agents: (id) => { const target = find(id); return target === undefined ? undefined : { id: target.id, name: target.name } },
+    agents: (id) => { const target = find(id); return target === undefined ? undefined : { id: target.id, name: target.name, ownerId: target.ownerId ?? 'owner' } },
     agentOfSession: sessionId => ctx.persistentAgents.metadataOf(SessionId(sessionId))?.agentId,
     runner: {
       async start(input) {

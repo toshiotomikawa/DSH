@@ -15,6 +15,8 @@ Mount beside `storage-domain`, `agents` and `session-persistence`, and provide a
 
 Messages, delivery state and the hashed `idempotencyKey` live in one message record, so the key and the message cannot diverge. A repeated key returns the previous message; a different text, recipient set, thread flag, title or destination is a conflict. A reply is accepted only from a recipient of the original message, only once, and returns to the conversation that sent it. On restart, a delivery whose recorded turn has no `turn/end` in its session log becomes `uncertain` and is never re-sent; a delivery that never started goes back to `queued`.
 
+New messages and replies record the authenticated sending profile owner, defaulting to `owner` for legacy profiles. The persistent-agent directory restricts discovery and interruption to the caller owner before recipient validation.
+
 ## Model Experience
 
 ### Delivered mailbox messages
@@ -34,7 +36,7 @@ The delivery appends after the target conversation's existing history and does n
 ## Known Limitations and Deferred Work
 
 - Delivery is process-local and serialized through one pump; a restart retries queued deliveries, and a delivery whose turn was open at the crash is marked `uncertain` instead of being re-sent, so external work is never repeated blindly.
-- `ownerId` is stored without access filtering until the multi-user milestone.
+- Owner metadata is inherited from the sending profile. Account authentication and explicit sharing grants are deferred.
 - Interruption asks the target's agent loop to cancel its current turn; it cannot undo external effects that already ran.
 - A new conversation uses the route supplied by the identity layer; a target without a route can only be woken when its session already records a selection.
 - No email, chat or other external channel delivery: this package carries agent-to-agent messages only.

@@ -1,7 +1,8 @@
 /** Durable named agents, independent of their live session identities. @module */
 import { randomUUID } from 'node:crypto'
 import { open } from 'node:fs/promises'
-import type { Context } from '@deepseek-ai/cordis'
+import { symbols, type Context } from '@deepseek-ai/cordis'
+import { ownerIdOf } from '@deepseek-ai/dsh-typert-protocol'
 import { z } from 'zod'
 import sharp from 'sharp'
 import { brandString, type Branded } from '@deepseek-ai/dsh-brand'
@@ -77,6 +78,8 @@ export const inject = ['storageDomain', 'llm', 'agents']
 
 /** Registry owning profiles and durable session-to-agent metadata. */
 export class PersistentAgents {
+  /** Preserve the caller Context when this registry is accessed as a service. */
+  readonly [symbols.tracker]: { property: string } = { property: 'ctx' }
   private bindingTail: Promise<void> = Promise.resolve()
   constructor(private readonly ctx: Context, private readonly domain: Domain<typeof agentsDomain>) {}
 
@@ -91,7 +94,9 @@ export class PersistentAgents {
     const now = Date.now()
     const profile = profileSchema.parse({
       title: '', description: '', instructions: '', firstTask: '', reserves: [], automaticFallback: false,
-      ...profileFields(patch), model: { ...inherited, ...patch.model }, id, revision: 1, createdAt: now, updatedAt: now,
+      ...profileFields(patch),
+      ownerId: this.ctx.invocation === undefined ? patch.ownerId ?? 'owner' : ownerIdOf(this.ctx.invocation),
+      model: { ...inherited, ...patch.model }, id, revision: 1, createdAt: now, updatedAt: now,
       avatar: await this.avatar(patch, { kind: 'generated', value: id }),
       permissions: { source: 'deployment' },
     })
@@ -106,7 +111,7 @@ export class PersistentAgents {
    */
   get(id: PersistentAgentId): AgentProfile {
     const profile = this.domain.table('profiles').get(id)
-    if (!profile) throw new Error(`Unknown persistent agent: ${id}`)
+    if (!profile || !this.visible(profile)) throw new Error(`Unknown persistent agent: ${id}`)
     return structuredClone(profile)
   }
 
@@ -114,7 +119,14 @@ export class PersistentAgents {
    * @returns all profiles.
    */
   list(): AgentProfile[] {
-    return [...this.domain.table('profiles').keys()].map(id => this.get(id))
+    return [...this.domain.table('profiles').entries()]
+      .map(([, profile]) => profile)
+      .filter(profile => this.visible(profile)).map(profile => structuredClone(profile))
+  }
+
+  private visible(profile: AgentProfile): boolean {
+    const principal = this.ctx.invocation?.peer.principal
+    return principal?.kind !== 'account' || (profile.ownerId ?? 'owner') === principal.ownerId
   }
 
   /** Compare-and-set a partial edit.
@@ -126,6 +138,7 @@ export class PersistentAgents {
   async update(id: PersistentAgentId, expectedRevision: number, input: AgentPatch): Promise<AgentProfile> {
     const patch = patchSchema.parse(input)
     const current = this.get(id)
+    if (patch.ownerId !== undefined && patch.ownerId !== (current.ownerId ?? 'owner')) throw new Error('Agent owner cannot be changed')
     if (current.revision !== expectedRevision) throw new Error('Agent revision conflict; read the profile again')
     const avatar = await this.avatar(patch, current.avatar)
     const next = profileSchema.parse({
@@ -162,7 +175,8 @@ export class PersistentAgents {
     const run = this.bindingTail.then(async () => {
       const previous = this.metadataOf(sessionId)
       if (previous && previous.agentId !== agentId) throw new Error('Session already belongs to a different persistent agent')
-      await this.domain.table('sessions').put(sessionKey(sessionId), { agentId, ...(profile.ownerId === undefined ? {} : { ownerId: profile.ownerId }) })
+      await this.domain.table('sessions').put(sessionKey(sessionId), { agentId, ownerId: profile.ownerId ?? 'owner' })
+      await this.ctx.get('sessionOwners')?.assign(sessionId, profile.ownerId ?? 'owner')
     })
     this.bindingTail = run.then(() => {}, () => {})
     await run

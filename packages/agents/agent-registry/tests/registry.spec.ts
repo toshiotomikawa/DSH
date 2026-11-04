@@ -17,6 +17,28 @@ async function fixture() {
 }
 
 describe('durable persistent profiles', () => {
+  it('reads legacy ownerless profiles as the single-account owner and stamps new session bindings', async () => {
+    const { ctx, root, registryFiber } = await fixture()
+    const profile = await ctx.persistentAgents.create({ name: 'Legacy' }, inherited)
+    await registryFiber.dispose()
+    const path = join(root, 'data/agents/profiles', `${profile.id}.json`)
+    const legacy = JSON.parse(await readFile(path, 'utf8')) as { record: { ownerId?: string } }
+    delete legacy.record.ownerId
+    await writeFile(path, JSON.stringify(legacy))
+    await ctx.fiber.dispose()
+    const reopened = await harness(root)
+    onTestFinished(() => reopened.ctx.fiber.dispose())
+    const assignments: string[] = []
+    reopened.ctx.provide('sessionOwners', { assign: async (_id, ownerId) => { assignments.push(ownerId) } })
+    const invocation = (ownerId: string) => reopened.ctx.extend({ invocation: {
+      peer: { principal: { kind: 'account', ownerId } },
+    } as never })
+    expect(invocation('owner').persistentAgents.get(profile.id).ownerId).toBeUndefined()
+    expect(() => invocation('other').persistentAgents.get(profile.id)).toThrow('Unknown persistent agent')
+    await reopened.ctx.persistentAgents.bind(SessionId('legacy-session'), profile.id)
+    expect(assignments).toEqual(['owner'])
+    expect((await reopened.ctx.persistentAgents.update(profile.id, 1, { ownerId: 'owner' })).ownerId).toBe('owner')
+  })
   it('preserves identity, first task, history and pending references across edits and reopen (1)', async () => {
     const { ctx, root, registryFiber } = await fixture()
     const profile = await ctx.persistentAgents.create({ name: 'One', title: 'Old', instructions: 'Literal {{keep}}', firstTask: 'First', ownerId: 'owner', reserves: [inherited], automaticFallback: true }, inherited)
@@ -55,7 +77,7 @@ describe('durable persistent profiles', () => {
     expect(first.id).not.toBe(second.id)
     const session = await live(ctx, 'twin-session', first.id)
     await ctx.persistentAgents.update(first.id, 1, { name: 'Renamed twin' })
-    expect(ctx.persistentAgents.metadataOf(session.id)).toEqual({ agentId: first.id })
+    expect(ctx.persistentAgents.metadataOf(session.id)).toEqual({ agentId: first.id, ownerId: 'owner' })
     expect(ctx.persistentAgents.get(first.id).name).toBe('Renamed twin')
     expect(ctx.persistentAgents.get(second.id).name).toBe('Twin')
   })

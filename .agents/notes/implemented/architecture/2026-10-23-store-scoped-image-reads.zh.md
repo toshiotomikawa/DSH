@@ -18,6 +18,8 @@ Client 已经持有消息中的完整图片引用，将其作为 `attachment` �
 
 该规则缩小了 [Session observation](2026-08-25-session-observations-and-projection-owned-client-state.zh.md) 与[历史传输激活策略](2026-08-18-session-history-and-event-transport.zh.md)涵盖的读取范围。[工作区文件读取](2026-09-05-workspace-files-service.zh.md)保留自己的文件系统授权。
 
+在账户归属下，这条存储作用域规则由 [Session 作用域图片读取](2026-11-04-session-scoped-image-reads.zh.md)取代；此处描述的零历史读取路径仅在未挂载归属 sidecar 时继续生效。
+
 ## Alternatives considered
 
 **保留 Session 到图片的 Map 或 projection。** 索引可以消除重复扫描，但保留了产品不需要的访问限制，并增加派生、生命周期和失效处理。

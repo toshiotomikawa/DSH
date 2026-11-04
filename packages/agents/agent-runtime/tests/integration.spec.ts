@@ -85,6 +85,31 @@ async function fixture() {
 }
 
 describe('persistent agent host integration', () => {
+  it('keeps agent discovery and interruption within the caller owner, including legacy ownerless profiles', async () => {
+    const f = await fixture()
+    const foreign = await f.ctx.persistentAgents.create({ name: 'Other account', ownerId: 'other' }, inherited)
+    expect(f.ctx.agentDirectory.visible(f.agent).map(item => item.id)).not.toContain(foreign.id)
+    expect(f.ctx.agentDirectory.mayInterrupt(f.agent, f.ctx.agentDirectory.find(foreign.id)!)).toBe(false)
+    expect(f.ctx.agentDirectory.mayInterrupt(f.agent, { ...f.ctx.agentDirectory.find(foreign.id)!, id: 'absent' })).toBe(false)
+    const list = f.ctx.persistentAgents.list.bind(f.ctx.persistentAgents)
+    const get = f.ctx.persistentAgents.get.bind(f.ctx.persistentAgents)
+    const legacy = <T extends { ownerId?: string | undefined }>(profile: T): T => {
+      const copy = { ...profile }
+      delete copy.ownerId
+      return copy
+    }
+    vi.spyOn(f.ctx.persistentAgents, 'list').mockImplementation(() => list().map(legacy))
+    vi.spyOn(f.ctx.persistentAgents, 'get').mockImplementation(id => legacy(get(id)))
+    expect(f.ctx.agentDirectory.visible(f.agent)).toHaveLength(3)
+    expect(f.ctx.agentDirectory.mayInterrupt(f.agent, f.ctx.agentDirectory.find(f.b.id)!)).toBe(true)
+    expect(f.ctx.agentRoutineBridge.agents(f.a.id)?.ownerId).toBe('owner')
+    f.agent.session.append('turn/start', { turn: 1 })
+    await f.ctx.agentMemory.remember(f.agent, { text: 'Legacy memory' })
+    f.agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    await f.ctx.agentMemory.settled(f.agent.id)
+    expect(await readFile(join(f.root, 'data/agent_memory/books', `${f.a.id}.json`), 'utf8')).toContain('"ownerId": "owner"')
+    vi.restoreAllMocks()
+  })
   it('refuses generic calendar edits that bypass routine ownership and the three-minute floor', async () => {
     const f = await fixture()
     f.ctx.provide('sessionController', {} as Context['sessionController'])

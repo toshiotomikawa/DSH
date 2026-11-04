@@ -18,7 +18,7 @@ export { TYPERT_OWNED_VALUE, isTypertOwnedValue, typertOwnedValue } from './owne
 export type { TypertOwnedValue } from './owned-value.ts'
 export { isRemoteJsonValue, isRemoteUplinkItem } from './json-value.ts'
 export { createTypertRemoteInfo, isTypertRemoteMethod } from './remote-info.ts'
-export { principalOf } from './principal.ts'
+export { principalOf, ownerIdOf } from './principal.ts'
 export type { RemoteAccessResource, RemoteAccessResourceKind, RemoteAccessResourceOf } from './remote-access.ts'
 
 const TYPERT_REMOTE_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/

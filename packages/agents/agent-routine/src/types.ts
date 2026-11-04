@@ -111,6 +111,8 @@ export interface Run {
 
 /** Agent data the engine needs; the registry itself belongs to another package. */
 export interface AgentInfo {
+  /** Durable owner inherited by newly registered routines. */
+  readonly ownerId?: string
   readonly id: string
   readonly name: string
   readonly preset?: string

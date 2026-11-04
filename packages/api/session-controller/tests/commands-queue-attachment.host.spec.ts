@@ -12,6 +12,7 @@ import SessionStore, {
   Session, SessionId, SessionLogOffset,
 } from '@deepseek-ai/dsh-session'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
+import { SessionQueryError } from '@deepseek-ai/dsh-session-query'
 import { snapshotSubagentDescriptor, SUBAGENT_DESCRIPTOR_VERSION } from '@deepseek-ai/dsh-subagent'
 import { subagentIdentityProjectionDefinition } from '@deepseek-ai/dsh-subagent/src/projection.ts'
 import { describe, expect, it, vi } from 'vitest'
@@ -325,33 +326,75 @@ describe('Session queue commands', () => {
 })
 
 describe('Session attachment reads', () => {
-  it.each(['commands-session', 'other-session', 'missing-session'])('reads a supplied reference without looking up history for %s', async (id) => {
+  const ref: ImageAttachmentRef = {
+    attachmentId: AttachmentId(`sha256:${'ab'.repeat(32)}`),
+    mediaType: 'image/png', bytes: 2, width: 1, height: 1,
+  }
+  const absent: ImageAttachmentRef = { ...ref, attachmentId: AttachmentId(`sha256:${'cd'.repeat(32)}`) }
+  /** A stored image the addressed Session logged, without a live Agent. */
+  const logged = (): Context['sessionQuery'] => ({
+    observeSession: () => Promise.resolve({
+      events: [{ type: 'user/message', data: { content: [{ type: 'image', attachment: ref }] } }],
+      [Symbol.dispose]: () => {},
+    }),
+  }) as unknown as Context['sessionQuery']
+
+  it('reads a reference the addressed Session logged, without starting its Agent', async () => {
     const { ctx, controller, agent, resolveAgent } = await commandHarness()
-    const ref: ImageAttachmentRef = {
-      attachmentId: AttachmentId(`sha256:${'ab'.repeat(32)}`),
-      mediaType: 'image/png', bytes: 2, width: 1, height: 1,
-    }
+    const readImage = vi.fn(() => Promise.resolve({ ref, data: Uint8Array.of(1, 2) }))
+    ctx.provide('attachments', { readImage } as never)
+    ctx.provide('sessionOwners', {} as never)
     agent.session.append('user/message', createUserMessage({
       content: [{ type: 'image', attachment: ref }], source: { kind: 'user' },
     }), { surfaceOp: 'append' })
-    const readImage = vi.fn(() => Promise.resolve({ ref, data: Uint8Array.of(1, 2) }))
-    ctx.provide('attachments', { readImage } as never)
-    const failHistory = (): never => { throw new Error('image reads must not access Session history') }
-    const get = vi.spyOn(ctx.sessions, 'get').mockImplementation(failHistory)
-    const snapshot = vi.spyOn(agent.session, 'snapshotEvents').mockImplementation(failHistory)
-    const observe = vi.spyOn(ctx.sessionQuery, 'observeSession').mockImplementation(failHistory)
     try {
-      await expect(controller.attachment({ sessionId: SessionId(id), attachment: ref }))
+      await expect(controller.attachment({ sessionId: SessionId('commands-session'), attachment: ref }))
         .resolves.toEqual({ attachment: ref, data: 'AQI=' })
       expect(readImage).toHaveBeenCalledExactlyOnceWith(ref)
-      expect(get).not.toHaveBeenCalled()
-      expect(snapshot).not.toHaveBeenCalled()
-      expect(observe).not.toHaveBeenCalled()
       expect(resolveAgent).not.toHaveBeenCalled()
     } finally {
-      get.mockRestore()
-      snapshot.mockRestore()
-      observe.mockRestore()
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('keeps the store-scoped upstream read while no ownership policy is mounted', async () => {
+    const { ctx, controller } = await commandHarness()
+    const readImage = vi.fn(() => Promise.resolve({ ref, data: Uint8Array.of(1, 2) }))
+    ctx.provide('attachments', { readImage } as never)
+    try {
+      await expect(controller.attachment({ sessionId: SessionId('missing-session'), attachment: ref }))
+        .resolves.toEqual({ attachment: ref, data: 'AQI=' })
+      expect(readImage).toHaveBeenCalledExactlyOnceWith(ref)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('refuses a hash the addressed Session never logged, exactly like an absent image', async () => {
+    const { ctx, controller, agent } = await commandHarness()
+    agent.session.append('user/message', createUserMessage({
+      content: [{ type: 'image', attachment: ref }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    ctx.sessions.create(SessionId('other-session'))
+    const readImage = vi.fn(() => Promise.resolve({ ref, data: Uint8Array.of(1, 2) }))
+    ctx.provide('attachments', { readImage } as never)
+    ctx.provide('sessionOwners', {} as never)
+    const refuse = (
+      sessionId: string,
+      attachment: ImageAttachmentRef,
+    ): Promise<{ code: string; details: { reason: string }; message: string }> =>
+      controller.attachment({ sessionId: SessionId(sessionId), attachment })
+        .then(() => { throw new Error('unexpected image read') })
+        .catch((error: unknown) => error as { code: string; details: { reason: string }; message: string })
+    try {
+      const foreign = await refuse('other-session', ref)
+      const missing = await refuse('missing-session', ref)
+      const unlogged = await refuse('commands-session', absent)
+      expect(foreign).toMatchObject({ code: 'session/attachment-invalid', details: { reason: 'ATTACHMENT_NOT_FOUND' } })
+      expect(missing).toMatchObject({ message: foreign.message, code: 'session/attachment-invalid' })
+      expect(unlogged).toMatchObject({ message: foreign.message, code: 'session/attachment-invalid' })
+      expect(readImage).not.toHaveBeenCalled()
+    } finally {
       await ctx.fiber.dispose()
     }
   })
@@ -362,12 +405,11 @@ describe('Session attachment reads', () => {
     const ctx = new Context()
     const readImage = vi.fn(() => Promise.reject(new AttachmentError('Stored image is unavailable.', reason)))
     ctx.provide('attachments', { readImage } as never)
+    ctx.provide('sessionOwners', {} as never)
+    ctx.provide('sessionQuery', logged())
     const controller = new SessionCommandController(ctx, new ApiSessionAgentController(ctx), '/workspace')
     try {
-      await expect(controller.attachment({
-        sessionId: SessionId('unopened'),
-        attachment: { attachmentId: AttachmentId('requested'), mediaType: 'image/png', bytes: 1, width: 1, height: 1 },
-      }))
+      await expect(controller.attachment({ sessionId: SessionId('unopened'), attachment: ref }))
         .rejects.toMatchObject({ code: 'session/attachment-invalid', details: { reason } })
     } finally {
       await ctx.fiber.dispose()
@@ -377,13 +419,30 @@ describe('Session attachment reads', () => {
   it('contains unexpected backend failures without exposing internal details', async () => {
     const ctx = new Context()
     ctx.provide('attachments', { readImage: () => Promise.reject(new Error('/private/storage failed')) } as never)
+    ctx.provide('sessionOwners', {} as never)
+    ctx.provide('sessionQuery', logged())
     const controller = new SessionCommandController(ctx, new ApiSessionAgentController(ctx), '/workspace')
     try {
-      await expect(controller.attachment({
-        sessionId: SessionId('unopened'),
-        attachment: { attachmentId: AttachmentId('requested'), mediaType: 'image/png', bytes: 1, width: 1, height: 1 },
-      }))
+      await expect(controller.attachment({ sessionId: SessionId('unopened'), attachment: ref }))
         .rejects.toMatchObject({ code: 'gateway/internal', message: 'Unable to read image attachment.', details: {} })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('reads no bytes when the Session log itself cannot be read', async () => {
+    const ctx = new Context()
+    const readImage = vi.fn()
+    ctx.provide('attachments', { readImage } as never)
+    ctx.provide('sessionOwners', {} as never)
+    ctx.provide('sessionQuery', {
+      observeSession: () => Promise.reject(new SessionQueryError('session-query: index unavailable', 'SESSION_QUERY_INVALID_CONFIG')),
+    } as never)
+    const controller = new SessionCommandController(ctx, new ApiSessionAgentController(ctx), '/workspace')
+    try {
+      await expect(controller.attachment({ sessionId: SessionId('unopened'), attachment: ref }))
+        .rejects.toMatchObject({ code: 'gateway/internal', message: 'Unable to read image attachment.', details: {} })
+      expect(readImage).not.toHaveBeenCalled()
     } finally {
       await ctx.fiber.dispose()
     }

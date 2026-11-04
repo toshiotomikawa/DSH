@@ -117,7 +117,7 @@ export class RoutineEngine {
       const routine = this.validated({
         id: this.options.newId('routine'),
         agentId: input.agentId,
-        ...input.ownerId === undefined ? {} : { ownerId: input.ownerId },
+        ownerId: agent.ownerId ?? input.ownerId ?? 'owner',
         name: input.name,
         instruction: input.instruction,
         instructionVersion: 1,
@@ -373,7 +373,7 @@ export class RoutineEngine {
       seq: this.nextSeq(),
       routineId: routine.id,
       agentId: routine.agentId,
-      ...routine.ownerId === undefined ? {} : { ownerId: routine.ownerId },
+      ownerId: routine.ownerId ?? 'owner',
       acceptedAt: this.iso(),
       state: 'fila',
       quotaChecks: 0,

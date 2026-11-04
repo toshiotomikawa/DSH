@@ -9,6 +9,20 @@ import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { ZodType } from 'zod'
 import type { TypertOwnedValue } from './owned-value.ts'
 
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Optional fork-owned sidecar for Session ownership; never a Remote endpoint. */
+    sessionOwners: {
+      /** Persist a trusted creation/binding owner before returning the Session identity.
+       * @param sessionId - Host-created or explicitly bound Session identity.
+       * @param ownerId - authenticated account id or the single-account owner.
+       * @returns after durable ownership publication.
+       */
+      assign(sessionId: Branded<'SessionId'>, ownerId: string): Promise<void>
+    }
+  }
+}
+
 declare const LOOKUP_HOST: unique symbol
 declare const LOOKUP_WIRE: unique symbol
 declare const CONTEXT_WIRE: unique symbol
@@ -455,6 +469,8 @@ export type PeerId = Branded<'PeerId'>
 export interface PrincipalMap {
   /** The local user who owns this Host. */
   owner: { readonly kind: 'owner' }
+  /** Account identity supplied by a trusted connection adapter; carries no credential. */
+  account: { readonly kind: 'account'; readonly ownerId: string }
 }
 
 /** One caller identity; the authorization layer reads only this. */
