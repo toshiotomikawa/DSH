@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, it, expect, onTestFinished, vi } from 'vitest'
 import { harness, live, inherited } from '../../agent-registry/tests/harness.ts'
@@ -127,7 +127,7 @@ describe('memory turn transactions', () => {
     const f = await fixture({ essentialBytes: 1000 })
     f.start()
     const clock = vi.spyOn(Date, 'now').mockReturnValue(100)
-    onTestFinished(() => clock.mockRestore())
+    onTestFinished(() => { clock.mockRestore() })
     const first = await f.ctx.agentMemory.remember(f.agent, { text: 'alpha beta' })
     const second = await f.ctx.agentMemory.remember(f.agent, { text: 'alpha beta' })
     clock.mockReturnValue(101)
@@ -165,16 +165,81 @@ describe('memory turn transactions', () => {
     expect(f.ctx.agentMemory.essential(f.profile.id)).toBe('')
   })
 
-  it('rejects inconsistent turn projections and honours cancellation after awaiting a transaction', async () => {
+  it('rejects memory changes outside an active turn and honours cancellation', async () => {
     const f = await fixture()
+    await expect(f.ctx.agentMemory.remember(f.agent, { text: 'idle turn' })).rejects.toThrow('active turn')
     f.start()
-    const read = vi.spyOn(f.agent.session, 'eventAt').mockReturnValue(undefined)
-    await expect(f.ctx.agentMemory.remember(f.agent, { text: 'missing turn event' })).rejects.toThrow('Missing turn start')
-    read.mockRestore()
     const aborted = AbortSignal.abort()
     await expect(f.ctx.agentMemory.remember(f.agent, { text: 'aborted' }, aborted)).rejects.toThrow()
     await expect(f.ctx.agentMemory.forget(f.agent, MemoryId('missing'), 1, aborted)).rejects.toThrow()
     await f.end(false)
     expect(await f.ctx.agentMemory.search(f.profile.id, 'aborted')).toEqual([])
+  })
+
+  it('quarantines an unreadable book instead of reopening it empty and overwriting the only copy (2)', async () => {
+    const f = await fixture()
+    f.start()
+    await f.ctx.agentMemory.remember(f.agent, { text: 'kept' })
+    await f.end()
+    await f.fiber.dispose()
+    const book = join(f.root, 'data/agent_memory/books', `${f.profile.id}.json`)
+    const corrupt = '{"version":1,"record":{"agentId":'
+    await writeFile(book, corrupt)
+    const reopened = await f.ctx.plugin(MemoryPlugin, f.config)
+    await expect(f.ctx.agentMemory.search(f.profile.id, 'kept')).rejects.toThrow('left in place')
+    await expect(f.ctx.agentMemory.remember(f.agent, { text: 'new' })).rejects.toThrow('left in place')
+    expect(() => f.ctx.agentMemory.essential(f.profile.id)).toThrow('left in place')
+    await expect(f.ctx.agentMemory.selectForUser(f.profile.id, MemoryId('absent'), 1, 'searchable', false)).rejects.toThrow('left in place')
+    expect(await readFile(book, 'utf8')).toBe(corrupt)
+    // Another agent's book still opens and commits normally.
+    const other = await f.ctx.persistentAgents.create({ name: 'Healthy' }, inherited)
+    const otherAgent = await live(f.ctx, 'healthy', other.id)
+    otherAgent.session.append('turn/start', { turn: 1 })
+    await f.ctx.agentMemory.remember(otherAgent, { text: 'fine' })
+    otherAgent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    await f.ctx.agentMemory.settled(otherAgent.id)
+    expect((await f.ctx.agentMemory.search(other.id, 'fine')).map(entry => entry.text)).toEqual(['fine'])
+    // The damaged document stays in place, so the next open reports it again
+    // instead of starting from an empty book.
+    await reopened.dispose()
+    await f.ctx.plugin(MemoryPlugin, f.config)
+    await expect(f.ctx.agentMemory.search(f.profile.id, 'kept')).rejects.toThrow('left in place')
+    expect(await readFile(book, 'utf8')).toBe(corrupt)
+  })
+
+  it('opens healthy books when one stored book fails its schema, failing only its owner (5)', async () => {
+    const f = await fixture()
+    f.start()
+    await f.ctx.agentMemory.remember(f.agent, { text: 'healthy' })
+    await f.end()
+    const broken = await f.ctx.persistentAgents.create({ name: 'Broken' }, inherited)
+    await f.fiber.dispose()
+    const book = join(f.root, 'data/agent_memory/books', `${broken.id}.json`)
+    const content = JSON.stringify({
+      version: 1,
+      record: { agentId: broken.id, revision: 0, entries: [{ id: 'x', inclusion: 'searchable', revision: 1, updatedAt: 1, userLocked: false }] },
+    })
+    await writeFile(book, content)
+    await f.ctx.plugin(MemoryPlugin, f.config)
+    expect((await f.ctx.agentMemory.search(f.profile.id, 'healthy')).map(entry => entry.text)).toEqual(['healthy'])
+    await expect(f.ctx.agentMemory.search(broken.id, 'anything')).rejects.toThrow('left in place')
+    expect(await readFile(book, 'utf8')).toBe(content)
+  })
+
+  it('surfaces a lost turn at the next search and refuses another agent book through a session (6,8)', async () => {
+    const f = await fixture()
+    const other = await live(f.ctx, 'rival', f.profile.id)
+    other.session.append('turn/start', { turn: 1 })
+    f.start()
+    await f.ctx.agentMemory.remember(f.agent, { text: 'winner' })
+    await f.ctx.agentMemory.remember(other, { text: 'loser' })
+    await f.end()
+    other.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    await expect(f.ctx.agentMemory.search(f.profile.id, 'winner', 20, other.id)).rejects.toThrow('commit failed')
+    expect((await f.ctx.agentMemory.search(f.profile.id, 'winner', 20, f.agent.id)).map(entry => entry.text)).toEqual(['winner'])
+    const second = await f.ctx.persistentAgents.create({ name: 'Second' }, inherited)
+    const stranger = await live(f.ctx, 'stranger', second.id)
+    await expect(f.ctx.agentMemory.search(f.profile.id, 'winner', 20, stranger.id)).rejects.toThrow('does not own')
+    await expect(f.ctx.agentMemory.list(f.profile.id, 0, 1, stranger.id)).rejects.toThrow('does not own')
   })
 })

@@ -25,7 +25,9 @@ const bookSchema = z.object({
   revision: z.number().int().nonnegative(), entries: z.array(memorySchema),
 })
 // One record per agent makes an entire turn's memory changes one atomic storage write.
-const memoryDomain = defineDomain({ name: 'agent_memory', version: 1, layout: 'per-record', tables: { books: domainTable<PersistentAgentId, z.infer<typeof bookSchema>>(bookSchema) } })
+// A stored book that cannot be read is quarantined, never opened as empty: a turn
+// must not overwrite the only copy of an agent's memory.
+const memoryDomain = defineDomain({ name: 'agent_memory', version: 1, layout: 'per-record', invalidRecords: 'quarantine', tables: { books: domainTable<PersistentAgentId, z.infer<typeof bookSchema>>(bookSchema) } })
 /** A saved or staged memory, with its selection revision. */
 export type Memory = z.infer<typeof memorySchema>
 /** Deployment limits; essentialBytes counts the complete serialized data block. */
@@ -58,7 +60,14 @@ export class AgentMemory {
   private closed = false
   private readonly failures = new Map<SessionId, Error>()
 
-  constructor(private readonly ctx: Context, private readonly domain: Domain<typeof memoryDomain>, readonly limits: Config) {}
+  /** Books quarantined at open; their documents were left in place. */
+  private readonly blocked: ReadonlySet<string>
+
+  constructor(private readonly ctx: Context, private readonly domain: Domain<typeof memoryDomain>, readonly limits: Config) {
+    // Books the backend or its schema rejected at open: their documents stay on
+    // disk and every memory operation for that agent refuses until restored.
+    this.blocked = new Set(domain.quarantined('books'))
+  }
 
   /** Await commits already admitted by the turn-end observer.
    * @returns resolution or the failed session's error when sessionId is supplied.
@@ -130,7 +139,9 @@ export class AgentMemory {
     const terms = [...new Set(query.toLocaleLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])]
     if (terms.length === 0) throw new Error('Memory query must contain a search term')
     this.ctx.persistentAgents.get(id)
-    await this.settled()
+    this.assertCallerOwns(id, sessionId)
+    await this.settled(sessionId)
+    this.assertBookUsable(id)
     const staged = sessionId === undefined ? undefined : this.pending.get(sessionId)
     const memories = structuredClone(staged?.book.agentId === id ? staged.book.entries : this.domain.table('books').get(id)?.entries ?? [])
     return memories.map(memory => ({ memory, score: terms.filter(term => memory.text.toLocaleLowerCase().includes(term)).length }))
@@ -143,15 +154,18 @@ export class AgentMemory {
    * @param id - persistent owner.
    * @param cursor - zero-based offset.
    * @param limit - page size.
+   * @param sessionId - live caller whose prepared changes and commit failure surface.
    * @returns page and explicit next cursor, or null at the end.
    */
   async list(
-    id: PersistentAgentId, cursor: number = 0, limit: number = Math.min(50, this.limits.maxMemories),
+    id: PersistentAgentId, cursor: number = 0, limit: number = Math.min(50, this.limits.maxMemories), sessionId?: SessionId,
   ): Promise<{ memories: Memory[]; nextCursor: number | null }> {
     z.number().int().nonnegative().parse(cursor)
     z.number().int().positive().max(this.limits.maxMemories).parse(limit)
     this.ctx.persistentAgents.get(id)
-    await this.settled()
+    this.assertCallerOwns(id, sessionId)
+    await this.settled(sessionId)
+    this.assertBookUsable(id)
     const entries = this.domain.table('books').get(id)?.entries ?? []
     return {
       memories: structuredClone(entries.slice(cursor, cursor + limit)),
@@ -165,6 +179,7 @@ export class AgentMemory {
    */
   essential(id: PersistentAgentId): string {
     this.ctx.persistentAgents.get(id)
+    this.assertBookUsable(id)
     const result = this.render(this.domain.table('books').get(id)?.entries ?? [])
     if (Buffer.byteLength(result) > this.limits.essentialBytes) throw new Error('Saved essential memories exceed the configured budget; change inclusion before activation')
     return result
@@ -180,6 +195,7 @@ export class AgentMemory {
    */
   async selectForUser(agentId: PersistentAgentId, id: MemoryId, expectedRevision: number, inclusion: Memory['inclusion'], userLocked: boolean): Promise<Memory> {
     this.ctx.persistentAgents.get(agentId)
+    this.assertBookUsable(agentId)
     const run = this.tail.then(async () => {
       let selected!: Memory
       await this.domain.table('books').update(agentId, (book) => {
@@ -225,18 +241,32 @@ export class AgentMemory {
   private async transaction(agent: Agent): Promise<Pending> {
     await this.settled(agent.id)
     if (this.closed) throw new Error('Memory service is closed')
-    const turn = this.ctx.agents.turnBoundaryOf(agent.session)
-    if (turn.openTurnStartSeq === null) throw new Error('Memory changes require an active turn')
-    const event = agent.session.eventAt(turn.openTurnStartSeq)
-    if (event?.type !== 'turn/start') throw new Error('Missing turn start')
+    const id = this.ctx.persistentAgents.of(agent)
+    this.assertBookUsable(id)
     const existing = this.pending.get(agent.id)
     if (existing) return existing
-    const id = this.ctx.persistentAgents.of(agent)
+    const boundary = this.ctx.agents.turnBoundaryOf(agent.session)
+    if (boundary.openTurnStartSeq === null) throw new Error('Memory changes require an active turn')
     const profile = this.ctx.persistentAgents.get(id)
     const book = structuredClone(this.domain.table('books').get(id) ?? { agentId: id, ...(profile.ownerId === undefined ? {} : { ownerId: profile.ownerId }), revision: 0, entries: [] })
-    const pending: Pending = { turn: event.data.turn, base: book.revision, book }
+    const pending: Pending = { turn: boundary.lastTurn, base: book.revision, book }
     this.pending.set(agent.id, pending)
     return pending
+  }
+
+  /** Refuse a caller whose live session belongs to a different persistent agent. */
+  private assertCallerOwns(id: PersistentAgentId, sessionId: SessionId | undefined): void {
+    if (sessionId === undefined) return
+    if (this.ctx.persistentAgents.metadataOf(sessionId)?.agentId !== id) {
+      throw new Error('This session does not own that memory book')
+    }
+  }
+
+  /** Refuse a quarantined book; its unreadable document was left on disk for recovery. */
+  private assertBookUsable(id: PersistentAgentId): void {
+    if (this.blocked.has(id)) {
+      throw new Error(`Memory book for agent ${id} is unreadable and was left in place; restore or remove its stored document before using memory`)
+    }
   }
 
   private render(entries: Memory[]): string {
