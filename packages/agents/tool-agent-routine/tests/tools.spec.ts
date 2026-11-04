@@ -76,10 +76,12 @@ describe('routine_create, routine_update and routine_list', () => {
     const foreign = await call('routine_create', { name: 'B', instruction: 'x', agent: 'b2' }, { agent: { id: 'sess-b' } }) as { id: string }
     expect(foreign.id).toBeDefined()
     await expect(call('routine_create', { name: 'X', instruction: 'x', agent: 'b2' })).rejects.toThrow('agente_nao_autorizado')
-    await expect(call('routine_update', { id: foreign.id, name: 'X' })).rejects.toThrow('agente_nao_autorizado')
-    await expect(call('routine_update', { id: foreign.id, remove: true })).rejects.toThrow('agente_nao_autorizado')
-    await expect(call('routine_list', { id: foreign.id })).rejects.toThrow('agente_nao_autorizado')
-    await expect(call('routine_test', { id: foreign.id })).rejects.toThrow('agente_nao_autorizado')
+    // Another agent's routine must read exactly like a missing one.
+    await expect(call('routine_update', { id: foreign.id, name: 'X' })).rejects.toThrow('rotina_inexistente')
+    await expect(call('routine_update', { id: foreign.id, remove: true })).rejects.toThrow('rotina_inexistente')
+    await expect(call('routine_list', { id: foreign.id })).rejects.toThrow('rotina_inexistente')
+    await expect(call('routine_test', { id: foreign.id })).rejects.toThrow('rotina_inexistente')
+    await expect(call('routine_update', { id: 'nao-existe', name: 'X' })).rejects.toThrow('rotina_inexistente')
   })
 
   it('needs the bridge to know the calling agent', async () => {

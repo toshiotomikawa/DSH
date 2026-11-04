@@ -35,4 +35,7 @@ The identity prefix can remain stable across executions; the run instruction and
 
 ## Known Limitations and Deferred Work
 
-Execution is process-local and requires the host to remain running. A run with possible external effects fails with uncertainty instead of automatically repeating those effects. A stopped host cannot promise exact-time execution; missed-occurrence policies determine later admission. Provider account selection and automatic model fallback are outside this package.
+- Execution is process-local and requires the host to remain running.
+- A run with possible external effects fails with uncertainty instead of automatically repeating those effects.
+- A stopped host cannot promise exact-time execution; missed-occurrence policies determine later admission.
+- Provider account selection and automatic model fallback are outside this package.

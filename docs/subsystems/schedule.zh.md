@@ -311,4 +311,20 @@ Restore a reminder's Session through its embedding's owning controller. Call nex
 Types: [Agent](core.zh.md) · [SessionId](core.zh.md)
 
 Source: [`packages/schedule/schedule/src/index.ts`](../../packages/schedule/schedule/src/index.ts)
+
+<a id="schedulevalidate-edit--serial"></a>
+
+#### `schedule/validate-edit` — serial
+
+Validate an existing task mutation before any durable write; rejection leaves the task unchanged.
+
+```ts cordis-catalog
+/** Validate an existing task mutation before any durable write; rejection leaves the task unchanged.
+ * @param request - the mutation about to be written.
+ * @mode serial
+ */
+'schedule/validate-edit'(request: ScheduleEditRequest): void | Promise<void>
+```
+
+Source: [`packages/schedule/schedule/src/types.ts`](../../packages/schedule/schedule/src/types.ts)
 <!-- END GENERATED cordis-surface -->
