@@ -39,7 +39,7 @@ No change to model input or prefix reuse.
 
 ## Known Limitations and Deferred Work
 
-- This configuration plugin does not start a driver or SDK. External profiles cannot use native API activation.
+- This plugin publishes an external Agent through the persistent activation port. The bundled driver is a fake SDK that records Session turns and never calls the native API model.
 - Directory separation does not provide operating-system isolation or establish the provider's authenticated identity. Harness login belongs to the official harness, outside this plugin.
-- Binding reload cancellation, driver activation, MCP permissions, SDK adapters, fallback and profile UI are separate integration stages.
+- MCP permissions, official SDK adapters, fallback and profile UI remain later stages. A missing plugin fails activation instead of falling back to the native API.
 - Claude uses the official Agent SDK; Codex uses the official app-server through the existing managed process path. Neither is imported or launched here.

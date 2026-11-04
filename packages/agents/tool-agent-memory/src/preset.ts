@@ -40,8 +40,9 @@ export function apply(ctx: Context, config: Config): void {
     return { ...result, sections: [...result.sections, { name: 'persistent-agent:memories', interpolate: false, text }] }
   })
   ctx.on('agent/created', async ({ agent }) => {
-    const selection = await ctx.persistentAgents.selection(id)
     await ctx.persistentAgents.bind(agent.id, id)
-    agent.model.select(selection)
+    const profile = ctx.persistentAgents.get(id)
+    if (profile.runtime !== 'native') return
+    agent.model.select(await ctx.persistentAgents.selection(id))
   })
 }
