@@ -43,5 +43,5 @@ No change to model input or prefix reuse.
 - Directory separation does not provide operating-system isolation or establish the provider's authenticated identity. Harness login belongs to the official harness, outside this plugin.
 - Step tools are the already admitted memory, mailbox, routine, and table calls. Native file, shell, network, computer use, and other MCP servers are refused. A call with no DSH approval flow ends as `permission_required` and opens no window.
 - Codex reaches the same bridge on `127.0.0.1`. The ephemeral credential stays in memory and the child environment, never in the URL, history, or harness config. The bridge closes when the step or the account ends.
-- Official SDK adapters, fallback, and profile UI remain later stages. A missing plugin fails activation instead of falling back to the native API.
-- Claude uses the official Agent SDK; Codex uses the official app-server through the existing managed process path. Neither is imported or launched here.
+- Fallback and profile UI remain later stages. A missing plugin fails activation instead of falling back to the native API.
+- `createClaudeSdk` is the Claude adapter and is not the bundled driver. Tests inject a fake factory. Without one, a lazy import fails closed before any network call. Codex stays unavailable and partial because official hidden spawn is still open. The adapter does not read harness credentials.

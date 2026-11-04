@@ -7,7 +7,7 @@ import Gateway from '@deepseek-ai/dsh-api-gateway'
 import Query from '@deepseek-ai/dsh-session-query-sqlite'
 import { appendPluginRecord, pluginRecordOf, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import { createUserMessage, MessageId } from '@deepseek-ai/dsh-llm'
-import type {} from '@deepseek-ai/dsh-experimental-agent-external-runtime'
+import type { SessionSidecar } from '@deepseek-ai/dsh-experimental-agent-external-runtime'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { harness, inherited } from '../../agent-registry/tests/harness.ts'
@@ -607,4 +607,40 @@ it('cancels the live turn when a later tool call sees an inactive account', asyn
   expect(reason, JSON.stringify(reason)).toMatchObject({
     kind: 'aborted', reason: { kind: 'disposed' },
   })
+})
+
+it('stores a captured claude session and ignores a placeholder or an empty id', async () => {
+  const f = await fixture()
+  const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  const captured = '11111111-1111-4111-8111-111111111111'
+  service.sdk = {
+    run: (input) => {
+      service.calls.push(input)
+      if (input.sdkSessionId.startsWith('fake:')) return Promise.resolve({ text: 'opened', sdkSessionId: captured })
+      if (service.calls.length === 2) return Promise.resolve({ text: 'empty', sdkSessionId: '' })
+      if (service.calls.length === 3) return Promise.resolve({ text: 'placeholder', sdkSessionId: 'fake:other' })
+      return Promise.resolve({ text: 'kept', sdkSessionId: captured })
+    },
+  }
+  const sessionId = SessionId(`ext-capture-${f.profile.id}`)
+  const handle = await f.open(sessionId)
+  handle.agent.followup(prompt('hello'))
+  await handle.agent.whenIdle()
+  handle.agent.followup(prompt('blank'))
+  await handle.agent.whenIdle()
+  handle.agent.followup(prompt('placeholder'))
+  await handle.agent.whenIdle()
+  handle.agent.followup(prompt('same'))
+  await handle.agent.whenIdle()
+  await handle.dispose()
+  const again = await f.open(sessionId)
+  onTestFinished(() => again.dispose())
+  again.agent.followup(prompt('cold'))
+  await again.agent.whenIdle()
+  expect(service.calls[0]).toMatchObject({ cwd: f.workspace, configDirectory: f.home, sdkSessionId: `fake:${sessionId}` })
+  expect(service.calls[1]?.sdkSessionId).toBe(captured)
+  expect(service.calls.at(-1)?.sdkSessionId).toBe(captured)
+  const records = events(again.agent).map(event => pluginRecordOf(event)).flatMap(record => record === undefined ? [] : [record.data])
+  expect(records.map(record => (record as SessionSidecar).sdkSessionId)).toEqual([`fake:${sessionId}`, captured])
+  expect(JSON.stringify(events(again.agent))).not.toContain(f.home)
 })

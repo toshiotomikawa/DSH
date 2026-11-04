@@ -6,3 +6,12 @@ export class HarnessBindingError extends Error {
     this.name = 'HarnessBindingError'
   }
 }
+
+/** Sanitized adapter failure. The message is the code only. */
+export class HarnessAdapterError extends Error {
+  /** @param code - failure identity with no path, environment entry, or SDK payload. */
+  constructor(readonly code: 'sdk_unavailable' | 'runtime_partial' | 'session_unavailable' | 'process_failed' | 'result_invalid') {
+    super(`External harness: ${code}`)
+    this.name = 'HarnessAdapterError'
+  }
+}

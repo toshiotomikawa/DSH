@@ -39,6 +39,10 @@ export interface ExternalTurnInput {
   readonly runtime: 'claude-sdk' | 'codex-sdk'
   /** Step-local tool bridge. Closed when the step ends. */
   readonly tools: TurnToolBridge
+  /** Session workspace. Absent on the recording fake. */
+  readonly cwd?: string | undefined
+  /** Bound harness directory. The adapter may put it in the child environment only. */
+  readonly configDirectory?: string | undefined
 }
 
 /** Replacement for an official SDK. The default records text and calls nothing else. */
@@ -46,9 +50,9 @@ export interface ExternalSdk {
   /**
    * Run one step without a native provider.
    * @param input - claimed messages and the abort signal.
-   * @returns assistant text.
+   * @returns assistant text and, when the adapter captured one, the official session id.
    */
-  run(input: ExternalTurnInput): Promise<{ readonly text: string }>
+  run(input: ExternalTurnInput): Promise<{ readonly text: string; readonly sdkSessionId?: string }>
 }
 
 const RECORD = 'plugin:agent-external-runtime/session' as const
@@ -187,7 +191,7 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
           ownerId, agentId, sessionId: session.id, runtime, revision: binding.revision, sdkSessionId,
         })
       }
-      agent.arm(sdkSessionId, ownerId)
+      agent.arm(sdkSessionId, ownerId, binding.configDirectory)
       const dispose = async (): Promise<void> => {
         agent.closeAdmission()
         agent.cancel({ kind: 'disposed' })
@@ -383,6 +387,10 @@ class ExternalAgent implements Agent {
   private activity: Activity | undefined
   private sdkSessionId = ''
   private ownerId = 'owner'
+  private configDirectory = ''
+  private sessionRecord: SessionSidecar = {
+    ownerId: 'owner', agentId: '', sessionId: '', runtime: 'claude-sdk', revision: 1, sdkSessionId: '',
+  }
 
   constructor(
     private readonly host: Context,
@@ -401,10 +409,13 @@ class ExternalAgent implements Agent {
   get id(): SessionId { return this.session.id }
 
   /** Called after publication so a listener can queue work that starts immediately after. */
-  arm(sdkSessionId: string, ownerId: string): void {
+  arm(sdkSessionId: string, ownerId: string, configDirectory: string): void {
     this.sdkSessionId = sdkSessionId
     this.published = true
     this.ownerId = ownerId
+    this.configDirectory = configDirectory
+    // Publish appends the sidecar before arm, so the cast sees that record.
+    this.sessionRecord = sidecarOf(this.session) as SessionSidecar
     this.scope.ctx.effect(() => this.host.on('accounts/ended', (accountId) => {
       if (accountId === ownerId) this.cancel({ kind: 'disposed' })
     }))
@@ -515,8 +526,15 @@ class ExternalAgent implements Agent {
           const result = await this.activation.sdk.run({
             sessionId: this.session.id, turn, step, messages: batch, instructions: this.instructions,
             signal: activity.abort.signal, sdkSessionId: this.sdkSessionId, runtimeModel: this.runtimeModel,
-            runtime: this.runtime, tools: bridge,
+            runtime: this.runtime, tools: bridge, cwd: this.session.header.cwd, configDirectory: this.configDirectory,
           })
+          const captured = result.sdkSessionId
+          if (captured !== undefined && captured.length > 0 && captured !== this.sdkSessionId && !captured.startsWith('fake:')) {
+            const next = { ...this.sessionRecord, sdkSessionId: captured }
+            appendPluginRecord(this.session, RECORD, next)
+            this.sessionRecord = next
+            this.sdkSessionId = captured
+          }
           activity.abort.signal.throwIfAborted()
           this.session.append('assistant/message', {
             turn, step, stream: [],
