@@ -25,7 +25,7 @@ kind: "package-reference"
 
 ## 浏览器账户入口
 
-`@deepseek-ai/dsh-agent-runtime/account-web` 提供 `/account/login`、`/account/access` 和仅接受 POST 的 `/account/logout`。登录仅通过有大小上限的同源表单 POST 接收入口令牌，并交换为不透明的 HttpOnly、SameSite=Strict 会话 cookie（TLS 下带 Secure）；入口令牌既不返回也不保留。服务器只在内存中保存会话凭据的哈希，并绑定监听器来源和账户。`sessionMinutes` 默认 720（1–10080），`maxSessions` 默认 1000（1–100000）。到期、退出、账户停用或归档以及插件卸载会结束相关账户的 Peer；由于 Connection 每个账户共享一个 Peer，该账户的其他浏览器会话会重新连接。重启后需要重新登录。登录会清除旧的 owner cookie；退出不会自动恢复 owner 权限。
+`@deepseek-ai/dsh-agent-runtime/account-web` 提供 `/account/login`、`/account/access` 和仅接受 POST 的 `/account/logout`。登录仅通过有大小上限的同源表单 POST 接收入口令牌，并交换为不透明的 HttpOnly、SameSite=Strict 会话 cookie（TLS 下带 Secure）；入口令牌既不返回也不保留。服务器只在内存中保存会话凭据的哈希，并绑定监听器来源和账户。`sessionMinutes` 默认 720（1–10080），`maxSessions` 默认 1000（1–100000）。到期、退出、账户停用或归档以及插件卸载会结束相关账户的 Peer；由于 Connection 每个账户共享一个 Peer，该账户的其他浏览器会话会重新连接。重启后需要重新登录。全局固定窗口在每个 `loginWindowSeconds`（默认 60，范围 1–3600）内允许 `loginMaxFailures` 次认证失败（默认 20，范围 1–100000）。达到上限后，无论令牌是否有效，匿名登录均在认证前返回静态 429；有效会话仍可访问。成功登录不会重置计数。插件只保留两个数值，不追踪 IP；其他新登录也会受到临时限制。登录会清除旧的 owner cookie；退出不会自动恢复 owner 权限。
 
 授权页面调用与 `agent_grant_access`、`agent_revoke_access`、`agent_list_grants` 相同的 `accountGrants.grant`、`revoke`、`list` 服务。调用方来自已认证账户，绝不来自表单的 owner id。目标通过 id 输入，不公开账户目录。页面只列出向外授予的访问权限，并在 POST 前确认撤销。按浏览器语言选择英语或葡萄牙语，其他语言使用英语。这些页面不调用模型，不运行智能体回合，也不使用持久浏览器存储。
 

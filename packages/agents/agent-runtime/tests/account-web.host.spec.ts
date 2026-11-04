@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile, readdir } from 'node:fs/promis
 import { join } from 'node:path'
 import { request as httpRequest, type IncomingHttpHeaders } from 'node:http'
 import { request as httpsRequest } from 'node:https'
+import { Socket } from 'node:net'
 import { pathToFileURL } from 'node:url'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
@@ -25,7 +26,7 @@ import * as AccountAuth from '../src/account-auth.ts'
 import * as Web from '../src/account-web.ts'
 import { copyFor, escapeHtml } from '../src/account-web-page.ts'
 
-async function fixture(maxSessions = 1000, tls = false) {
+async function fixture(maxSessions = 1000, tls = false, loginMaxFailures = 20, now?: () => number, defaults = false) {
   await mkdir('.dsh-test', { recursive: true })
   const root = await mkdtemp(join(process.cwd(), '.dsh-test/account-web-'))
   onTestFinished(() => rm(root, { recursive: true, force: true }))
@@ -38,7 +39,8 @@ async function fixture(maxSessions = 1000, tls = false) {
   await createSessionTestController(ctx, { defaultModelSelection: () => inherited, cwd: root })
   await ctx.plugin(Loader)
   Object.assign(ctx.loader.builtins, { include: Include, http: HttpServer, credentials: LocalCredentials,
-    connection: Connection, accounts: Accounts, auth: AccountAuth, owners: Owners, web: Web, frontend: Frontend })
+    connection: Connection, accounts: Accounts, auth: AccountAuth, owners: Owners, web: { ...Web, apply: (ctx, config) =>
+      defaults ? Web.apply(ctx) : Web.apply(ctx, config, now) } satisfies typeof Web, frontend: Frontend })
   const distIndex = join(root, 'index.html')
   await writeFile(distIndex, '<head></head><body>account shell</body>')
   const certificate = tls ? await materializeTlsFixture(join(root, 'tls')) : undefined
@@ -55,7 +57,7 @@ async function fixture(maxSessions = 1000, tls = false) {
 - name: cordis:auth
 - id: account-web
   name: cordis:web
-  config: {sessionMinutes: 1, maxSessions: ${maxSessions}}
+  config: {sessionMinutes: 1, maxSessions: ${maxSessions}, loginMaxFailures: ${loginMaxFailures}, loginWindowSeconds: 2}
 - name: cordis:frontend
   config: {distIndex: '${distIndex}', loginPath: '/account/login'}
 `)
@@ -89,7 +91,8 @@ it('exchanges the token without echo, renders and calls as the account, and remo
   const page = await f.call('/account/login', { headers: { 'accept-language': 'pt-BR' } })
   const html = await page.text()
   expect(html).toMatchSnapshot()
-  expect(html).toContain('Entrar na conta')
+  expect(html).toContain('<title>Entrar na conta</title>')
+  expect(html).not.toMatch(/<nav|account\/logout|account\/access/)
   expect(html).toContain('type="password"')
   expect(html).toContain('autocomplete="off"')
   expect(html).not.toMatch(/<script|localStorage|sessionStorage/)
@@ -212,6 +215,7 @@ it('invalidates sessions on disable, expiry, capacity, replacement and unload', 
   expect((await f.post('/account/login', { token: b.token })).status).toBe(503)
   const second = await f.login(a.token, first.cookie)
   expect((await f.call('/api/absent', { headers: { cookie: first.cookie } })).status).toBe(401)
+  await f.ctx.accounts.disable(b.account.id)
   await f.ctx.accounts.disable(a.account.id)
   expect((await f.call('/api/absent', { headers: { cookie: second.cookie } })).status).toBe(401)
   expect((await f.post('/account/login', { token: a.token })).status).toBe(401)
@@ -260,6 +264,8 @@ it('marks account cookies Secure on a real TLS listener and binds them to its or
   if (cookie === undefined) throw new Error('TLS login did not issue a cookie')
   expect(cookie).toContain('; Secure')
   expect(cookie).not.toContain(a.token)
+  const ownerLogin = await send('/account/login', new URLSearchParams({ token: a.token }).toString(), 'dsh-auth-old=value')
+  expect(ownerLogin.headers['set-cookie']?.[0]).toContain('; Secure')
   const value = cookie.split(';')[0] ?? ''
   expect((await send('/', undefined, value)).status).toBe(200)
   expect(f.ctx.connection.admit({ headers: { host: 'localhost:4096', cookie: value } })).toEqual({ rejection: 401 })
@@ -323,4 +329,58 @@ it('rechecks the account after a streamed form and rejects a session invalidated
   })
   expect(await answer).toBe(303)
   expect(f.ctx.accountGrants.list(a.account.id)).toEqual([])
+})
+
+it('bounds failed authentication globally with an injected fixed window, preserving valid sessions', async () => {
+  let time = 1000
+  const f = await fixture(1000, false, 2, () => time)
+  const a = await f.mint('A')
+  const { cookie } = await f.login(a.token)
+  const authenticate = vi.spyOn(f.ctx.accounts, 'authenticate')
+  onTestFinished(() => authenticate.mockRestore())
+  expect((await f.post('/account/login', { token: 'bad' })).status).toBe(401)
+  await f.login(a.token)
+  expect((await f.post('/account/login', { token: 'another-bad' })).status).toBe(401)
+  authenticate.mockClear()
+  const blocked = await f.post('/account/login', { token: a.token })
+  expect(blocked.status).toBe(429)
+  const body = await blocked.text()
+  expect(body).toContain('Too many sign in attempts. Try again later.')
+  expect(body).not.toContain(a.token)
+  expect(await (await f.post('/account/login', { token: 'bad' }, 'dsh-account-session=invalid')).text()).toBe(body)
+  expect((await f.post('/account/login', { token: 'bad' }, cookie)).status).toBe(303)
+  expect((await f.call('/account/access', { headers: { cookie } })).status).toBe(200)
+  expect((await f.call('/', { headers: { cookie } })).status).toBe(200)
+  time = 2999
+  expect((await f.post('/account/login', { token: a.token })).status).toBe(429)
+  expect(authenticate).not.toHaveBeenCalled()
+  time = 3000
+  await f.login(a.token)
+  expect(authenticate).toHaveBeenCalledExactlyOnceWith(a.token)
+  expect((await f.post('/account/login', { token: 'bad' })).status).toBe(401)
+  time = 5000
+  authenticate.mockClear()
+  const parallel = await Promise.all(Array.from({ length: 4 }, () => f.post('/account/login', { token: 'bad' })))
+  expect(parallel.map(response => response.status).sort()).toEqual([401, 401, 429, 429])
+  expect(authenticate).toHaveBeenCalledTimes(2)
+})
+
+it('supports omitted plugin limits and refuses a request without authority', async () => {
+  const f = await fixture(1000, false, 20, undefined, true)
+  const a = await f.mint('A')
+  const { cookie } = await f.login(a.token)
+  expect(f.ctx.connection.admit({ headers: { cookie } })).toEqual({ rejection: 403 })
+  // HTTP/1.0 may omit Host; the session lookup reads the origin first and refuses it.
+  const { hostname, port } = new URL(f.origin)
+  const raw = await new Promise<string>((resolve, reject) => {
+    const socket = new Socket()
+    socket.connect(Number(port), hostname, () => {
+      socket.write(`GET /account/login HTTP/1.0\r\nCookie: ${cookie}\r\n\r\n`)
+    })
+    const chunks: Buffer[] = []
+    socket.on('data', (chunk: Buffer) => { chunks.push(chunk) })
+    socket.on('end', () => { resolve(Buffer.concat(chunks).toString('utf8')) })
+    socket.on('error', reject)
+  })
+  expect(raw).toContain(' 403 ')
 })

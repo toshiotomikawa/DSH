@@ -19,11 +19,17 @@ export interface Config {
   sessionMinutes?: number
   /** Maximum concurrent browser sessions, defaults to 1000. */
   maxSessions?: number
+  /** Failed logins allowed per global window, defaults to 20. */
+  loginMaxFailures?: number
+  /** Fixed login window in seconds, defaults to 60. */
+  loginWindowSeconds?: number
 }
 /** Validate deployment limits before registering any HTTP routes. */
 export const Config: z<Config> = z.object({
   sessionMinutes: z.natural().min(1).max(10_080).default(720),
   maxSessions: z.natural().min(1).max(100_000).default(1000),
+  loginMaxFailures: z.natural().min(1).max(100_000).default(20),
+  loginWindowSeconds: z.natural().min(1).max(3600).default(60),
 })
 
 const COOKIE = 'dsh-account-session'
@@ -64,10 +70,14 @@ function exactFields(fields: URLSearchParams, names: readonly string[]): boolean
  * Register server-rendered account pages and the session principal source.
  * Sessions retain only a credential hash and are discarded when this plugin unloads.
  * @param ctx - account services and HTTP carrier.
- * @param config - optional session limits; defaults apply when absent.
+ * @param config - optional session and login limits; defaults apply when absent.
+ * @param now - injected clock in milliseconds, defaults to the system clock.
  */
-export function apply(ctx: Context, config: Config = {}): void {
-  const limits = { sessionMinutes: config.sessionMinutes ?? 720, maxSessions: config.maxSessions ?? 1000 }
+export function apply(ctx: Context, config: Config = {}, now: () => number = () => Date.now()): void {
+  const limits = { sessionMinutes: config.sessionMinutes ?? 720, maxSessions: config.maxSessions ?? 1000,
+    loginMaxFailures: config.loginMaxFailures ?? 20, loginWindowSeconds: config.loginWindowSeconds ?? 60 }
+  let loginWindowStart = now()
+  let loginFailures = 0
   const sessions = new Map<string, Session>()
   const secure = ctx.webServer.protocol === 'https:'
   const originOf = (request: ConnectionTrustRequest) => `${ctx.webServer.protocol}//${header(request, 'host') ?? ''}`
@@ -112,6 +122,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   }, 'account-web: ephemeral sessions')
 
   const handle = async (request: IncomingMessage, response: ServerResponse) => {
+    const session = readSession(request)
     const copy = copyFor(request.headers['accept-language'])
     response.setHeader('cache-control', 'no-store')
     response.setHeader('referrer-policy', 'no-referrer')
@@ -119,15 +130,15 @@ export function apply(ctx: Context, config: Config = {}): void {
     response.setHeader('content-security-policy', "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
     const html = (body: string, status = 200) => {
       response.writeHead(status, { 'content-type': 'text/html; charset=utf-8' })
-      response.end(request.method === 'HEAD' ? undefined : page(copy, body))
+      response.end(request.method === 'HEAD' ? undefined : page(copy, body, session !== undefined))
     }
     const redirect = (path: string) => { response.writeHead(303, { location: path }); response.end() }
     if (ctx.connection.requestRejection(request) === 403) { html(copy.refused, 403); return }
-    const path = new URL(request.url ?? '/', 'http://dsh.invalid')
+    const path = new URL(request.url as string, 'http://dsh.invalid')
     if (path.search !== '' && (path.pathname !== '/account/access' || [...path.searchParams.keys()].some(key => key !== 'revoke'))) {
       html(copy.invalid, 400); return
     }
-    if (!['GET', 'HEAD', 'POST'].includes(request.method ?? '')) {
+    if (!['GET', 'HEAD', 'POST'].includes(request.method as string)) {
       response.setHeader('allow', 'GET, HEAD, POST'); html(copy.invalid, 405); return
     }
     if (request.method === 'POST' && header(request, 'origin') !== originOf(request)) { html(copy.refused, 403); return }
@@ -139,9 +150,15 @@ export function apply(ctx: Context, config: Config = {}): void {
       if (request.method !== 'POST') { login(); return }
       const fields = await form(request)
       if (fields === undefined || !exactFields(fields, ['token'])) { html(copy.invalid, 400); return }
-      const account = ctx.accounts.authenticate((fields.get('token') ?? '').trim())
+      const time = now()
+      if (time >= loginWindowStart + limits.loginWindowSeconds * 1000) { loginWindowStart = time; loginFailures = 0 }
+      if (loginFailures >= limits.loginMaxFailures) {
+        if (session !== undefined) { redirect('/'); return }
+        html(copy.limited, 429); return
+      }
+      const account = ctx.accounts.authenticate((fields.getAll('token')[0] as string).trim())
       fields.delete('token')
-      if (account === undefined) { login(copy.failed); return }
+      if (account === undefined) { loginFailures++; login(copy.failed); return }
       prune()
       const previous = cookies(request).get(COOKIE)
       if (previous !== undefined) expire(digest(previous))
@@ -158,7 +175,6 @@ export function apply(ctx: Context, config: Config = {}): void {
       response.setHeader('set-cookie', [...cleared, cookie(value)])
       redirect('/'); return
     }
-    const session = readSession(request)
     if (path.pathname === '/account/logout') {
       if (request.method !== 'POST') { response.setHeader('allow', 'POST'); html(copy.invalid, 405); return }
       const credential = cookies(request).get(COOKIE)
@@ -173,9 +189,9 @@ export function apply(ctx: Context, config: Config = {}): void {
     if (request.method === 'POST') {
       const fields = await form(request)
       if (fields === undefined || !exactFields(fields, ['action', 'account_id'])) { html(copy.invalid, 400); return }
-      const target = (fields.get('account_id') ?? '').trim()
-      const action = fields.get('action')
-      if (target === '' || target.length > 256 || target === owner || !['grant', 'revoke'].includes(action ?? '')) { html(copy.invalid, 400); return }
+      const target = (fields.getAll('account_id')[0] as string).trim()
+      const action = fields.getAll('action')[0] as string
+      if (target === '' || target.length > 256 || target === owner || !['grant', 'revoke'].includes(action)) { html(copy.invalid, 400); return }
       // A session may end while its body is streaming; recheck before changing grants.
       if (readSession(request) !== session) { redirect('/account/login'); return }
       if (action === 'revoke') {

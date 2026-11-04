@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`exchanges the token without echo, renders and calls as the account, and removes owner authority 1`] = `
-"<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Acesso aos agentes</title></head><body><nav><a href="/">Abrir aplicativo</a> · <a href="/account/access">Acesso aos agentes</a><form method="post" action="/account/logout"><button>Sair</button></form></nav><main><h1>Entrar na conta</h1>
+"<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Entrar na conta</title></head><body><main><h1>Entrar na conta</h1>
       <form method="post" action="/account/login" autocomplete="off"><label>Token de entrada
       <input type="password" name="token" required maxlength="256" autocomplete="off" spellcheck="false"></label>
       <button>Entrar</button></form></main></body></html>"

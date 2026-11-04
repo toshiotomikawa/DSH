@@ -21,7 +21,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type {} from '@deepseek-ai/dsh-client-connection'
+import type { PeerScope } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 
 /** Stable Cordis plugin name. */
@@ -85,9 +85,9 @@ function bytesBody(bytes: Uint8Array): ReadableStream<Uint8Array> {
  * @param distRoot - absolute dist root directory (resolved by the caller).
  * @param distIndex - absolute path of index.html inside distRoot.
  * @param authorizeIndex - answers an index request before its bytes are read:
- * the response to send instead of the index, or undefined to serve it.
+ * the admitted Peer to render for, or the response to send instead of the index.
  * @param renderIndex - turns the raw index.html body into the served document
- * for the dist root and configured index path.
+ * for the dist root, configured index path and admitted Peer.
  * @returns the dist response; a HEAD response carries the GET status and
  * headers without a body. A file other than the index carries
  * `cache-control: no-cache` and a weak ETag from a SHA-1 of its bytes, and a
@@ -95,8 +95,8 @@ function bytesBody(bytes: Uint8Array): ReadableStream<Uint8Array> {
  */
 async function serveStatic(
   request: Request, distRoot: string, distIndex: string,
-  authorizeIndex: () => Response | undefined,
-  renderIndex: (html: string) => string,
+  authorizeIndex: () => Response | PeerScope,
+  renderIndex: (html: string, peer: PeerScope) => string,
 ): Promise<Response> {
   const target = resolve(normalize(join(distRoot, decodeURIComponent(new URL(request.url).pathname))))
   // Traversal rejection: the target must be distRoot itself (`/`) or stay under
@@ -107,9 +107,9 @@ async function serveStatic(
   let headers: Record<string, string>
   try {
     if (target === distRoot || target === distIndex) {
-      const refusal = authorizeIndex()
-      if (refusal !== undefined) return refusal
-      body = renderIndex(await readFile(distIndex, 'utf8'))
+      const verdict = authorizeIndex()
+      if (verdict instanceof Response) return verdict
+      body = renderIndex(await readFile(distIndex, 'utf8'), verdict)
       headers = { 'content-type': HTML_MIME }
     } else {
       body = await readFile(target)
@@ -158,18 +158,15 @@ export function apply(ctx: Context, config: Config): void {
   }
   ctx.effect(() => ctx.webServer.registerFallback({
     resource: (request, peer) => {
-      let indexPeer = peer
       return serveStatic(request, distRoot, distIndex, () => {
-        if (peer !== undefined) return undefined
+        if (peer !== undefined) return peer
         const refusal = authorizeIndex(request)
         if (refusal !== undefined) return refusal
         const admission = ctx.connection.admit(request)
         if ('rejection' in admission) return new Response(null, { status: admission.rejection })
-        indexPeer = admission.peer
-        return undefined
-      }, (html) => {
-        if (indexPeer === undefined) throw new Error('frontend-static: index requires an admitted Peer')
-        return ctx.webServer.renderIndex(html, indexPeer)
+        return admission.peer
+      }, (html, admitted) => {
+        return ctx.webServer.renderIndex(html, admitted)
           .replace(/<head(?:\s[^>]*)?>/i, open => `${open}<base href="./">`)
       })
     },
