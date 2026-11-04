@@ -10,7 +10,6 @@ import type { SidebarRootInjected, SidebarSectionInjected, UseSectionScroller } 
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { TrackProductEvent } from '@deepseek-ai/dsh-client-product-analytics/client'
 import { HeaderLeadingControls } from '../src/client/HeaderLeadingControls.tsx'
-import { apply as hostApply } from '../src/index.ts'
 
 const owners = new Set<Fiber>()
 afterEach(async () => {
@@ -54,10 +53,6 @@ async function bench(declare = true) {
 }
 
 describe('ui-sidebar apply', () => {
-  it('keeps the host Loader entry inert', () => {
-    expect(hostApply).not.toThrow()
-  })
-
   it('declares only the services it uses', () => {
     expect(inject).toEqual(['slots', 'layout', 'uiWorkspace', 'locale', 'shortcuts'])
   })

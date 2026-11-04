@@ -340,6 +340,48 @@ The `ctx.agentRoutines` service: opens the routine domain and wires the engine t
 
 Source: [`packages/agents/agent-routine/src/index.ts`](../../packages/agents/agent-routine/src/index.ts)
 
+<a id="ctxagentsidebar--agentsidebar"></a>
+
+### `ctx.agentSidebar` — `AgentSidebar`
+
+Thin Remote adapter; the registry owns validation, isolation and persistence.
+
+```ts cordis-catalog
+/** List only display fields, never instructions or provider configuration.
+ * @param signal - carrier cancellation.
+ * @returns account-scoped agents and sections.
+ */
+@Remote list(signal: AbortSignal): AgentSidebarSnapshot
+
+/** Create a section in the current account.
+ * @param name - display name, 1 to 40 characters.
+ * @returns resolves after the registry commits.
+ */
+@Remote async createSection(name: string): Promise<void>
+
+/** Rename a section in the current account.
+ * @param id - visible section id.
+ * @param name - replacement display name.
+ * @returns resolves after the registry commits.
+ */
+@Remote async renameSection(id: string, name: string): Promise<void>
+
+/** Remove grouping while keeping agents and their conversations.
+ * @param id - visible section id.
+ * @returns resolves after the registry commits.
+ */
+@Remote async deleteSection(id: string): Promise<void>
+
+/** Move an agent, or remove its grouping with null.
+ * @param id - visible agent id.
+ * @param sectionId - visible section id, or null to ungroup.
+ * @returns resolves after the registry commits.
+ */
+@Remote async moveAgent(id: string, sectionId: string | null): Promise<void>
+```
+
+Source: [`packages/client/ui-sidebar/src/index.ts`](../../packages/client/ui-sidebar/src/index.ts)
+
 <a id="ctxpersistentagents--persistentagents"></a>
 
 ### `ctx.persistentAgents` — `PersistentAgents`

@@ -18,7 +18,7 @@
       "path": "../ui-primitives"
     },
     {
-      "path": "../ui-sidebar"
+      "path": "../ui-sidebar/tsconfig.client.json"
     },
     {
       "path": "../ui-slots"
