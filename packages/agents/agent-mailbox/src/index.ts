@@ -56,17 +56,43 @@ export interface MailboxTarget {
  * implementation; this package never decides visibility or authority itself.
  */
 export interface MailboxDirectory {
-  /** Identity of the authenticated live caller. */
+  /**
+   * Identity of the authenticated live caller.
+   * @param agent - the live caller.
+   * @returns the target that identifies the caller.
+   */
   describe(agent: Agent): MailboxTarget
-  /** Targets the caller may address, as a snapshot. */
+  /**
+   * Targets the caller may address, as a snapshot.
+   * @param caller - the live caller.
+   * @returns the visible targets.
+   */
   visible(caller: Agent): readonly MailboxTarget[]
-  /** Any known target, used to route an already committed delivery. */
+  /**
+   * Any known target, used to route an already committed delivery.
+   * @param agentId - stable agent id.
+   * @returns the target, or undefined when unknown.
+   */
   find(agentId: string): MailboxTarget | undefined
-  /** Whether the caller may interrupt this target. */
+  /**
+   * Whether the caller may interrupt this target.
+   * @param caller - the live caller.
+   * @param target - the agent to interrupt.
+   * @returns true when the interruption is allowed.
+   */
   mayInterrupt(caller: Agent, target: MailboxTarget): boolean
-  /** A fresh conversation bound to the same agent, optionally titled. */
+  /**
+   * A fresh conversation bound to the same agent, optionally titled.
+   * @param target - the agent that owns the conversation.
+   * @param title - optional conversation title.
+   * @returns the id of the new conversation.
+   */
   thread(target: MailboxTarget, title?: string): SessionId
-  /** Bind an unopened conversation to its durable owner before factory setup. */
+  /**
+   * Bind an unopened conversation to its durable owner before factory setup.
+   * @param target - the owning agent.
+   * @param sessionId - the unopened conversation.
+   */
   prepare?(target: MailboxTarget, sessionId: SessionId): Promise<void>
 }
 
@@ -417,7 +443,8 @@ export class AgentMailbox {
     // oxlint-disable-next-line typescript/no-non-null-assertion
     const original = this.mustMessage(input.replyToMessageId!)
     const delivery = original.deliveries.find(item => item.recipientId === sender.id)
-    if (delivery === undefined) throw new Error('Only a recipient of the original message can reply to it')
+    // A message the caller cannot answer must look exactly like a missing one.
+    if (delivery === undefined) throw new Error(`Unknown message: ${original.id}`)
     if (this.hasReply(original.id, sender.id)) throw new Error('This request was already answered')
     const message: Message = {
       id: randomUUID(),

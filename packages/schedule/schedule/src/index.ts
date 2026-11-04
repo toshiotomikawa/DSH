@@ -29,6 +29,7 @@ export { scheduleDomain } from './storage.ts'
 export type { ScheduleTask } from './storage.ts'
 export type { RecurringOccurrence } from './domain.ts'
 export { formatScheduleLocalTime } from './domain.ts'
+export { createScheduleRecord } from './update.ts'
 export {
   MIN_EVERY_INTERVAL_SECONDS,
   MAX_TITLE_LENGTH,

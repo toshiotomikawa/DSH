@@ -269,31 +269,56 @@ describe('Session Controller access', () => {
     ])
   })
 
-  it('keeps gateway permission checks while allowing an image referenced only by another Session', async () => {
-    const { ctx, hidden } = await harness()
+  it('refuses an image only another Session references, with the same failure as an absent one (2)', async () => {
+    const { ctx, shared, hidden } = await harness()
     await ctx.plugin(TypertGatewayService)
+    // Account ownership is what makes the Session, rather than the store, the image scope.
+    ctx.provide('sessionOwners', {} as never)
     const bindings = guestPolicy(ctx)
-    const ref = {
+    const foreign = {
       attachmentId: AttachmentId(`sha256:${'ab'.repeat(32)}`),
       mediaType: 'image/png' as const, bytes: 2, width: 1, height: 1,
     }
+    const own = {
+      attachmentId: AttachmentId(`sha256:${'cd'.repeat(32)}`),
+      mediaType: 'image/png' as const, bytes: 2, width: 1, height: 1,
+    }
     hidden.session.append('user/message', createUserMessage({
-      content: [{ type: 'image', attachment: ref }], source: { kind: 'user' },
+      content: [{ type: 'image', attachment: foreign }], source: { kind: 'user' },
     }), { surfaceOp: 'append' })
-    const readImage = vi.fn(() => Promise.resolve({ ref, data: Uint8Array.of(1, 2) }))
+    shared.session.append('user/message', createUserMessage({
+      content: [{ type: 'image', attachment: own }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    const readImage = vi.fn((ref: typeof own) => Promise.resolve({ ref, data: Uint8Array.of(1, 2) }))
     ctx.attachments.readImage = readImage
-    const read = (sessionId: SessionId): Promise<unknown> => guestCall(ctx, 'attachment', {
-      request: { sessionId, attachment: ref },
+    const read = (attachment: typeof own): Promise<unknown> => guestCall(ctx, 'attachment', {
+      request: { sessionId: SHARED, attachment },
     })
-    await expect(read(SHARED)).rejects.toMatchObject({ code: 'remote-access/denied' })
+    await expect(read(own)).rejects.toMatchObject({ code: 'remote-access/denied' })
     expect(readImage).not.toHaveBeenCalled()
     bindings.push({
       role: { name: 'test:attachment-reader', resource: 'session', actions: ['session/attachment'] },
       resource: { kind: 'session', id: SHARED },
     })
-    await expect(read(SHARED)).resolves.toEqual({ attachment: ref, data: 'AQI=' })
-    expect(readImage).toHaveBeenCalledExactlyOnceWith(ref)
-    await expect(read(PRIVATE)).rejects.toMatchObject({ code: 'remote-access/denied' })
+    await expect(read(own)).resolves.toEqual({ attachment: own, data: 'AQI=' })
+    expect(readImage).toHaveBeenCalledExactlyOnceWith(own)
+    // A known hash that this Session never logged must fail exactly like an absent image.
+    const refuse = (attachment: typeof own): Promise<{ code: string; details: { reason: string }; message: string }> =>
+      read(attachment)
+        .then(() => { throw new Error('unexpected image read') })
+        .catch((error: unknown) => error as { code: string; details: { reason: string }; message: string })
+    const foreignRead = await refuse(foreign)
+    const absentRead = await refuse({ ...own, attachmentId: AttachmentId(`sha256:${'ef'.repeat(32)}`) })
+    expect(foreignRead).toMatchObject({ code: 'session/attachment-invalid', details: { reason: 'ATTACHMENT_NOT_FOUND' } })
+    expect(absentRead).toMatchObject({
+      message: foreignRead.message,
+      code: 'session/attachment-invalid',
+      details: { reason: 'ATTACHMENT_NOT_FOUND' },
+    })
+    expect(readImage).toHaveBeenCalledTimes(1)
+    // The gateway still refuses a Session the caller has no role for, before any read.
+    await expect(guestCall(ctx, 'attachment', { request: { sessionId: PRIVATE, attachment: foreign } }))
+      .rejects.toMatchObject({ code: 'remote-access/denied' })
     expect(readImage).toHaveBeenCalledTimes(1)
   })
 

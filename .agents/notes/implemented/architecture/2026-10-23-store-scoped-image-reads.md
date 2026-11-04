@@ -18,6 +18,8 @@ The response preserves the supplied reference. Its optional `name` and `original
 
 This rule narrows the readers covered by [Session observations](2026-08-25-session-observations-and-projection-owned-client-state.md) and the [history transport activation policy](2026-08-18-session-history-and-event-transport.md). [Workspace file reads](2026-09-05-workspace-files-service.md) keep their own filesystem authorization.
 
+Under account ownership this store-scoped rule is superseded by [Session-scoped image reads](2026-11-04-session-scoped-image-reads.md); the zero-history read path described here remains in force only where no ownership sidecar is mounted.
+
 ## Alternatives considered
 
 **Keep a Session-to-image map or projection.** An index removes repeated scans but preserves an access restriction the product does not require, adding derivation, lifetime, and invalidation work.

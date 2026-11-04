@@ -7,7 +7,11 @@ import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import type { RemoteAccessBinding, RemoteAccessRole } from '@deepseek-ai/dsh-api-remote-access'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 
-const metadata = z.object({ sessionId: z.string().min(1), ownerId: z.string().min(1).optional() }).strict()
+const metadata = z.object({
+  sessionId: z.string().min(1),
+  ownerId: z.string().min(1).optional(),
+  denied: z.literal(true).optional(),
+}).strict()
 const ownership = defineDomain({ name: 'session_owners', version: 1, layout: 'per-record', invalidRecords: 'quarantine', tables: {
   sessions: domainTable<string, z.infer<typeof metadata>>(metadata),
 } })
@@ -33,6 +37,8 @@ export class SessionOwners extends Service {
   constructor(ctx: Context, private readonly domain: Domain<typeof ownership>) { super(ctx, 'sessionOwners') }
 
   /** Persist the owner of a newly created or explicitly bound Session.
+   * A failed write leaves the Session denied to every account instead of
+   * keeping the owner the creation event adopted first.
    * @param sessionId - Session identity from trusted Host code.
    * @param ownerId - account id from the connection or persistent agent.
    * @returns after serialized durable publication.
@@ -40,7 +46,13 @@ export class SessionOwners extends Service {
   assign(sessionId: SessionId, ownerId: string): Promise<void> {
     const record = metadata.parse({ sessionId, ownerId })
     return this.enqueue(async () => {
-      await this.domain.table('sessions').put(this.key(sessionId), record)
+      try {
+        await this.domain.table('sessions').put(this.key(sessionId), record)
+      } catch (error) {
+        await this.domain.table('sessions').put(this.key(sessionId), { sessionId, denied: true }).catch(() => {})
+        this.ctx.remoteAccess.invalidate()
+        throw error
+      }
       this.ctx.remoteAccess.invalidate()
     })
   }
@@ -64,7 +76,7 @@ export class SessionOwners extends Service {
    */
   sessionsOf(ownerId: string): SessionId[] {
     return [...this.domain.table('sessions').entries()].flatMap(([, record]) =>
-      (record.ownerId ?? 'owner') === ownerId ? [SessionId(record.sessionId)] : [])
+      record.denied === true || (record.ownerId ?? 'owner') !== ownerId ? [] : [SessionId(record.sessionId)])
   }
 
   /** Read the owner fixed for a stored Session.

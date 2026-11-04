@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-11-04-session-scoped-image-reads.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-11-04-session-scoped-image-reads.md
+/agent-note-image-reads-stay-inside-the-addressed-session-under-account-ownership:
+  en: ba10246d15047a53
+  zh: bfd2ec8edf9f01b2
+/agent-note-image-reads-stay-inside-the-addressed-session-under-account-ownership/problem:
+  en: a5d5af81697a89e0
+  zh: 7558ae80aa7fc776
+/agent-note-image-reads-stay-inside-the-addressed-session-under-account-ownership/decision:
+  en: a608835b37e148aa
+  zh: bfe4600aa207be2e
+/agent-note-image-reads-stay-inside-the-addressed-session-under-account-ownership/alternatives-considered:
+  en: c8f3155cf68d645a
+  zh: cad85e0339dee9b6
+/agent-note-image-reads-stay-inside-the-addressed-session-under-account-ownership/consequences:
+  en: 886d740b54b1ec75
+  zh: aeb324bc36d60895
+/agent-note-image-reads-stay-inside-the-addressed-session-under-account-ownership/verification:
+  en: 581b1f0c0700c54c
+  zh: c9b6159abc14c633

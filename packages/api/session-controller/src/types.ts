@@ -336,7 +336,7 @@ export interface SessionPromptValue {
 
 /** Durable image read request. */
 export interface SessionAttachmentRequest {
-  /** Gateway permission scope only; neither Session existence nor its image references are checked. */
+  /** Session whose own log must reference the image; the gateway checks this Session's permission scope. */
   readonly sessionId: SessionId
   readonly attachment: ImageAttachmentRef
 }

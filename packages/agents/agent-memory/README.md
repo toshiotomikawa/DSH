@@ -33,4 +33,10 @@ The prompt prefix stays stable while the profile and essential selection are unc
 
 ## Known Limitations and Deferred Work
 
-No automatic model fallback, provider-account switching, permission elevation, mailbox or routine execution. Owner metadata is inherited from the profile; account authentication and sharing are deferred. Tool access follows the live session-to-agent binding. Coordination is process-local, matching storage-domain. Session agentId metadata lives in the agents domain rather than changing upstream session headers. Memory commits are observed after completed turn/end; tools report staging, and the next agent prompt waits for admitted commits. Failed commits are logged and surfaced once to the affected session before retry.
+- No automatic model fallback, provider-account switching, permission elevation, mailbox or routine execution.
+- Owner metadata is inherited from the profile; account authentication and sharing are deferred.
+- Tool access follows the live session-to-agent binding.
+- Coordination is process-local, matching storage-domain.
+- Session agentId metadata lives in the agents domain rather than changing upstream session headers.
+- Memory commits are observed after completed turn/end; tools report staging, and the next agent prompt waits for admitted commits.
+- Failed commits are logged and surfaced once to the affected session before retry.

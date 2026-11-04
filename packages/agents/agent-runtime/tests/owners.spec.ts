@@ -122,6 +122,43 @@ describe('account ownership through the Host service', () => {
     expect(await call(A, 'list', { _request: {} })).toEqual({ items: [] })
   })
 
+  it('denies a Session whose owner write fails instead of leaving it with the adopted account (1)', async () => {
+    const { ctx, root, call } = await fixture()
+    const a = await call(A, 'create', { request: { cwd: root } }) as { sessionId: SessionId }
+    const source = ctx.sessions.get(a.sessionId)!
+    source.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'segredo-do-fork-m7a' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
+    source.append('turn/start', { turn: 1 })
+    source.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    const table = (ctx.sessionOwners as unknown as {
+      domain: { table(name: string): { put(key: string, record: unknown): Promise<void> } }
+    }).domain.table('sessions')
+    const publish = table.put.bind(table)
+    const failing = vi.spyOn(table, 'put').mockImplementation(async (key, record) => {
+      if (typeof record === 'object' && record !== null && 'ownerId' in record) throw new Error('disk full')
+      await publish(key, record)
+    })
+    const failed = await call(A, 'fork', { request: { sessionId: a.sessionId } }).catch((error: unknown) => error)
+    failing.mockRestore()
+    expect(failed).toBeInstanceOf(Error)
+    const child = (await ctx.sessionQuery.listSessions()).map(record => record.header.id).find(id => id !== a.sessionId)
+    expect(child).toBeDefined()
+    const singleAccount = { kind: 'account', ownerId: 'owner' } as const
+    const ids = async (principal: Principal): Promise<string[]> => {
+      const value = await call(principal, 'list', { _request: {} }) as { items: { sessionId: string }[] }
+      return value.items.map(item => item.sessionId)
+    }
+    expect(await ids(A)).toEqual([a.sessionId])
+    expect(await ids(singleAccount)).toEqual([])
+    expect(await call(singleAccount, 'search', { request: { query: 'segredo-do-fork-m7a' } }))
+      .toEqual({ items: [], hasMore: false })
+    // The denial is durable: adoption on the next load must not hand it to the single-account owner.
+    await ctx.loader.root.update([])
+    await ctx.loader.root.update([{ id: 'owners', name: 'cordis:owners' }])
+    await ctx.loader.await()
+    expect(await ids(A)).toEqual([a.sessionId])
+    expect(await ids(singleAccount)).toEqual([])
+  })
+
   it('retains sidecars across plugin reload, adopts legacy sessions, and removes its policy on unload', async () => {
     const { ctx, root, call } = await fixture(true)
     const a = await call(A, 'create', { request: { cwd: root } }) as { sessionId: SessionId }
@@ -161,14 +198,27 @@ describe('account ownership through the Host service', () => {
     onTestFinished(() => ctx.fiber.dispose())
     const invalidate = vi.fn()
     ctx.provide('remoteAccess', { invalidate } as unknown as Context['remoteAccess'])
-    const put = vi.fn().mockRejectedValueOnce(new Error('disk full')).mockResolvedValue(undefined)
+    const records = new Map<string, { sessionId: string; ownerId?: string; denied?: true }>()
+    const put = vi.fn(async (key: string, record: { sessionId: string; ownerId?: string; denied?: true }) => { records.set(key, record) })
     const close = vi.fn().mockResolvedValue(undefined)
-    const domain = { table: () => ({ put }), close } as unknown as ConstructorParameters<typeof Owners.SessionOwners>[1]
+    const table = { put, get: (key: string) => records.get(key), entries: () => records.entries() }
+    const domain = { table: () => table, close } as unknown as ConstructorParameters<typeof Owners.SessionOwners>[1]
     const owners = new Owners.SessionOwners(ctx, domain)
+    // The creation event adopts the single-account owner before the real owner lands.
+    await owners.ensure(SessionId('session'))
+    expect(owners.sessionsOf('owner')).toEqual([SessionId('session')])
+    put.mockRejectedValueOnce(new Error('disk full'))
     await expect(owners.assign(SessionId('session'), 'a')).rejects.toThrow('disk full')
-    expect(invalidate).not.toHaveBeenCalled()
+    // A failed owner write must never leave the Session with the account the event adopted.
+    expect(owners.sessionsOf('owner')).toEqual([])
+    expect(owners.sessionsOf('a')).toEqual([])
+    expect(invalidate).toHaveBeenCalled()
     await owners.assign(SessionId('session'), 'a')
-    expect(invalidate).toHaveBeenCalledOnce()
+    expect(owners.sessionsOf('a')).toEqual([SessionId('session')])
+    // Nothing to deny when both the owner and the denial write fail, and the failure still surfaces.
+    put.mockRejectedValueOnce(new Error('disk full')).mockRejectedValueOnce(new Error('disk full'))
+    await expect(owners.assign(SessionId('other'), 'a')).rejects.toThrow('disk full')
+    expect(owners.sessionsOf('a')).toEqual([SessionId('session')])
     await owners.close()
     expect(close).toHaveBeenCalledOnce()
   })
