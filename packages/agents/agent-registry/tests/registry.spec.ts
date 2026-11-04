@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import sharp from 'sharp'
-import { describe, it, expect, onTestFinished } from 'vitest'
+import { describe, it, expect, onTestFinished, vi } from 'vitest'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { PersistentAgentId } from '../src/index.ts'
@@ -199,6 +199,45 @@ describe('flat sidebar sections', () => {
     await expect(ctx.persistentAgents.createSection('')).rejects.toThrow()
     await expect(ctx.persistentAgents.createSection('x'.repeat(41))).rejects.toThrow()
     await expect(ctx.persistentAgents.assignSection(a.id, 'missing')).rejects.toThrow('Unknown section')
+  })
+
+  it('keeps a concurrent profile edit when deleting its section (audit 2)', async () => {
+    const { ctx } = await fixture()
+    const profile = await ctx.persistentAgents.create({ name: 'Original' }, inherited)
+    const section = await ctx.persistentAgents.createSection('Trabalho')
+    await ctx.persistentAgents.assignSection(profile.id, section.id)
+    const table = (ctx.persistentAgents as unknown as {
+      domain: { table(name: string): {
+        put(key: string, value: unknown): Promise<unknown>
+        update(key: string, fn: (stored: never) => unknown): Promise<unknown>
+      } }
+    }).domain.table('profiles')
+    const merge = table.update.bind(table)
+    const write = table.put.bind(table)
+    let edited = false
+    const concurrentEdit = async (): Promise<void> => {
+      if (edited) return
+      edited = true
+      // The edit lands between the section delete's snapshot and its write.
+      await ctx.persistentAgents.update(profile.id, ctx.persistentAgents.get(profile.id).revision, { description: 'edited meanwhile' })
+    }
+    const put = vi.spyOn(table, 'put').mockImplementation(async (key, value) => {
+      if (key === profile.id) await concurrentEdit()
+      return write(key, value)
+    })
+    const update = vi.spyOn(table, 'update').mockImplementation(async (key, fn) => {
+      if (key === profile.id) await concurrentEdit()
+      return merge(key, fn)
+    })
+    try {
+      await ctx.persistentAgents.deleteSection(section.id)
+    } finally {
+      put.mockRestore()
+      update.mockRestore()
+    }
+    const after = ctx.persistentAgents.get(profile.id)
+    expect(after.sectionId).toBeUndefined()
+    expect(after.description).toBe('edited meanwhile')
   })
 
   it('keeps sections inside the authenticated account and lets the host account see them', async () => {

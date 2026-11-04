@@ -1,5 +1,7 @@
 # Persistent agents
 
+English | [中文](persistent-agents.zh.md)
+
 This optional fork capability adds `ctx.persistentAgents` and `ctx.agentMemory`. It leaves upstream profiles unchanged. Load `agent-registry` and `agent-memory` globally after storage, LLM and session services, then `tool-agent-memory` for the four model-facing tools. The registry inherits omitted model fields from the creator's supplied route and validates both primary and reserve models against the registered adapter catalog. A route stores only provider, model and optional reasoning effort: the native loop has no account selector, so an account label is rejected instead of saved and silently dropped. Reserve routes and automatic-fallback consent are saved and returned without switching models automatically; consent requires at least one valid reserve.
 
 For mailbox and routine integration, load `agent-runtime` globally after the registry, memory, agents and system-prompt services, before `agent-mailbox` and `agent-routine`. It supplies the real directory and routine bridge, binds new mailbox and runner sessions before creation, and mounts the identity persona with essential memories. `exec.agent.id` is a session id; tools resolve its persistent owner through registry metadata. The scheduler's trusted reminder is only a delivery receipt for a routine: the runtime cancels its carrier before any provider call, and the routine engine alone admits the execution. Regular scheduler reminders retain their ordinary behavior.

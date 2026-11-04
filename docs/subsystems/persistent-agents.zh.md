@@ -1,5 +1,7 @@
 # 持久智能体
 
+[English](persistent-agents.md) | 中文
+
 此可选能力提供 `ctx.persistentAgents` 和 `ctx.agentMemory`，不会修改上游默认配置。先加载存储、模型和会话服务，再全局加载 agent-registry、agent-memory 和 tool-agent-memory。省略的模型字段继承调用方指定的配置；主模型和备用模型都通过适配器目录验证。路由只保存提供方、模型和可选推理强度：原生循环没有账户选择器，因此账户标签会被拒绝，而不是保存后被静默丢弃。备用顺序和切换同意仅保存和显示，不自动切换；同意至少需要一个有效备用。
 
 ## 身份

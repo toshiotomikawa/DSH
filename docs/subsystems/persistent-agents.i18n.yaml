@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for persistent-agents.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/persistent-agents.md
+/persistent-agents:
+  en: efacd08ebdce4fc6
+  zh: 9a41b44748347b6b
+/persistent-agents/identity:
+  en: 2fcd029bde27b178
+  zh: aaef5168538b10da
+/persistent-agents/memory:
+  en: 2341706d9e57e08c
+  zh: 9b4f296aeb14b00d
+/persistent-agents/verification:
+  en: c41d770f394bb1b3
+  zh: eed67b2cb36c3505

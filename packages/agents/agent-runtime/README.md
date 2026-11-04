@@ -37,7 +37,7 @@ New sessions reuse the profile's persona content; session-specific messages and 
 
 - Discovery and interruption through the persistent-agent directory stay within the calling profile owner, or another account after an explicit stored grant.
 - Legacy ownerless profiles belong to `owner`.
-- The plugins are opt-in and do not modify shipped profiles.
+- The `owners` policy is composed ON in the shipped Web bundle and off in every other composition; the plugins otherwise do not modify shipped profiles.
 - The `owners` entry requires a trusted account principal supplied by a Host connection adapter; account provisioning and sign-in, the sidebar UI for sections, and a UI to manage grants are deferred.
 - The legacy `owner` principal remains the trusted Host caller with its existing unrestricted access.
 - No account-specific UI or event grants are introduced.

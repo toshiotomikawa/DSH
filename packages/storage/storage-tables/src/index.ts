@@ -7,7 +7,7 @@
 
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { DEFAULT_LIMITS } from './engine.ts'
@@ -238,8 +238,11 @@ export class TablesService {
     return this.runners.has(key) || this.directory === ':memory:' || existsSync(this.privatePath(call.ownerId ?? 'owner'))
   }
 
+  /** Path for one owner's private file: the shared file itself is never an account's own file. */
   private privatePath(ownerId: string): string {
-    return this.directory === ':memory:' ? ':memory:' : join(this.directory, `tables-${ownerSegment(ownerId)}.sqlite`)
+    if (this.directory === ':memory:') return ':memory:'
+    const name = `tables-${ownerSegment(ownerId)}.sqlite`
+    return join(this.directory, name === basename(this.sharedPath) ? `privada-${name}` : name)
   }
 
   private runnerKey(scope: TableScope, ownerId: string): string {
