@@ -28,6 +28,7 @@ import type {
   ConnectionRpcHandler,
   ConnectionRpcResult,
   ConnectionRequestRejection,
+  ConnectionPrincipalSource,
   ConnectionTrustRequest,
   HostConnectionHandle,
   HostConnectionRpc,
@@ -71,6 +72,9 @@ export class HostConnectionService extends Service implements HostConnectionHand
   /** The Peer every authenticated browser connection shares. */
   readonly browserPeer: PeerScope
   private readonly peers = new Map<PeerId, PeerRecord>()
+  /** Account Peers reused across requests, keyed by their principal. */
+  private readonly accountPeers = new Map<string, Peer>()
+  private principalSources: ConnectionPrincipalSource[] = []
   private readonly owner: Context
   private disposed = false
   private readonly interceptors = new Map<string, ConnectionRpcInterceptor>()
@@ -94,8 +98,9 @@ export class HostConnectionService extends Service implements HostConnectionHand
     this.browserPeer = new Peer(ctx, { principal: { kind: 'owner' } })
     ctx.effect(() => async () => {
       this.disposed = true
-      const peers = [this.browserPeer, ...Array.from(this.peers.values(), record => record.peer)]
+      const peers = [this.browserPeer, ...Array.from(this.peers.values(), record => record.peer), ...this.accountPeers.values()]
       this.peers.clear()
+      this.accountPeers.clear()
       await Promise.all(peers.map(peer => peer.dispose()))
     }, 'client-connection: Peer scopes')
     this.allowsRemoteAuthorities = trustedHosts.some(isRemoteAuthority)
@@ -129,6 +134,8 @@ export class HostConnectionService extends Service implements HostConnectionHand
   admit(request: ConnectionTrustRequest): PeerAdmission {
     if (!this.isTrusted(request)) return { rejection: 403 }
     if (this.disposed) return { rejection: 401 }
+    const source = this.sourcePrincipal(request)
+    if (source !== undefined) return { peer: this.accountPeer(source) }
     const secure = this.owner.get('webServer')?.protocol === 'https:'
     if (this.browserAuth.isAuthenticated(request, secure)) return { peer: this.browserPeer }
     const id = this.browserAuth.authenticateApi(request, secure)
@@ -139,6 +146,53 @@ export class HostConnectionService extends Service implements HostConnectionHand
   /** Create one in-process Peer owned by the Context that read this service. */
   createPeer(options: { readonly principal: Principal; readonly interactions?: ConnectionInteractions }): PeerScope {
     return new Peer(this.ctx, options)
+  }
+
+  /**
+   * Admit requests by a credentialed account through one trusted source.
+   * @param source - maps one trusted HTTP request to the account it proves, or undefined.
+   * @returns asynchronous disposer removing this source.
+   */
+  registerPrincipalSource(source: ConnectionPrincipalSource): () => Promise<void> {
+    const owner = this.ctx
+    return owner.effect(() => {
+      this.principalSources = [...this.principalSources, source]
+      return () => {
+        this.principalSources = this.principalSources.filter(entry => entry !== source)
+      }
+    }, 'client-connection: principal source')
+  }
+
+  /**
+   * End every open Peer of one principal, for example after its account is disabled.
+   * @param principal - identity whose Peers are disposed.
+   * @returns after every matching Peer scope is disposed.
+   */
+  async revokePrincipal(principal: Principal): Promise<void> {
+    const key = principalKey(principal)
+    const peer = this.accountPeers.get(key)
+    if (peer === undefined) return
+    this.accountPeers.delete(key)
+    await peer.dispose()
+  }
+
+  private sourcePrincipal(request: ConnectionTrustRequest): Principal | undefined {
+    for (const source of this.principalSources) {
+      const principal = source(request)
+      // A source may name an account, never the trusted host owner.
+      if (principal !== undefined && principal.kind !== 'owner') return principal
+      if (principal !== undefined) throw new Error('connection: a principal source must not claim the owner principal')
+    }
+    return undefined
+  }
+
+  private accountPeer(principal: Principal): Peer {
+    const key = principalKey(principal)
+    const existing = this.accountPeers.get(key)
+    if (existing !== undefined) return existing
+    const peer = new Peer(this.owner, { principal })
+    this.accountPeers.set(key, peer)
+    return peer
   }
 
   /** Claim API socket ownership synchronously; callers release on termination or failed upgrade. */
@@ -390,6 +444,11 @@ function fullResponse(rpcId: RpcIdType, result: Awaited<ReturnType<ConnectionRpc
   })
   parts.set('metadata', JSON.stringify({ ...body, attachments: attachmentMetadata }))
   return new Response(parts)
+}
+
+/** Stable key of one principal's account Peers; every field takes part. */
+function principalKey(principal: Principal): string {
+  return JSON.stringify(Object.entries(principal).sort(([left], [right]) => left.localeCompare(right)))
 }
 
 function assertChannel(channel: string): void {

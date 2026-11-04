@@ -82,6 +82,68 @@ export interface TypeApiEntry {
 /** Every harness `ctx.<key>` service, sorted by key. */
 export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
+    key: 'accounts',
+    summary: 'Account records and the hash-only entry credential of each account.',
+    description: 'Account records and the hash-only entry credential of each account.',
+    methods: [
+      {
+        signature: 'async create(displayName: string, role: AccountRole = \'member\'): Promise<{ account: Account; tokenFile: string }>',
+        description: 'Create one active account and issue its entry token. The token is written once to a restricted file and only its SHA-256 hash is stored, so the plaintext never enters the returned value, a Session log or a log line.',
+        parameters: [{ name: 'displayName', description: 'name shown to people; another account may share it.' }, { name: 'role', description: 'administrator or member.' }],
+        returns: 'the stored account and the absolute path of its token file.',
+      },
+      {
+        signature: 'list(): Account[]',
+        description: 'Read every account, oldest first.',
+        parameters: [],
+        returns: 'detached account records without any credential.',
+      },
+      {
+        signature: 'get(id: string): Account',
+        description: 'Read one account.',
+        parameters: [{ name: 'id', description: 'stable account id.' }],
+        returns: 'detached account record.',
+        throws: ['Error when no such account exists.'],
+      },
+      {
+        signature: 'async disable(id: string): Promise<Account>',
+        description: 'Stop an active account from authenticating or acting.',
+        parameters: [{ name: 'id', description: 'stable account id.' }],
+        returns: 'the disabled account.',
+      },
+      {
+        signature: 'async reactivate(id: string): Promise<Account>',
+        description: 'Admit a disabled account again; its data and its token survive.',
+        parameters: [{ name: 'id', description: 'stable account id.' }],
+        returns: 'the active account.',
+      },
+      {
+        signature: 'async archive(id: string): Promise<Account>',
+        description: 'Archive an account instead of deleting it: the record and its data stay, and the entry token is destroyed.',
+        parameters: [{ name: 'id', description: 'stable account id.' }],
+        returns: 'the archived account.',
+      },
+      {
+        signature: 'authenticate(token: string): Account | undefined',
+        description: 'Resolve one presented entry token. Every stored credential is compared so a disabled account\'s token takes the same path as an unknown one. Archived and disabled accounts prove nothing.',
+        parameters: [{ name: 'token', description: 'plaintext token from the connection.' }],
+        returns: 'the active account, or undefined for an unknown, ended, or empty token.',
+      },
+      {
+        signature: 'isAdministrator(id: string): boolean',
+        description: 'Whether one active account may administer accounts.',
+        parameters: [{ name: 'id', description: 'stable account id.' }],
+        returns: 'true only for an active administrator.',
+      },
+      {
+        signature: 'async close(): Promise<void>',
+        description: 'Drain the domain before releasing storage.',
+        parameters: [],
+        returns: 'after storage is closed.',
+      },
+    ],
+  },
+  {
     key: 'actionCards',
     summary: 'Card tool, kind registry, Session projection, user actions and status notices.',
     description: 'Card tool, kind registry, Session projection, user actions and status notices.',
@@ -1026,6 +1088,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Create an independent in-process Peer, disposed with the Context that read `ctx.connection`.',
         parameters: [{ name: 'options', description: 'fixed principal and optional interaction participation (default `answer`).' }],
         returns: 'a new Peer distinct from every other Peer.',
+      },
+      {
+        signature: 'registerPrincipalSource(source: ConnectionPrincipalSource): () => Promise<void>',
+        description: 'Admit requests by a credentialed account through one trusted source. Sources are consulted in registration order before the browser credential, and the first non-owner Principal wins; every account Peer is reused for its principal until it is revoked.',
+        parameters: [{ name: 'source', description: 'maps one trusted HTTP request to the account it proves, or undefined.' }],
+        returns: 'asynchronous disposer removing this source.',
+      },
+      {
+        signature: 'revokePrincipal(principal: Principal): Promise<void>',
+        description: 'End every open Peer of one principal, for example after its account is disabled.',
+        parameters: [{ name: 'principal', description: 'identity whose Peers are disposed.' }],
+        returns: 'after every matching Peer scope is disposed.',
       },
       {
         signature: 'admitConnection(request: ConnectionTrustRequest): ConnectionAdmission',
@@ -5088,6 +5162,14 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
 /** Every harness event, sorted by name. */
 export const EVENT_API: readonly EventApiEntry[] = [
   {
+    name: 'accounts/ended',
+    mode: 'emit',
+    signature: '\'accounts/ended\'(accountId: string): void',
+    summary: 'One account may no longer authenticate or act, so its connections must end.',
+    description: 'One account may no longer authenticate or act, so its connections must end.',
+    parameters: [{ name: 'accountId', description: 'stable id of the disabled or archived account.' }],
+  },
+  {
     name: 'agent-loop/config-start-failed',
     mode: 'emit',
     signature: '\'agent-loop/config-start-failed\'(payload: { sessionId: SessionId; error: unknown }): void',
@@ -5828,6 +5910,10 @@ export const EVENT_API: readonly EventApiEntry[] = [
 /** Shapes of every exported type the Service and Event signatures reference (transitively), sorted by name. */
 export const TYPE_API: readonly TypeApiEntry[] = [
   {
+    name: 'Account',
+    declaration: 'export type Account = z.infer<typeof accountSchema>;',
+  },
+  {
     name: 'AccountBonusBatch',
     declaration: 'export interface AccountBonusBatch {\n    readonly accountId: AccountUserId;\n    readonly bonuses: readonly AccountBonusNotification[];\n}',
   },
@@ -5854,6 +5940,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AccountProfile',
     declaration: 'export interface AccountProfile {\n    readonly id: AccountUserId | null;\n    readonly name: string | null;\n    readonly contact: string | null;\n    readonly avatarUrl?: string | null;\n}',
+  },
+  {
+    name: 'AccountRole',
+    declaration: 'export type AccountRole = \'administrator\' | \'member\';',
   },
   {
     name: 'AccountUserId',
@@ -6418,6 +6508,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ConnectionIndexResponse',
     declaration: 'export interface ConnectionIndexResponse {\n    writeHead(status: number, headers?: Readonly<Record<string, string>>): unknown;\n    end(body?: string): unknown;\n}',
+  },
+  {
+    name: 'ConnectionPrincipalSource',
+    declaration: 'export type ConnectionPrincipalSource = (request: ConnectionTrustRequest) => Principal | undefined;',
   },
   {
     name: 'ConnectionRequestBodyMode',

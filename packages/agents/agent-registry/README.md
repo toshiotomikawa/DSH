@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-agent-registry
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Stores named profiles and binds sessions to stable agent identities.

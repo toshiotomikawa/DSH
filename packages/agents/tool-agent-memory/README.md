@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-tool-agent-memory
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Remembers, forgets and searches data for the calling agent.

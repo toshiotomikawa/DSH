@@ -5,6 +5,8 @@ kind: "package-bundle"
 
 # @deepseek-ai/dsh-subagent-grok
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Delegate one text task to an installed Grok Build CLI. The optional bundle registers `subagent_grok`. Every call starts a fresh process in the caller's workspace and returns only the terminal assistant text. Native authentication stays with Grok.

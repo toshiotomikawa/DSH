@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-tool-agent-mailbox
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Registers `agent_send_message`, `agent_list` and `agent_interrupt` over the durable `agent-mailbox` service, plus `agent_grant_access`, `agent_revoke_access`, `agent_list_grants`, `agent_list_sections` and `agent_move_section` for sharing agents between accounts and grouping them. Tool names carry the `agent_` prefix so they never collide with the subagent-tree controls.

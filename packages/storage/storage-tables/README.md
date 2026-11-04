@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-storage-tables
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Provides `ctx.tables`, one SQLite database file per scope: `tables-shared.sqlite` for the deployment and `tables-<ownerId>.sqlite` for each authenticated account. The synchronous engine owns the table catalog, single-statement SQL admission through the SQLite authorizer, atomic writes, page and size ceilings, automatic row columns (`criado_em`, `atualizado_em`, `revisao`, `autor`) and an in-memory audit ring.

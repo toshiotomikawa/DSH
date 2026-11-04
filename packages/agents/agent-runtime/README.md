@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-agent-runtime
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Connects persistent agent identities to mailbox and routine sessions.
@@ -16,6 +18,8 @@ Mount globally after agent-registry, agent-memory, agents and system-prompt, bef
 The optional `@deepseek-ai/dsh-agent-runtime/owners` plugin mounts the account policy in `remote-access`. Add its `fork-owner-policy` entry to a Web composition that already mounts persistent storage and the Session Controller; the shipped Web bundle composes it ON. It stores optional `ownerId` metadata in the per-record `session_owners` domain, leaving released Session headers and logs unchanged. Existing Sessions are adopted by `owner`; create, fork and persistent-agent binding save their trusted owner before returning. A Session whose owner write fails is recorded as denied instead of keeping the account the creation event adopted first, so it stays hidden from every account until a later assignment succeeds. Account principals see only owned Session rows and FTS results, and foreign and unknown Session ids receive the same access denial. Sidecar damage blocks account-policy activation and preserves the damaged document. Disposing the plugin removes its service and policy.
 
 The same plugin provides `accountGrants`, an explicit directional grant between accounts stored in the `account_grants` domain: `grant(ownerId, granteeId)`, `revoke(ownerId, granteeId)` and `allows(ownerId, granteeId)`. The persistent-agent directory and `agent_send_message` list another account's agents only when that account granted the caller; interruption follows the same grant. The host account and same-owner calls need no grant. `list(ownerId)` returns the accounts one owner admitted. Persistent agents grant and revoke through `agent_grant_access` and `agent_revoke_access` of the mailbox tools, which act only for the caller’s own account. A revoke applies on the next directory read and also cuts mail that was already accepted: the mailbox asks `agentDirectory.reaches(fromId, toId)` again when a pending delivery is attempted and when a reply is written, so an undelivered message or reply across the revoked account is recorded as `refused` with a neutral reason that never names the other account. A turn that already received a message keeps it.
+
+The `@deepseek-ai/dsh-agent-runtime/accounts` plugin opens the per-record `accounts` domain and provides `accounts`: `create(name, role)` returns the new account and the path of its one-time token file, `list`, `get`, `disable`, `reactivate` and `archive`, plus `authenticate(token)` and `isAdministrator(id)`. The token text is written once to a `0o600` file under `$DSH_HOME/accounts/tokens`, outside the Session workspace, and only its SHA-256 hash is stored; the returned value never carries the secret. Archived accounts stay readable and lose their credential; disabling an account keeps its data and token. `@deepseek-ai/dsh-agent-runtime/account-auth` registers a Connection principal source that maps `Authorization: Bearer <token>` to `{ kind: 'account', ownerId }`, and `accounts/ended` ends that account's open peers. `@deepseek-ai/dsh-agent-runtime/account-tools` exposes `account_list`, `account_create`, `account_disable`, `account_reactivate` and `account_archive` to an active administrator account only; account ids are never accepted as caller identity, and `account_create` returns the token file path rather than the token. With no account token presented, every request stays the single-account `owner`, so an installation that creates no account behaves exactly as before.
 
 ## Model Experience
 
@@ -39,7 +43,11 @@ New sessions reuse the profile's persona content; session-specific messages and 
 - A revoke cannot recall a message a running turn already received.
 - Legacy ownerless profiles belong to `owner`.
 - The `owners` policy is composed ON in the shipped Web bundle and off in every other composition; the plugins otherwise do not modify shipped profiles.
-- The `owners` entry requires a trusted account principal supplied by a Host connection adapter; account provisioning and sign-in, the sidebar UI for sections, and a UI to manage grants are deferred.
+- The `owners` entry requires a trusted account principal supplied by a Host connection adapter; account sign-in pages, token rotation and password recovery, the sidebar UI for sections, and a UI to manage grants are deferred.
+- Accounts enter only through the bearer token written when the account is created; the browser page keeps using the single-account owner peer until a sign-in UI exists.
+- `account_create` writes the entry token to a restricted file under `$DSH_HOME/accounts/tokens`; the model receives only that path, and the file must be handed to the account holder privately and then deleted.
+- Disabling or archiving an account ends its peers immediately; it does not cancel turns already running inside those peers.
+- Account administration exists only in the `account-tools` plugin; without it, trusted Host code must call the `accounts` service.
 - The legacy `owner` principal remains the trusted Host caller with its existing unrestricted access.
 - No account-specific UI or event grants are introduced.
 - Provider accounts and automatic fallback are not implemented.

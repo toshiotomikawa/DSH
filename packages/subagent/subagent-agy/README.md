@@ -5,6 +5,8 @@ kind: "package-bundle"
 
 # @deepseek-ai/dsh-subagent-agy
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Delegate one text task to the installed Antigravity CLI. The optional bundle registers `subagent_agy`, starts a fresh native CLI process and exposes only its terminal response. Native authentication stays with agy.

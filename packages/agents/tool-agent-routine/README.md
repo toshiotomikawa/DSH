@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-tool-agent-routine
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Registers routine_create, routine_update, routine_list, routine_test and routine_no_update over agent-routine.

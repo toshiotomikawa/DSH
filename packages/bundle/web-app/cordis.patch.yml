@@ -125,6 +125,18 @@
     - id: fork-owner-policy
       name: '@deepseek-ai/dsh-agent-runtime/owners'
 
+    # Account entry: durable accounts with one server-issued token each. A
+    # connection that presents the token speaks as that account principal; with
+    # no account token every request stays the single-account owner. Disabling
+    # an account ends its open peers. The tools expose administration to an
+    # administrator account only.
+    - id: fork-accounts
+      name: '@deepseek-ai/dsh-agent-runtime/accounts'
+    - id: fork-account-auth
+      name: '@deepseek-ai/dsh-agent-runtime/account-auth'
+    - id: fork-account-tools
+      name: '@deepseek-ai/dsh-agent-runtime/account-tools'
+
     # One background job's observation record streamed over Typert Remote;
     # the roster rides the session control stream above.
     - id: job-controller

@@ -106,6 +106,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   agentRoutines: 'persistent-agents.md',
   persistentAgents: 'persistent-agents.md',
   agentSidebar: 'persistent-agents.md',
+  accounts: 'persistent-agents.md',
   tables: 'storage.md',
   inspector: 'extensions.md',
   webServer: 'web-server.md',
@@ -249,6 +250,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'agent': 'core.md',
   'agent-loop': 'core.md',
   'agent-routine': 'persistent-agents.md',
+  'accounts': 'persistent-agents.md',
   'agent-preset': 'core.md',
   'api-session': 'session.md',
   'approval': 'approval.md',
@@ -998,6 +1000,10 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   RoutineReport: 'packages/agents/agent-routine/README.md',
+  Account: 'packages/agents/agent-runtime/README.md',
+  AccountRole: 'packages/agents/agent-runtime/README.md',
+  AccountState: 'packages/agents/agent-runtime/README.md',
+  ConnectionPrincipalSource: 'packages/client/connection/README.md',
   AgentPatch: 'packages/agents/agent-registry/README.md',
   AgentProfile: 'packages/agents/agent-registry/README.md',
   AgentSection: 'packages/agents/agent-registry/README.md',
