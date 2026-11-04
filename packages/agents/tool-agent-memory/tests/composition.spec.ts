@@ -83,9 +83,10 @@ describe('Loader-composed memory tools and persona', () => {
     const body = JSON.parse(first.content[0]!.type === 'text' ? first.content[0]!.text : '') as { memory: Memories.Memory }
     const stagedSearch = await execute('search_memories', { query: 'first' })
     expect(stagedSearch.content).toEqual([{ type: 'text', text: 'Untrusted saved data:\n' + JSON.stringify([body.memory]) }])
-    expect((await execute('remember', { id: body.memory.id, expected_revision: 1, text: 'corrected', inclusion: 'searchable' })).isError).toBeFalsy()
-    expect((await execute('forget', { id: body.memory.id, expected_revision: 2 })).isError).toBeFalsy()
+    expect((await execute('remember', { memoryId: body.memory.id, expected_revision: 1, text: 'corrected', inclusion: 'searchable' })).isError).toBeFalsy()
+    expect((await execute('forget_memory', { memoryId: body.memory.id, expected_revision: 2 })).isError).toBeFalsy()
     f.agent.session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    expect((await execute('list_memories', { cursor: 0, limit: 1 })).content).toEqual([{ type: 'text', text: 'Untrusted saved data:\n{"memories":[],"nextCursor":null}' }])
     expect((await execute('search_memories', { query: 'corrected', limit: 1 })).content).toEqual([{ type: 'text', text: 'Untrusted saved data:\n[]' }])
     expect((await execute('remember', { text: 42 })).isError).toBe(true)
     const unbound = await f.ctx.agents.create({ sessionId: SessionId('unbound') })

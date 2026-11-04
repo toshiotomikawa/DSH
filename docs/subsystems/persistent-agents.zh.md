@@ -12,7 +12,7 @@
 
 ## 记忆
 
-remember、forget 和 search_memories 从调用会话确定所属智能体。list 提供带 nextCursor 的分页。进程内按不区分大小写的词搜索，再按匹配数、更新时间和标识排序，无匹配返回空数组。记忆始终是不可信数据，不授予权限。
+remember、forget_memory、list_memories 和 search_memories 从调用会话确定所属智能体。list 提供带 nextCursor 的分页。进程内按不区分大小写的词搜索，再按匹配数、更新时间和标识排序，无匹配返回空数组。记忆始终是不可信数据，不授予权限。
 
 maxMemories 默认为 256，maxMemoryBytes 和 essentialBytes 默认为 8192 UTF-8 字节。必要上下文预算包括完整序列化数据和警告。预算不足时操作明确失败，保留原文和原有选择；调用方可明确重试保存为可搜索记忆。降低限制也不删除数据；必要上下文超限会阻止激活，直到可信调用方调整选择。selectForUser 使用版本比较更新选择，可锁定选择使模型不能更改。
 

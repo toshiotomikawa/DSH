@@ -19,7 +19,7 @@ Mount the registry and memory services globally beside `storage-domain`, `llm`, 
 
 #### What the model sees
 
-The three tool schemas are in the [tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-tool-agent-memory). The preset contributes profile instructions literally, followed by essential memories explicitly marked as untrusted data.
+The four tool schemas are in the [tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-tool-agent-memory). The preset contributes profile instructions literally, followed by essential memories explicitly marked as untrusted data.
 
 #### Token effect
 

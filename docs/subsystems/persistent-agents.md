@@ -12,7 +12,7 @@ Local avatars are decoded by the installed sharp dependency. PNG, JPEG and WebP 
 
 ## Memory
 
-`remember`, `forget` and `search_memories` identify the owner from the exact live caller session, never from model arguments. `agentMemory.list` provides pages with an explicit nextCursor. Search matches case-insensitive terms in process, sorts by matched term count, update time and id, and returns an empty array when nothing matches. Stored text is data, never authority.
+`remember`, `forget_memory`, `list_memories` and `search_memories` identify the owner from the exact live caller session, never from model arguments. `agentMemory.list` provides pages with an explicit nextCursor. Search matches case-insensitive terms in process, sorts by matched term count, update time and id, and returns an empty array when nothing matches. Stored text is data, never authority.
 
 Configuration limits are maxMemories (256), maxMemoryBytes (8192 UTF-8 bytes) and essentialBytes (8192 UTF-8 bytes including the complete serialized context and warning). A full essential budget rejects the operation without changing saved text or inclusion; the caller may explicitly retry as searchable. It never evicts saved memories. Lowering a budget does not remove stored text; oversized essential context fails activation until a trusted consumer changes selection. `selectForUser` changes selection by revision and may lock it against model changes. It is not registered as a model tool.
 
