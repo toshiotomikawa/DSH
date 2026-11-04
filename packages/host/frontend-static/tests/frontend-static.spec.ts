@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
@@ -267,6 +267,18 @@ describe('real Loader composition', () => {
     await expect(read('/bad%00path')).rejects.toThrow()
     await rm(join(root!, 'dist', 'index.html'))
     expect((await read('/')).status).toBe(404)
+  })
+
+  it('does not render an index if admission is revoked after authentication', async () => {
+    const loaded = await loadComposition()
+    const authorize = vi.spyOn(loaded.connection, 'authorizeIndex').mockReturnValue(true)
+    const admission = vi.spyOn(loaded.connection, 'admit').mockReturnValue({ rejection: 401 })
+    try {
+      expect((await request(loaded.webServer.port, '/')).status).toBe(401)
+    } finally {
+      admission.mockRestore()
+      authorize.mockRestore()
+    }
   })
 
   it('lets browsers revalidate every file except the index', { timeout: 60_000 }, async () => {

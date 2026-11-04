@@ -42,6 +42,7 @@ export function AgentSections({ wide, useResource, mutate, t }: AgentSectionsPro
   return <section className={css.root} aria-label={t('agents.title')}>
     <header className={css.heading}>
       <strong>{t('agents.title')}</strong>
+      <a href="/account/access">{t('agents.access')}</a>
       <button type="button" disabled={busy} onClick={() => { setRefreshKey(value => 1 - value) }}>{t('agents.refresh')}</button>
       <button type="button" disabled={busy} onClick={() => { setEditing({ name: '' }) }}>{t('agents.create')}</button>
     </header>

@@ -54,6 +54,12 @@
     },
     {
       "path": "../../session-query/session-query"
+    },
+    {
+      "path": "../../host/webserver"
+    },
+    {
+      "path": "../../../vendor/schemastery"
     }
   ],
   "extends": "../../../tsconfig.base.json"

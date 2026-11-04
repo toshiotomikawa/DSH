@@ -116,6 +116,8 @@ root 作用域的 `sidebar.panellist.actions` list 有注册项时，导航区�
 -----
 
 <a id="model-experience"></a>
+展开的智能体区域链接到 fork 的 `/account/access` 页面，用于管理向外授权和退出。
+
 ## 模型体验
 
 无。该包是浏览器端 UI 插件层，不注册任何面向模型的内容。
