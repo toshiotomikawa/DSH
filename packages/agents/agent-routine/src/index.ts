@@ -145,19 +145,16 @@ export class AgentRoutines extends Service {
       schedule: scheduleGateway(ctx),
       agents: id => bridge()?.agents(id),
       runner: {
-        start: (input) => {
-          const current = bridge()
-          if (current === undefined) return Promise.reject(new Error('nenhum executor de sessão está ligado às rotinas'))
-          return current.runner.start(input)
-        },
+        // The agent resolver found the agent through the same bridge, so a missing bridge here only means it just left.
+        start: input => (bridge() as RoutineBridge).runner.start(input),
         cancel: sessionId => bridge()?.runner.cancel(sessionId) ?? Promise.resolve(),
       },
       notify: (report) => { ctx.emit('agent-routine/report', report) },
       now: () => Date.now(),
       newId: prefix => `${prefix}-${randomUUID()}`,
       warn: (message) => { ctx.logger.warn(message) },
-      backoffSeconds: config.backoffSeconds ?? [300, 900, 3600],
-      graceSeconds: config.graceSeconds ?? 120,
+      backoffSeconds: config.backoffSeconds as number[],
+      graceSeconds: config.graceSeconds as number,
     })
     const engine = this.engine
     ctx.effect(() => async () => { await domain.close() }, 'agent-routine.domain')
@@ -190,7 +187,7 @@ export class AgentRoutines extends Service {
     ctx.effect(() => {
       const timer = setInterval(() => {
         void engine.tick().then(reconcile).catch((error: unknown) => { ctx.logger.warn(`agent-routine: tick failed: ${String(error)}`) })
-      }, (config.tickSeconds ?? 60) * 1000)
+      }, (config.tickSeconds as number) * 1000)
       timer.unref()
       return () => { clearInterval(timer) }
     }, 'agent-routine.tick')

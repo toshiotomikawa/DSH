@@ -66,7 +66,7 @@ const runSchema: z.ZodType<Run> = z.object({
 
 /** Routines and their executions; each record is its own document so history grows without rewriting the rest. */
 export const routineDomain = defineDomain({
-  name: 'agent-routine',
+  name: 'agent_routine',
   version: 1,
   layout: 'per-record',
   tables: {
