@@ -15,6 +15,8 @@ Mount the registry and memory services globally beside `storage-domain`, `llm`, 
 
 New profiles record the Remote connection account as `ownerId`; trusted local creation defaults to `owner`. A Remote account can list, read and edit only its own profiles, and model-supplied ownership cannot replace the connection identity. Existing records without an owner retain the single-account meaning. Session bindings copy the profile owner into the optional Session ownership sidecar; profile edits cannot transfer ownership.
 
+Sidebar sections are flat groups owned by one account: `listSections`, `createSection(name)`, `renameSection(id, name)`, `deleteSection(id)` and `assignSection(agentId, sectionId | null)`. A profile stores `sectionId`; moving or ungrouping it changes only that field, never the profile id, history, memory or routines. Deleting a section ungroups its members first, then removes the group. A name is 1 to 40 characters; an unknown or foreign section id fails with the same `Unknown section` error, and sections never grant access to another account. The sidebar UI that renders these groups is not part of this package yet.
+
 ## Model Experience
 
 ### Persistent identity and memories

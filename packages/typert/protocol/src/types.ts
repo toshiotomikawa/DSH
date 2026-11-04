@@ -25,6 +25,27 @@ declare module '@deepseek-ai/cordis' {
        */
       ownerOf(sessionId: Branded<'SessionId'>): string | undefined
     }
+    /** Optional fork-owned sharing grants between accounts; never a Remote endpoint. */
+    accountGrants: {
+      /** Let one account address the granting account's agents.
+       * @param ownerId - account that owns the shared agents.
+       * @param granteeId - account admitted to reach them.
+       * @returns after durable publication.
+       */
+      grant(ownerId: string, granteeId: string): Promise<void>
+      /** Withdraw one grant; absent grants are a no-op.
+       * @param ownerId - account that owns the shared agents.
+       * @param granteeId - account losing access.
+       * @returns after durable removal.
+       */
+      revoke(ownerId: string, granteeId: string): Promise<void>
+      /** Whether one account may reach another account's agents.
+       * @param ownerId - account that owns the agents.
+       * @param granteeId - candidate caller.
+       * @returns true only for an explicit stored grant.
+       */
+      allows(ownerId: string, granteeId: string): boolean
+    }
   }
 }
 

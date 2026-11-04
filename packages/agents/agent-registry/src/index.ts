@@ -28,9 +28,12 @@ const routeSchema = z.object({
 const editableSchema = z.object({
   name: z.string().trim().min(1), title: z.string(), description: z.string(), instructions: z.string(), firstTask: z.string(),
   model: routeSchema, reserves: z.array(routeSchema), automaticFallback: z.boolean(), ownerId: z.string().optional(),
+  sectionId: z.string().min(1).optional(),
 }).strict()
 const avatarInput = { avatarPath: z.string().optional(), avatarSeed: z.string().optional() }
-const patchSchema = editableSchema.partial().extend({ ...avatarInput, model: routeSchema.partial().optional() }).refine(value => value.avatarPath === undefined || value.avatarSeed === undefined, 'Choose an image or generation, not both')
+const patchSchema = editableSchema.partial().extend({
+  ...avatarInput, sectionId: z.string().min(1).nullable().optional(), model: routeSchema.partial().optional(),
+}).refine(value => value.avatarPath === undefined || value.avatarSeed === undefined, 'Choose an image or generation, not both')
 function profileFields(patch: z.infer<typeof patchSchema>) {
   return Object.fromEntries(Object.entries(patch).filter(([key, value]) => key !== 'avatarPath' && key !== 'avatarSeed' && value !== undefined))
 }
@@ -40,9 +43,15 @@ const profileSchema = editableSchema.extend({
   permissions: z.object({ source: z.literal('deployment') }),
 })
 const bindingSchema = z.object({ agentId: z.string().transform(PersistentAgentId), ownerId: z.string().optional() })
+const sectionSchema = z.object({
+  id: z.string().min(1), name: z.string().trim().min(1).max(40), ownerId: z.string().optional(),
+  revision: z.number().int().positive(), createdAt: z.number(), updatedAt: z.number(),
+}).strict()
+const sectionName = z.string().trim().min(1).max(40)
 const agentsDomain = defineDomain({ name: 'agents', version: 1, layout: 'per-record', tables: {
   profiles: domainTable<PersistentAgentId, z.infer<typeof profileSchema>>(profileSchema),
   sessions: domainTable<string, z.infer<typeof bindingSchema>>(bindingSchema),
+  sections: domainTable<string, z.infer<typeof sectionSchema>>(sectionSchema),
 } })
 
 /** Largest avatar document accepted from disk, before any decoding. */
@@ -65,7 +74,8 @@ function sessionKey(id: SessionId): string {
 
 /** Persisted agent configuration. Reservations never trigger a model switch. */
 export type AgentProfile = z.infer<typeof profileSchema>
-/** Partial profile edit; omitted fields retain their current value. */
+/** A flat sidebar group owned by one account; membership never grants access. */
+export type AgentSection = z.infer<typeof sectionSchema>/** Partial profile edit; omitted fields retain their current value. */
 export type AgentPatch = z.input<typeof patchSchema>
 /** Route inherited from the creator when creation fields are omitted. */
 export type AgentRoute = z.infer<typeof routeSchema>
@@ -101,6 +111,7 @@ export class PersistentAgents {
       permissions: { source: 'deployment' },
     })
     await this.validateRoutes(profile)
+    if (profile.sectionId !== undefined) this.requireSection(profile.sectionId, profile.ownerId ?? 'owner')
     await this.domain.table('profiles').put(id, profile)
     return structuredClone(profile)
   }
@@ -139,12 +150,15 @@ export class PersistentAgents {
     const patch = patchSchema.parse(input)
     const current = this.get(id)
     if (patch.ownerId !== undefined && patch.ownerId !== (current.ownerId ?? 'owner')) throw new Error('Agent owner cannot be changed')
+    if (patch.sectionId !== undefined && patch.sectionId !== null) this.requireSection(patch.sectionId, current.ownerId ?? 'owner')
     if (current.revision !== expectedRevision) throw new Error('Agent revision conflict; read the profile again')
     const avatar = await this.avatar(patch, current.avatar)
-    const next = profileSchema.parse({
+    const fields: Record<string, unknown> = {
       ...current, ...profileFields(patch), model: { ...current.model, ...patch.model },
       avatar, revision: current.revision + 1, updatedAt: Date.now(),
-    })
+    }
+    if (patch.sectionId === null) delete fields.sectionId
+    const next = profileSchema.parse(fields)
     await this.validateRoutes(next)
     const result = await this.domain.table('profiles').update(id, (stored) => {
       if (stored.revision !== expectedRevision) throw new Error('Agent revision conflict; read the profile again')
@@ -164,6 +178,97 @@ export class PersistentAgents {
       try { return { id: edit.id, profile: await this.update(edit.id, edit.revision, edit.patch) } }
       catch (error) { return { id: edit.id, error: String(error) } }
     }))
+  }
+
+  /** Sidebar groups visible to the caller; membership never grants access.
+   * @returns detached sections, oldest first.
+   */
+  listSections(): AgentSection[] {
+    return [...this.domain.table('sections').entries()].map(([, section]) => section)
+      .filter(section => this.visibleSection(section))
+      .sort((left, right) => left.createdAt - right.createdAt)
+      .map(section => structuredClone(section))
+  }
+
+  /** Create one sidebar group for the authenticated account.
+   * @param name - display name, 1 to 40 characters.
+   * @returns the stored section.
+   */
+  async createSection(name: string): Promise<AgentSection> {
+    const section: AgentSection = {
+      id: randomUUID(), name: sectionName.parse(name),
+      ownerId: ownerIdOf(this.ctx.invocation), revision: 1, createdAt: Date.now(), updatedAt: Date.now(),
+    }
+    await this.domain.table('sections').put(section.id, section)
+    return structuredClone(section)
+  }
+
+  /** Rename one visible section; agent membership and profile ids do not change.
+   * @param id - section id.
+   * @param name - new display name, 1 to 40 characters.
+   * @returns the stored section.
+   */
+  async renameSection(id: string, name: string): Promise<AgentSection> {
+    const parsed = sectionName.parse(name)
+    const current = this.section(id)
+    const next = sectionSchema.parse({ ...current, name: parsed, revision: current.revision + 1, updatedAt: Date.now() })
+    const saved = await this.domain.table('sections').update(id, (stored) => {
+      if (stored.revision !== current.revision) throw new Error('Section revision conflict; read the sections again')
+      return next
+    })
+    return structuredClone(saved)
+  }
+
+  /** Delete one visible section; its agents survive and become ungrouped.
+   * @param id - section id.
+   * @returns the deleted id.
+   */
+  async deleteSection(id: string): Promise<{ id: string }> {
+    this.section(id)
+    // Ungroup members first: an interrupted delete then leaves no profile pointing at a missing section.
+    for (const [, profile] of [...this.domain.table('profiles').entries()]) {
+      if (profile.sectionId !== id) continue
+      const fields: Record<string, unknown> = { ...profile, revision: profile.revision + 1, updatedAt: Date.now() }
+      delete fields.sectionId
+      await this.domain.table('profiles').put(profile.id, profileSchema.parse(fields))
+    }
+    await this.domain.table('sections').delete(id)
+    return { id }
+  }
+
+  /** Move one visible agent into a section, or remove its grouping with null.
+   * @param agentId - profile id.
+   * @param sectionId - visible section id, or null to ungroup.
+   * @returns the saved profile.
+   */
+  async assignSection(agentId: PersistentAgentId, sectionId: string | null): Promise<AgentProfile> {
+    const profile = this.get(agentId)
+    if (sectionId !== null) this.requireSection(sectionId, profile.ownerId ?? 'owner')
+    const fields: Record<string, unknown> = { ...profile, revision: profile.revision + 1, updatedAt: Date.now() }
+    if (sectionId === null) delete fields.sectionId
+    else fields.sectionId = sectionId
+    const next = profileSchema.parse(fields)
+    const saved = await this.domain.table('profiles').update(agentId, (stored) => {
+      if (stored.revision !== profile.revision) throw new Error('Agent revision conflict; read the profile again')
+      return next
+    })
+    return structuredClone(saved)
+  }
+
+  private section(id: string): AgentSection {
+    const section = this.domain.table('sections').get(id)
+    if (!section || !this.visibleSection(section)) throw new Error(`Unknown section: ${id}`)
+    return section
+  }
+
+  private visibleSection(section: AgentSection): boolean {
+    const principal = this.ctx.invocation?.peer.principal
+    return principal?.kind !== 'account' || (section.ownerId ?? 'owner') === principal.ownerId
+  }
+
+  private requireSection(id: string, ownerId: string): void {
+    const section = this.domain.table('sections').get(id)
+    if (!section || (section.ownerId ?? 'owner') !== ownerId) throw new Error(`Unknown section: ${id}`)
   }
 
   /** Attach durable metadata without changing a Session header or its history.

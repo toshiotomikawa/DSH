@@ -15,6 +15,11 @@ export const name = 'agent-runtime'
 /** Services needed before exposing the directory and runner. */
 export const inject = ['persistentAgents', 'agents', 'agentMemory', 'systemPrompt']
 
+/** Same owner always; another owner only through its explicit grant. */
+function sharedWith(ctx: Context, viewerId: string, ownerId: string): boolean {
+  return ownerId === viewerId || ctx.get('accountGrants')?.allows(ownerId, viewerId) === true
+}
+
 /** Mount identity adapters; mailbox and routines may be mounted afterwards.
  * @param ctx - global persistent-agent composition.
  */
@@ -50,13 +55,13 @@ export function apply(ctx: Context): void {
     find, describe,
     visible: (caller) => {
       const sender = describe(caller)
-      return ctx.persistentAgents.list().filter(profile => (profile.ownerId ?? 'owner') === (sender.ownerId ?? 'owner'))
+      return ctx.persistentAgents.list().filter(profile => sharedWith(ctx, sender.ownerId ?? 'owner', profile.ownerId ?? 'owner'))
         .map(profile => find(profile.id)).filter(target => target !== undefined)
     },
     mayInterrupt: (caller, target) => {
       const sender = describe(caller)
       const found = find(target.id)
-      return found !== undefined && (found.ownerId ?? 'owner') === (sender.ownerId ?? 'owner')
+      return found !== undefined && sharedWith(ctx, sender.ownerId ?? 'owner', found.ownerId ?? 'owner')
     },
     thread: () => SessionId(`agent-thread-${randomUUID()}`),
     prepare: async (target, sessionId) => { await ctx.persistentAgents.bind(sessionId, PersistentAgentId(target.id)) },
