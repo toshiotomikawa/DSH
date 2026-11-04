@@ -264,3 +264,63 @@ it('marks account cookies Secure on a real TLS listener and binds them to its or
   expect((await send('/', undefined, value)).status).toBe(200)
   expect(f.ctx.connection.admit({ headers: { host: 'localhost:4096', cookie: value } })).toEqual({ rejection: 401 })
 })
+
+it('refuses malformed access forms and missing grants and signs out anonymous browsers', async () => {
+  const f = await fixture()
+  const a = await f.mint('A'), b = await f.mint('B')
+  expect((await f.call('/account/access')).headers.get('location')).toBe('/account/login')
+  expect((await f.call('/account/logout')).status).toBe(405)
+  expect((await f.post('/account/logout', {})).status).toBe(303)
+  const { cookie } = await f.login(a.token, 'malformed; dsh-account-session=missing')
+  expect((await f.call('/account/access', { method: 'POST', headers: { origin: f.origin, cookie }, body: '{}' })).status).toBe(400)
+  expect((await f.post('/account/access', { action: 'grant', account_id: 'x'.repeat(257) }, cookie)).status).toBe(400)
+  await f.ctx.accountGrants.grant(a.account.id, b.account.id)
+  expect((await f.call(`/account/access?revoke=${b.account.id}&revoke=${b.account.id}`, { headers: { cookie } })).status).toBe(404)
+  expect((await f.call('/account/access?unexpected=1', { headers: { cookie } })).status).toBe(400)
+  expect((await f.post('/account/logout', {}, 'dsh-account-session=missing')).status).toBe(303)
+})
+
+it('expires idle sessions through the timer and prunes expired capacity before a login', async () => {
+  const f = await fixture(1)
+  const a = await f.mint('A')
+  const timer = vi.spyOn(globalThis, 'setTimeout')
+  onTestFinished(() => timer.mockRestore())
+  const { cookie } = await f.login(a.token)
+  const expire = timer.mock.calls.find(([, delay]) => delay === 60_000)?.[0]
+  if (expire === undefined) throw new Error('session timer missing')
+  expire()
+  expect((await f.call('/account/access', { headers: { cookie } })).headers.get('location')).toBe('/account/login')
+  await f.login(a.token)
+  vi.useFakeTimers({ toFake: ['Date'] })
+  onTestFinished(() => { vi.useRealTimers() })
+  vi.setSystemTime(Date.now() + 60_001)
+  await f.login(a.token)
+})
+
+it('rechecks the account after a streamed form and rejects a session invalidated while reading', async () => {
+  const f = await fixture()
+  const a = await f.mint('A'), b = await f.mint('B')
+  const { cookie } = await f.login(a.token)
+  const reading = Promise.withResolvers<undefined>()
+  const get = f.ctx.accounts.get.bind(f.ctx.accounts)
+  const authenticate = vi.spyOn(f.ctx.accounts, 'get')
+  onTestFinished(() => authenticate.mockRestore())
+  authenticate.mockImplementation((id) => {
+    reading.resolve(undefined)
+    return get(id)
+  })
+  const answer = new Promise<number | undefined>((resolve, reject) => {
+    const req = httpRequest(f.origin + '/account/access', { method: 'POST', headers: {
+      origin: f.origin, cookie, 'content-type': 'application/x-www-form-urlencoded', 'transfer-encoding': 'chunked',
+    } }, (res) => { res.resume(); resolve(res.statusCode) })
+    req.on('error', reject)
+    req.write('action=grant&')
+    void reading.promise.then(async () => {
+      authenticate.mockRestore()
+      await f.ctx.accounts.disable(a.account.id)
+      req.end('account_id=' + b.account.id)
+    }).catch(reject)
+  })
+  expect(await answer).toBe(303)
+  expect(f.ctx.accountGrants.list(a.account.id)).toEqual([])
+})

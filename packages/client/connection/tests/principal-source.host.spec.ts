@@ -31,6 +31,27 @@ function request(headers: Record<string, string> = {}): ConnectionTrustRequest {
 }
 
 describe('Connection principal sources', () => {
+  it('refuses explicitly rejected index identities and disposed index admission', async () => {
+    const { connection, dispose } = await mounted()
+    const response = { writeHead: vi.fn(), end: vi.fn() }
+    connection.registerPrincipalSource(() => null)
+    expect(connection.authorizeIndex({ ...request(), url: '/' }, response)).toBe(false)
+    expect(response.writeHead).toHaveBeenLastCalledWith(401, { 'cache-control': 'no-store' })
+    await dispose()
+    expect(connection.authorizeIndex({ ...request(), url: '/' }, response)).toBe(false)
+    expect(response.writeHead).toHaveBeenLastCalledWith(401, { 'cache-control': 'no-store' })
+  })
+
+  it('refuses untrusted index admission and admits an account with an omitted index URL', async () => {
+    const { connection, dispose } = await mounted()
+    const response = { writeHead: vi.fn(), end: vi.fn() }
+    expect(connection.authorizeIndex({ headers: { host: 'evil.test' } }, response)).toBe(false)
+    expect(response.writeHead).toHaveBeenCalledWith(403, { 'cache-control': 'no-store' })
+    connection.registerPrincipalSource(() => A)
+    expect(connection.authorizeIndex(request(), response)).toBe(true)
+    await dispose()
+  })
+
   it('admits the first non-owner principal and reuses its Peer across requests', async () => {
     const { connection, dispose } = await mounted()
     connection.registerPrincipalSource(() => undefined)
