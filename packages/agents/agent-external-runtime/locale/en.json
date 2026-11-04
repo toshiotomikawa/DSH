@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "External agent runtime",
+    "description": "Resolves explicit account harness bindings for persistent external agents."
+  }
+}

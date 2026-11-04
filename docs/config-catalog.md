@@ -69,6 +69,35 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-default-model -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-agent-external-runtime -->
+<a id="deepseek-aidsh-agent-external-runtime"></a>
+
+## `@deepseek-ai/dsh-agent-external-runtime`
+
+- `inject`: `persistentAgents` · `sessionOwners` · `accounts`
+- `source`: [`packages/agents/agent-external-runtime/src/index.ts:24`](../packages/agents/agent-external-runtime/src/index.ts)
+
+```ts config-catalog
+/** Explicit Host configuration; directories are never discovered from the environment. */
+export interface Config {
+  /** One directory per account and external runtime, outside every agent workspace. */
+  bindings: AccountHarnessBinding[]
+}
+
+/** Private Host association; never serialize it to prompts, tool results or Session events. */
+export interface AccountHarnessBinding {
+  /** Account whose official harness login owns this directory. */
+  accountId: string
+  /** Official harness selected for this binding. */
+  runtime: 'claude-sdk' | 'codex-sdk'
+  /** Canonical local directory outside every agent workspace. */
+  configDirectory: string
+  /** Increment when rebinding or changing the harness login. */
+  revision: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-external-runtime -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-agent-instructions -->
 <a id="deepseek-aidsh-agent-instructions"></a>
 
@@ -198,7 +227,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-agent-routine`
 
 - `inject`: `storageDomain` · `schedule` · `webServer`
-- `source`: [`packages/agents/agent-routine/src/index.ts:67`](../packages/agents/agent-routine/src/index.ts)
+- `source`: [`packages/agents/agent-routine/src/index.ts:68`](../packages/agents/agent-routine/src/index.ts)
 
 ```ts config-catalog
 /** Plugin settings. */
@@ -521,7 +550,7 @@ export type Config = LocalConfig
 ## `@deepseek-ai/dsh-client-connection`
 
 - `inject`: `credentials`
-- `source`: [`packages/client/connection/src/index.ts:96`](../packages/client/connection/src/index.ts)
+- `source`: [`packages/client/connection/src/index.ts:97`](../packages/client/connection/src/index.ts)
 
 ```ts config-catalog
 /** Browser authentication, request limits, and connection recovery configuration. */
@@ -3041,7 +3070,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-schedule`
 
 - `inject`: `agents` · `sessions` · `storageDomain` · `sessionPersistence`
-- `source`: [`packages/schedule/schedule/src/index.ts:80`](../packages/schedule/schedule/src/index.ts)
+- `source`: [`packages/schedule/schedule/src/index.ts:81`](../packages/schedule/schedule/src/index.ts)
 
 ```ts config-catalog
 /** Configuration for the Host Schedule domain. */
@@ -5070,7 +5099,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-settings-subagent` | — | [`packages/client/ui-settings-subagent/src/index.ts`](../packages/client/ui-settings-subagent/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-web-search` | — | [`packages/client/ui-settings-web-search/src/index.ts`](../packages/client/ui-settings-web-search/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-shortcuts` | — | [`packages/client/ui-shortcuts/src/index.ts`](../packages/client/ui-shortcuts/src/index.ts) |
-| `@deepseek-ai/dsh-client-ui-sidebar` | — | [`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-sidebar` | `storageDomain` · `llm` · `agents` · `typert` | [`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-browser` | — | [`packages/client/ui-sidebar-browser/src/index.ts`](../packages/client/ui-sidebar-browser/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-files` | — | [`packages/client/ui-sidebar-files/src/index.ts`](../packages/client/ui-sidebar-files/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-right` | — | [`packages/client/ui-sidebar-right/src/index.ts`](../packages/client/ui-sidebar-right/src/index.ts) |
@@ -5125,7 +5154,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-subprocess-local` | — | [`packages/subprocess/subprocess-local/src/index.ts`](../packages/subprocess/subprocess-local/src/index.ts) |
 | `@deepseek-ai/dsh-subprocess-ssh` | `ssh` | [`packages/ssh/subprocess-ssh/src/index.ts`](../packages/ssh/subprocess-ssh/src/index.ts) |
 | `@deepseek-ai/dsh-terminal` | — | [`packages/terminal/terminal/src/index.ts`](../packages/terminal/terminal/src/index.ts) |
-| `@deepseek-ai/dsh-tool-agent-mailbox` | `tools` · `agentMailbox` | [`packages/agents/tool-agent-mailbox/src/index.ts`](../packages/agents/tool-agent-mailbox/src/index.ts) |
+| `@deepseek-ai/dsh-tool-agent-mailbox` | `tools` · `agentMailbox` · `persistentAgents` | [`packages/agents/tool-agent-mailbox/src/index.ts`](../packages/agents/tool-agent-mailbox/src/index.ts) |
 | `@deepseek-ai/dsh-tool-agent-memory` | `persistentAgents` · `agentMemory` · `tools` | [`packages/agents/tool-agent-memory/src/index.ts`](../packages/agents/tool-agent-memory/src/index.ts) |
 | `@deepseek-ai/dsh-tool-agent-routine` | `tools` · `agentRoutines` | [`packages/agents/tool-agent-routine/src/index.ts`](../packages/agents/tool-agent-routine/src/index.ts) |
 | `@deepseek-ai/dsh-tool-call-timeout-policy` | `tools` | [`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts) |

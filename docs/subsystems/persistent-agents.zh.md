@@ -26,6 +26,8 @@ maxMemories 默认为 256，maxMemoryBytes 和 essentialBytes 默认为 8192 UTF
 
 工具仅报告暂存。下一次提示组装等待已接纳的提交；提交失败会记录并向受影响会话报告一次，随后可重试。写入完成前进程崩溃可能丢失暂存更新，工具不会声称未确认的数据已持久化。消费者可调用 settled(sessionId) 等待结果。
 
+档案缺省的 `runtime` 解析为 `native`。`claude-sdk` 和 `codex-sdk` 使用独立的可选 `runtimeModel`；原生模式保留但不使用该字段。外部档案不验证未使用的主 API 路由，但仍验证所有保存的备用路由，自动回退仍须显式同意。`selection()` 在 API 激活前拒绝外部档案；切换运行时不会隐式选择 API。可选的[外部运行时配置](../../packages/agents/agent-external-runtime/README.zh.md)负责解析私有账户工具目录。
+
 ## 验证
 
 运行 `pnpm exec vitest run packages/agents`。Loader 测试通过 cordis.yml 加载真实插件、存储和智能体循环，仅模拟模型提供方。测试覆盖重开、验证、隔离、成功与取消回合、版本冲突、用户锁和预算限制，并对每个源文件要求 100% 覆盖率。
@@ -381,6 +383,25 @@ Thin Remote adapter; the registry owns validation, isolation and persistence.
 ```
 
 Source: [`packages/client/ui-sidebar/src/index.ts`](../../packages/client/ui-sidebar/src/index.ts)
+
+<a id="ctxharnessbindings--harnessbindings"></a>
+
+### `ctx.harnessBindings` — `HarnessBindings`
+
+Immutable deployment bindings, resolved again against current identity on every activation.
+
+```ts cordis-catalog
+/** Resolve only the owner recorded by the registry and Session sidecar.
+ * @param sessionId - durably bound DSH conversation.
+ * @param workspace - actual workspace of the agent; overlapping harness folders are refused.
+ * @returns detached private Host binding; never put it in a tool result or prompt.
+ */
+async resolve(sessionId: SessionId, workspace: string): Promise<AccountHarnessBinding>
+```
+
+Types: [SessionId](core.zh.md)
+
+Source: [`packages/agents/agent-external-runtime/src/index.ts`](../../packages/agents/agent-external-runtime/src/index.ts)
 
 <a id="ctxpersistentagents--persistentagents"></a>
 

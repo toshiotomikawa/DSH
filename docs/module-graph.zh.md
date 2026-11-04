@@ -118,6 +118,7 @@ flowchart TD
     pkg_acp["acp"]
   end
   subgraph group_agents["packages/agents"]
+    pkg_agent_external_runtime["agent-external-runtime"]
     pkg_agent_mailbox["agent-mailbox"]
     pkg_agent_memory["agent-memory"]
     pkg_agent_registry["agent-registry"]
@@ -1574,6 +1575,7 @@ flowchart TD
 | [`llm`](../packages/llm/llm) | `llm` | — |
 | [`scope`](../packages/core/scope) | `core` | — |
 | [`fs-patch`](../packages/fs/fs-patch) | `fs` | — |
+| [`agent-external-runtime`](../packages/agents/agent-external-runtime) | `agents` | — |
 | [`agent-mailbox`](../packages/agents/agent-mailbox) | `agents` | — |
 | [`agent-memory`](../packages/agents/agent-memory) | `agents` | — |
 | [`agent-registry`](../packages/agents/agent-registry) | `agents` | — |

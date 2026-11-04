@@ -19,6 +19,8 @@ kind: "package-reference"
 
 侧栏分区是由单个账户拥有的扁平分组：`listSections`、`createSection(name)`、`renameSection(id, name)`、`deleteSection(id)` 和 `assignSection(agentId, sectionId | null)`。配置保存 `sectionId`；移动或取消分组只改变该字段，绝不改变配置 id、历史、记忆或例程。删除分区时先取消其成员的分组，再移除该分组。名称长度为 1 到 40 个字符；未知或属于其他账户的分区 id 会以相同的 `Unknown section` 错误失败，分区绝不授予对其他账户的访问权。渲染这些分组的侧栏界面尚不属于本包。
 
+档案缺省的 `runtime` 解析为 `native`。`claude-sdk` 和 `codex-sdk` 使用独立的可选 `runtimeModel`；原生模式保留但不使用该字段。外部档案不验证未使用的主 API 路由，但仍验证所有保存的备用路由，自动回退仍须显式同意。`selection()` 在 API 激活前拒绝外部档案；切换运行时不会隐式选择 API。可选的[外部运行时配置](../agent-external-runtime/README.zh.md)负责解析私有账户工具目录。
+
 ## 模型体验
 
 ### 持久身份与记忆

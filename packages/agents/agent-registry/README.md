@@ -19,6 +19,8 @@ New profiles record the Remote connection account as `ownerId`; trusted local cr
 
 Sidebar sections are flat groups owned by one account: `listSections`, `createSection(name)`, `renameSection(id, name)`, `deleteSection(id)` and `assignSection(agentId, sectionId | null)`. A profile stores `sectionId`; moving or ungrouping it changes only that field, never the profile id, history, memory or routines. Deleting a section ungroups its members first, then removes the group. A name is 1 to 40 characters; an unknown or foreign section id fails with the same `Unknown section` error, and sections never grant access to another account. The sidebar UI that renders these groups is not part of this package yet.
 
+Profiles resolve an omitted `runtime` as `native`. `claude-sdk` and `codex-sdk` store a separate optional `runtimeModel`; it is retained but unused in native mode. External profiles skip validation of the unused primary API route, while every saved reserve remains validated and automatic fallback still requires explicit consent. `selection()` refuses external profiles before API activation; changing runtime never silently selects an API provider. The optional [external runtime configuration](../agent-external-runtime/README.md) resolves private account harness directories.
+
 ## Model Experience
 
 ### Persistent identity and memories

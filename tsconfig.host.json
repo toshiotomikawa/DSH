@@ -275,6 +275,7 @@
   ],
   "references": [
     { "path": "./packages/client/ui-sidebar/tsconfig.host.json" },
+    { "path": "./packages/agents/agent-external-runtime" },
     { "path": "./packages/agents/agent-runtime" },
     { "path": "./packages/experimental/action-cards" },
     { "path": "./packages/experimental/creation-recommendations" },
