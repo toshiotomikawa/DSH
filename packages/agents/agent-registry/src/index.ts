@@ -102,16 +102,17 @@ export class PersistentAgents {
     const patch = patchSchema.parse(input)
     const id = PersistentAgentId(randomUUID())
     const now = Date.now()
+    const ownerId = this.ctx.invocation === undefined ? patch.ownerId ?? 'owner' : ownerIdOf(this.ctx.invocation)
     const profile = profileSchema.parse({
       title: '', description: '', instructions: '', firstTask: '', reserves: [], automaticFallback: false,
       ...profileFields(patch),
-      ownerId: this.ctx.invocation === undefined ? patch.ownerId ?? 'owner' : ownerIdOf(this.ctx.invocation),
+      ownerId,
       model: { ...inherited, ...patch.model }, id, revision: 1, createdAt: now, updatedAt: now,
       avatar: await this.avatar(patch, { kind: 'generated', value: id }),
       permissions: { source: 'deployment' },
     })
     await this.validateRoutes(profile)
-    if (profile.sectionId !== undefined) this.requireSection(profile.sectionId, profile.ownerId ?? 'owner')
+    if (profile.sectionId !== undefined) this.requireSection(profile.sectionId, ownerId)
     await this.domain.table('profiles').put(id, profile)
     return structuredClone(profile)
   }

@@ -18,7 +18,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { describe, it, expect, onTestFinished, vi } from 'vitest'
-import { harness, Adapter, inherited } from '../../agent-registry/tests/harness.ts'
+import { harness, live, Adapter, inherited } from '../../agent-registry/tests/harness.ts'
 import { textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import * as Runtime from '../src/index.ts'
 
