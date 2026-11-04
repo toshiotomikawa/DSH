@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agentes persistentes",
+    "description": "Guarda perfis com nome e liga as sessões a identidades de agente estáveis."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Persistente Agenten",
+    "description": "Speichert benannte Profile und bindet Sitzungen an stabile Agentenidentitäten."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agents persistants",
+    "description": "Conserve des profils nommés et lie les sessions à des identités d’agent stables."
+  }
+}

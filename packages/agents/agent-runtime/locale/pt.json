@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Ambiente de execução de agentes persistentes",
+    "description": "Liga as identidades de agentes persistentes às sessões da caixa de mensagens e das rotinas."
+  }
+}

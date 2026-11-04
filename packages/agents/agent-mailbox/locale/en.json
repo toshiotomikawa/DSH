@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agent mailbox",
+    "description": "Durable messages between persistent agents rooted in different sessions."
+  }
+}

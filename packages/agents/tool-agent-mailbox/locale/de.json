@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Werkzeuge für das Agenten-Postfach",
+    "description": "Sendet Nachrichten zwischen persistenten Agenten."
+  }
+}
