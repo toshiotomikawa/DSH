@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { delivery, setup } from './harness.ts'
 import type { Rig } from './harness.ts'
-import type { Routine } from '../src/types.ts'
+import type { Routine, Run } from '../src/types.ts'
 
 const DAILY = { kind: 'daily', time: '12:00' } as const
 const base = { agentId: 'a1', name: 'Resumo', instruction: 'Resuma o dia.', schedule: DAILY, timeZone: 'UTC' }
 const DAY = 86_400_000
 
 async function routine(rig: Rig, extra: Record<string, unknown> = {}): Promise<Routine> {
-  return rig.engine.createRoutine({ ...base, ...extra } as never)
+  return rig.engine.createRoutine({ ...base, ...extra })
 }
 
 describe('criterion 4: one-time routine and quota', () => {
@@ -134,9 +134,9 @@ describe('criterion 5: wait, skip and invalid credential', () => {
     rig.clock.now += DAY
     await rig.engine.tick()
     expect(rig.engine.run(hook.run.id)).toMatchObject({ state: 'falha', reason: 'sem_rotina_ou_agente' })
-    const orphan = await rig.store.runs.get(hook.run.id)
+    const orphan = rig.store.runs.get(hook.run.id) as Run
     await rig.store.routines.delete(item.id)
-    await rig.store.runs.put('orfa', { ...(orphan as never), id: 'orfa', state: 'espera_cota', nextCheckAt: new Date(rig.clock.now).toISOString() })
+    await rig.store.runs.put('orfa', { ...orphan, id: 'orfa', state: 'espera_cota', nextCheckAt: new Date(rig.clock.now).toISOString() })
     const fresh = rig.make()
     await fresh.tick()
     expect(fresh.run('orfa')?.state).toBe('falha')

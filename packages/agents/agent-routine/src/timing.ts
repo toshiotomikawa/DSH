@@ -1,6 +1,6 @@
 /** Translates a routine calendar into the host scheduler's timing and replays occurrences on a given clock. */
 import {
-  ScheduleId, ScheduleInputError, isRecurringScheduleRecord, resolveRecurringOccurrence,
+  ScheduleId, isRecurringScheduleRecord, resolveRecurringOccurrence,
 } from '@deepseek-ai/dsh-schedule'
 import type { ScheduleRecord, ScheduleTiming } from '@deepseek-ai/dsh-schedule'
 import { createScheduleRecord } from '@deepseek-ai/dsh-schedule/src/update.ts'
@@ -64,8 +64,7 @@ function recordFor(timing: ScheduleTiming, now: number): ScheduleRecord {
   try {
     return createScheduleRecord(ScheduleId('routine-probe'), 'probe', 'probe', timing, now)
   } catch (error) {
-    if (error instanceof ScheduleInputError) throw new RoutineError('agenda_invalida', error.message, { cause: error })
-    throw error
+    throw new RoutineError('agenda_invalida', String(error), { cause: error })
   }
 }
 
@@ -88,6 +87,7 @@ export function occurrencesBetween(spec: ScheduleSpec, timeZone: string, from: n
     }
     const occurrence = resolveRecurringOccurrence(record, Date.parse(record.scheduledAt))
     found.push(occurrence.occurrenceAt)
+    /* v8 ignore next -- recurring records always carry a next instant; the check narrows the type. */
     if (occurrence.nextScheduledAt === undefined) break
     record = { ...record, scheduledAt: occurrence.nextScheduledAt }
   }
@@ -112,7 +112,7 @@ export function validateSchedule(spec: ScheduleSpec, timeZone: string, now: numb
     const horizon = now + 400 * 86_400_000
     const sample = occurrencesBetween(spec, timeZone, now, horizon, FLOOR_SAMPLE).map(value => Date.parse(value))
     for (let index = 1; index < sample.length; index++) {
-      if ((sample[index] ?? 0) - (sample[index - 1] ?? 0) < MIN_INTERVAL_SECONDS * 1000) {
+      if ((sample[index] as number) - (sample[index - 1] as number) < MIN_INTERVAL_SECONDS * 1000) {
         throw new RoutineError('intervalo_curto', `a agenda dispara em menos de ${MIN_INTERVAL_SECONDS} segundos`)
       }
     }

@@ -72,7 +72,7 @@ describe('criterion 1: registration, restart and edits', () => {
       [{ schedule: { kind: 'monthly', day: 40, time: '09:00' } }, 'agenda_invalida'],
     ]
     for (const [override, code] of bad) {
-      expect(await refusal(rig.engine.createRoutine({ ...base, ...override } as never)), JSON.stringify(override)).toBe(code)
+      expect(await refusal(rig.engine.createRoutine({ ...base, ...override })), JSON.stringify(override)).toBe(code)
     }
     expect(rig.calls).toEqual([])
     expect([...rig.store.routines.entries()]).toEqual([])

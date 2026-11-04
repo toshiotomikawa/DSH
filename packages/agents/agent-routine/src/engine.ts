@@ -405,10 +405,10 @@ export class RoutineEngine {
       const missed = late ? occurrencesBetween(spec, routine.timeZone, Date.parse(routine.lastSeenAt), planned - 1) : []
       let outcome: Run
       if (!routine.active) {
-        outcome = await this.skipped(routine, delivery, 'rotina_pausada', true)
+        outcome = await this.skipped(routine, delivery, 'rotina_pausada')
       } else if (late && routine.missedPolicy === 'skip') {
         for (const occurrence of missed) await this.skippedOccurrence(routine, occurrence, 'desligamento')
-        outcome = await this.skipped(routine, delivery, 'desligamento', true)
+        outcome = await this.skipped(routine, delivery, 'desligamento')
       } else {
         for (const occurrence of missed) await this.skippedOccurrence(routine, occurrence, 'suprimida')
         outcome = await this.admitDelivery(routine, delivery)
@@ -422,8 +422,8 @@ export class RoutineEngine {
     })
   }
 
-  private async skipped(routine: Routine, delivery: Delivery, reason: string, stopSession: boolean): Promise<Run> {
-    if (stopSession) await this.stopSession(delivery.sessionId)
+  private async skipped(routine: Routine, delivery: Delivery, reason: string): Promise<Run> {
+    await this.stopSession(delivery.sessionId)
     const run = await this.accept(routine, {
       source: 'agenda', manual: false, scheduledAt: delivery.scheduledAt, deliveryKey: delivery.messageId,
       state: 'pulada', reason, endedAt: this.iso(),
@@ -564,7 +564,6 @@ export class RoutineEngine {
   }
 
   private async notifyOnce(run: Run): Promise<void> {
-    if (run.notifiedAt !== undefined) return
     const routine = this.routines.get(run.routineId)
     try {
       await this.options.notify({

@@ -7,7 +7,7 @@ const DAILY = { kind: 'daily', time: '09:00' } as const
 const base = { agentId: 'a1', name: 'Resumo', instruction: 'Resuma o dia.', schedule: DAILY, timeZone: 'UTC' }
 
 async function routine(rig: Rig, extra: Record<string, unknown> = {}): Promise<Routine> {
-  return rig.engine.createRoutine({ ...base, ...extra } as never)
+  return rig.engine.createRoutine({ ...base, ...extra })
 }
 
 describe('criterion 3: pause, manual test and serialization', () => {
