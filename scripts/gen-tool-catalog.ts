@@ -6,7 +6,7 @@
  * `.agents/notes/archived/process/2026-07-02-tool-schema-catalog.md`.
  */
 
-import { globSync, readFileSync, writeFileSync } from 'node:fs'
+import { globSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
@@ -63,6 +63,8 @@ import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
 import * as ToolGoal from '@deepseek-ai/dsh-tool-goal'
 import * as ToolSchedule from '@deepseek-ai/dsh-tool-schedule'
+import * as ToolAgentRoutine from '@deepseek-ai/dsh-tool-agent-routine'
+import type { AgentRoutines } from '@deepseek-ai/dsh-agent-routine'
 import ScheduleService from '@deepseek-ai/dsh-schedule'
 import Lsp from '@deepseek-ai/dsh-lsp'
 import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
@@ -72,7 +74,15 @@ import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import BrowserUseRegistry from '@deepseek-ai/dsh-browser-use'
 import * as StagehandBrowserTools from '@deepseek-ai/dsh-experimental-browser-use-stagehand-native'
 import TeamService from '@deepseek-ai/dsh-agent-team'
+import * as ToolAgentMailbox from '@deepseek-ai/dsh-tool-agent-mailbox'
+import type { AgentMailbox } from '@deepseek-ai/dsh-agent-mailbox'
 import * as ToolTeam from '@deepseek-ai/dsh-tool-agent-team'
+import Storage from '@deepseek-ai/dsh-storage'
+import * as JsonStorage from '@deepseek-ai/dsh-storage-json'
+import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
+import * as PersistentAgents from '@deepseek-ai/dsh-agent-registry'
+import * as AgentMemory from '@deepseek-ai/dsh-agent-memory'
+import * as ToolAgentMemory from '@deepseek-ai/dsh-tool-agent-memory'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import * as StorageTables from '@deepseek-ai/dsh-storage-tables'
 import * as ToolTables from '@deepseek-ai/dsh-tool-tables'
@@ -495,6 +505,22 @@ const TOOL_PACKAGES: ToolPackage[] = [
       + 'Delegated subagents cannot call these tools.',
   },
   {
+    pkg: '@deepseek-ai/dsh-tool-agent-routine',
+    dir: 'tool-agent-routine',
+    source: 'packages/agents/tool-agent-routine/src/index.ts',
+    requires: ['ctx.tools', 'ctx.agentRoutines'],
+    writes: ['tool/call', 'Agent routine storage domain create, update, or delete', 'Schedule task for the calendar', 'tool/result'],
+    async mount(ctx) {
+      // Schema harvest never executes a tool, so the routine service is a stub.
+      ctx.provide('agentRoutines', {} as AgentRoutines)
+      await ctx.plugin(ToolAgentRoutine)
+    },
+    note:
+      'A preset or Agent scope decides which agents receive these tools. '
+      + 'Every execution starts a fresh session of the routine agent; the calendar lives in the Host Schedule. '
+      + 'routine_no_update is meant for the execution session only: the run stays in the history and no notification is sent.',
+  },
+  {
     pkg: '@deepseek-ai/dsh-tool-lsp',
     dir: 'tool-lsp',
     source: 'packages/lsp/tool-lsp/src/index.ts',
@@ -620,6 +646,42 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'The kind-agnostic background-job controller: background bash commands and PTY sends are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers\' `ctx.jobs.start()`.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-agent-memory',
+    dir: 'tool-agent-memory',
+    source: 'packages/agents/tool-agent-memory/src/index.ts',
+    requires: ['ctx.tools', 'ctx.persistentAgents', 'ctx.agentMemory', 'a bound persistent-agent session'],
+    writes: ['tool/call', 'tool/result', 'agent_memory book on successful turn/end'],
+    async mount(ctx) {
+      const parent = resolve('.dsh-test')
+      mkdirSync(parent, { recursive: true })
+      const root = mkdtempSync(resolve(parent, 'catalog-memories-'))
+      ctx.effect(() => () => rmSync(root, { recursive: true, force: true }))
+      await ctx.plugin(LlmRuntime)
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(Storage)
+      await ctx.plugin(JsonStorage, { root })
+      await ctx.plugin(StorageDomain, { backend: 'json' })
+      await ctx.plugin(PersistentAgents)
+      await ctx.plugin(AgentMemory, { maxMemories: 256, maxMemoryBytes: 8192, essentialBytes: 8192 })
+      await ctx.plugin(ToolAgentMemory)
+    },
+    note: 'Memories are isolated by the calling session’s persistent agentId. Mutations are staged and committed atomically after successful turn completion; interrupted turns are discarded. Saved data never grants authority.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-agent-mailbox',
+    dir: 'tool-agent-mailbox',
+    source: 'packages/agents/tool-agent-mailbox/src/index.ts',
+    requires: ['ctx.tools', 'ctx.agentMailbox', 'an exact live persistent Agent'],
+    writes: ['tool/call', 'tool/result', 'agent_mailbox message record', 'user/message'],
+    async mount(ctx) {
+      // Schema harvest never sends, lists or interrupts.
+      ctx.provide('agentMailbox', {} as AgentMailbox)
+      await ctx.plugin(ToolAgentMailbox)
+    },
+    note: 'Mail sent here is durable collaborator content, never authority. The identity layer supplies stable ids, visibility and interruption rights; a reply returns to the conversation that sent the request.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-agent-team',

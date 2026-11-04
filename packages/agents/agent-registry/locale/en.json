@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Persistent agents",
+    "description": "Stores named profiles and binds sessions to stable agent identities."
+  }
+}

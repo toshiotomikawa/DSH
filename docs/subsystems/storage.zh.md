@@ -75,16 +75,23 @@ interface DomainSpec {
    */
   readonly compatibleVersions?: readonly number[]
   /**
-   * What `open` does with a stored table record that fails its zod schema.
-   * Absent (the default), the whole open rejects with `invalid-record` —
-   * right for authoritative data. `'backup-and-skip'` is for domains whose
-   * records are disposable derived data: the backend moves the record's
-   * document aside (`KvUnit.backupRecord`), the failure is logged with
-   * its cause, and the open continues with the record absent. A backend
-   * without `backupRecord` (no per-record document to move) falls back
-   * to the rejecting default. The global slot always rejects.
+   * What `open` does with a stored table record that fails its zod schema, or
+   * with a per-record document the backend reports as damaged (present but
+   * unreadable). Absent (the default), the whole open rejects with
+   * `invalid-record` for a schema failure, and a damaged document is logged
+   * and read as absent — the per-record contract for disposable data.
+   * `'backup-and-skip'` is for domains whose records are disposable derived
+   * data: the backend moves the record's document aside
+   * (`KvUnit.backupRecord`), the failure is logged with its cause, and the
+   * open continues with the record absent. A backend without `backupRecord`
+   * (no per-record document to move) falls back to the rejecting default.
+   * `'quarantine'` is for authoritative records that must never be mistaken
+   * for absent: the document is left in place, the failure is logged, the
+   * open continues without that record, and its key is listed by
+   * `Domain.quarantined` so the owner can refuse reads and writes for it
+   * until a human restores the file. The global slot always rejects.
    */
-  readonly invalidRecords?: 'backup-and-skip'
+  readonly invalidRecords?: 'backup-and-skip' | 'quarantine'
   /** Optional global singleton slot. */
   readonly global?: DomainGlobalSpec<unknown>
   /** Table declarations keyed by table name; each name must match `UNIT_NAME_RE`. */
@@ -103,7 +110,7 @@ interface DomainSpec {
 
 发布前的序列化失败或成功的 SQLite 回滚会保留原有数据与版本戳。JSON 替换后的 I/O 失败或 SQLite 回滚本身失败时，即使操作被拒绝，已存结果也可能未知。必须停止使用并关闭后端及其领域，然后重新打开检查已存状态，再决定是否重试。各后端 README 定义了这些失败情况。
 
-JSON 的 `per-record` 布局独立检查和标记每份文档；不支持的文档读取为缺失。其已有整单元引导是只读加载的例外：它将接受的历史值复制到当前版本文档中，不转换其中的值。已有的已声明表目录（即使为空）或已声明全局文档会禁止引导。SQLite 无论布局请求为何都保持单元级版本检查。布局与恢复行为见 [JSON 后端](../../packages/storage/storage-json/README.zh.md)和 [SQLite 后端](../../packages/storage/storage-sqlite/README.zh.md)。
+JSON 的 `per-record` 布局独立检查和标记每份文档；不支持的文档读取为缺失，损坏或不可读的文档同样读取为缺失，但会报告给打开方，使权威领域可以隔离它，而不是把损坏当成缺失。其已有整单元引导是只读加载的例外：它将接受的历史值复制到当前版本文档中，不转换其中的值。已有的已声明表目录（即使为空）或已声明全局文档会禁止引导。SQLite 无论布局请求为何都保持单元级版本检查。布局与恢复行为见 [JSON 后端](../../packages/storage/storage-json/README.zh.md)和 [SQLite 后端](../../packages/storage/storage-sqlite/README.zh.md)。
 
 兼容后继版本需提升 `version`、在 `compatibleVersions` 中保留仍可读的版本戳，并扩展同一 schema 的解码和默认规则。消费者在重写选定记录时规范化值；Storage 不分配应用记录版本。验证历史版本与跨版本升级、混合值、不写入的读取、失败回滚、重启、其他单元隔离和未知版本拒绝。删表与布局变更各自需要保留及升级策略；兼容版本戳本身不定义这些策略。
 
@@ -129,6 +136,16 @@ interface Domain<S extends DomainSpec> {
   table<N extends keyof S['tables'] & string>(name: N): KvTable<TableKeyOf<S, N>, TableValueOf<S, N>>
 
   /**
+   * Record keys quarantined at open: stored documents that failed validation
+   * under the `'quarantine'` policy, or that the backend reported as damaged.
+   * Such a record is absent from its table and its document was left in
+   * place, so the owner must refuse to read or write it until restored.
+   * @param name - Declared table name.
+   * @returns the quarantined keys.
+   */
+  quarantined(name: string): readonly string[]
+
+  /**
    * Close this domain: reject new writes immediately, drain already-queued
    * writes (their events still emit), release the backend unit, then free
    * the domain name for a later open. Idempotent — repeated calls share one
@@ -144,7 +161,7 @@ interface Domain<S extends DomainSpec> {
 
 ## 领域 facility：`ctx.storageDomain`
 
-`DomainFacility`（[签名](#ctxstoragedomain--domainfacility)）在经过路由的后端之上打开已声明的领域。路由是领域插件的配置，绝不属于枢纽：`backend` 指定必填的默认路由，`routes` 按领域名逐个覆盖。`open(spec)` 按严格顺序执行，每一步失败都使整个调用失败：拒绝已打开或仍在关闭中的名称（`already-open`），解析路由（`backend-not-found`），要求后端具备 `kv` facet（`facet-unsupported`），打开 unit（后端的 `version-mismatch`/`malformed-medium` 原样透传），并按 spec 的 zod schema 校验每条已存储记录和 global（`invalid-record`，附带出错的表与键）。调用方拥有返回的句柄，并用 `Domain.close()` 释放它；插件卸载时仍处于打开状态的领域由 facility 负责关闭，已关闭领域的名称只有在拆除完全结束后才释放出来供重新打开。`get(name)` 是无类型的诊断查找，命中的是每个类型化句柄背后包内私有的 `DomainImpl` 运行时；`closeAll()` 是卸载路径。
+`DomainFacility`（[签名](#ctxstoragedomain--domainfacility)）在经过路由的后端之上打开已声明的领域。路由是领域插件的配置，绝不属于枢纽：`backend` 指定必填的默认路由，`routes` 按领域名逐个覆盖。`open(spec)` 按严格顺序执行，每一步失败都使整个调用失败：拒绝已打开或仍在关闭中的名称（`already-open`），解析路由（`backend-not-found`），要求后端具备 `kv` facet（`facet-unsupported`），打开 unit（后端的 `version-mismatch`/`malformed-medium` 原样透传），并按 spec 的 zod schema 校验每条已存储记录和 global（`invalid-record`，附带出错的表与键）。schema 失败或后端报告为损坏的文档遵循 spec 的 `invalidRecords` 策略：默认对 schema 失败拒绝、把损坏文档记录日志并按缺失处理，`backup-and-skip` 把文档移到一旁，`quarantine` 让文档留在原地并在 `Domain.quarantined` 中列出该键，使所有者可以拒绝该记录直到它被恢复。调用方拥有返回的句柄，并用 `Domain.close()` 释放它；插件卸载时仍处于打开状态的领域由 facility 负责关闭，已关闭领域的名称只有在拆除完全结束后才释放出来供重新打开。`get(name)` 是无类型的诊断查找，命中的是每个类型化句柄背后包内私有的 `DomainImpl` 运行时；`closeAll()` 是卸载路径。
 
 ## 变更事件：`domain/changed`
 

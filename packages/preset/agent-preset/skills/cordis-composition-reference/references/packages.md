@@ -10,6 +10,19 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 |---|---|---|
 | `@deepseek-ai/dsh-acp` | yes | Automation-only Agent Client Protocol server for driving DeepSeek Harness agents over JSON-RPC stdio |
 
+## agents
+
+| Package | Config | Description |
+|---|---|---|
+| `@deepseek-ai/dsh-agent-mailbox` | no | Durable messages between persistent agents rooted in different sessions. |
+| `@deepseek-ai/dsh-agent-memory` | yes | Stores isolated memories and commits changes after a successful turn. |
+| `@deepseek-ai/dsh-agent-registry` | no | Stores named profiles and binds sessions to stable agent identities. |
+| `@deepseek-ai/dsh-agent-routine` | yes | Per-agent routines over the host scheduler: one record per execution, queue, quota wait, missed-occurrence policies and an authenticated local script entry |
+| `@deepseek-ai/dsh-agent-runtime` | no | Connects persistent agent identities to mailbox and routine sessions. |
+| `@deepseek-ai/dsh-tool-agent-mailbox` | no | Model tools to send messages between persistent agents. |
+| `@deepseek-ai/dsh-tool-agent-memory` | no | Remembers, forgets and searches data for the calling agent. |
+| `@deepseek-ai/dsh-tool-agent-routine` | no | Model-facing routine tools: routine_create, routine_update, routine_list, routine_test and routine_no_update |
+
 ## api
 
 | Package | Config | Description |
@@ -456,6 +469,8 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-storage-domain` | yes | Domain data form (ctx.storage.domain): schema-validated, event-emitting KV domains over storage backends for the DeepSeek Harness |
 | `@deepseek-ai/dsh-storage-json` | yes | JSON file KV storage backend for the DeepSeek Harness storage hub |
 | `@deepseek-ai/dsh-storage-sqlite` | yes | SQLite storage backend (kv facet) for the DeepSeek Harness storage hub |
+| `@deepseek-ai/dsh-storage-tables` | yes | Shared relational tables for agents: a dedicated SQLite database behind ctx.tables |
+| `@deepseek-ai/dsh-tool-tables` | no | Model-facing tools over the shared relational tables: table_create, table_list, table_schema, table_alter, table_drop, data_query, data_execute, data_batch |
 
 ## subagent
 
@@ -463,10 +478,12 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 |---|---|---|
 | `@deepseek-ai/dsh-subagent` | yes | Abstract subagent seam (ctx.subagents): named-provider registry for delegating to child agents |
 | `@deepseek-ai/dsh-subagent-acp` | yes | Out-of-process ACP subagent backend: drives a child agent in a spawned subprocess over the Agent Client Protocol |
+| `@deepseek-ai/dsh-subagent-agy` | yes | One-shot agy CLI subagent provider with managed cancellation |
 | `@deepseek-ai/dsh-subagent-claude-code` | yes | One-shot Claude Code subagent provider over the official Agent SDK |
 | `@deepseek-ai/dsh-subagent-codex` | yes | One-shot Codex subagent provider over the official app-server protocol |
 | `@deepseek-ai/dsh-subagent-dsh-sdk` | yes | Out-of-process SDK subagent backend: drives a child DeepSeek Harness runtime subprocess over stdio JSON-RPC through the TypeScript SDK client |
 | `@deepseek-ai/dsh-subagent-fork-in-process` | yes | In-process fork subagent backend: runs a child agent seeded with a prefix of the parent's log |
+| `@deepseek-ai/dsh-subagent-grok` | yes | One-shot grok CLI subagent provider with managed cancellation |
 | `@deepseek-ai/dsh-subagent-spawn-in-process` | yes | In-process spawn subagent backend: runs a fresh child agent on ctx.agents |
 | `@deepseek-ai/dsh-tool-subagent` | yes | Model-facing subagent delegation tool over the ctx.subagents seam |
 | `@deepseek-ai/dsh-tool-subagent-control` | yes | Shared messaging, interruption, and child discovery tools for subagents |

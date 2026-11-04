@@ -1,0 +1,9 @@
+- insert:
+    - id: persistent-agent-registry
+      name: '@deepseek-ai/dsh-agent-registry'
+    - id: persistent-agent-memory
+      name: '@deepseek-ai/dsh-agent-memory'
+    - id: persistent-agent-memory-tools
+      name: '@deepseek-ai/dsh-tool-agent-memory'
+    - id: persistent-agent-memory-fixture
+      name: ../../../packages/agents/tool-agent-memory/tests/snapshot-fixture.ts

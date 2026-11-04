@@ -75,16 +75,23 @@ interface DomainSpec {
    */
   readonly compatibleVersions?: readonly number[]
   /**
-   * What `open` does with a stored table record that fails its zod schema.
-   * Absent (the default), the whole open rejects with `invalid-record` —
-   * right for authoritative data. `'backup-and-skip'` is for domains whose
-   * records are disposable derived data: the backend moves the record's
-   * document aside (`KvUnit.backupRecord`), the failure is logged with
-   * its cause, and the open continues with the record absent. A backend
-   * without `backupRecord` (no per-record document to move) falls back
-   * to the rejecting default. The global slot always rejects.
+   * What `open` does with a stored table record that fails its zod schema, or
+   * with a per-record document the backend reports as damaged (present but
+   * unreadable). Absent (the default), the whole open rejects with
+   * `invalid-record` for a schema failure, and a damaged document is logged
+   * and read as absent — the per-record contract for disposable data.
+   * `'backup-and-skip'` is for domains whose records are disposable derived
+   * data: the backend moves the record's document aside
+   * (`KvUnit.backupRecord`), the failure is logged with its cause, and the
+   * open continues with the record absent. A backend without `backupRecord`
+   * (no per-record document to move) falls back to the rejecting default.
+   * `'quarantine'` is for authoritative records that must never be mistaken
+   * for absent: the document is left in place, the failure is logged, the
+   * open continues without that record, and its key is listed by
+   * `Domain.quarantined` so the owner can refuse reads and writes for it
+   * until a human restores the file. The global slot always rejects.
    */
-  readonly invalidRecords?: 'backup-and-skip'
+  readonly invalidRecords?: 'backup-and-skip' | 'quarantine'
   /** Optional global singleton slot. */
   readonly global?: DomainGlobalSpec<unknown>
   /** Table declarations keyed by table name; each name must match `UNIT_NAME_RE`. */
@@ -103,7 +110,7 @@ Ordinary compatible opens and reads do not restamp or normalize saved values. Wh
 
 Serialization failure before publication or successful SQLite rollback preserves the previous data and stamp. An I/O failure after JSON replacement, or a failure of SQLite rollback itself, can leave the saved outcome unknown despite rejection. Stop using and close the backend and its domains, then reopen to inspect saved state before deciding whether to retry. The backend READMEs define these failure cases.
 
-JSON's `per-record` layout checks and stamps each document independently; an unsupported document reads as absent. Its existing whole-unit bootstrap is an exception to read-only loading: it copies accepted historical values into current-stamped documents without converting them. An existing declared table directory, even when empty, or a declared global document suppresses bootstrap. SQLite retains unit-wide version checks regardless of the layout request. See the [JSON backend](../../packages/storage/storage-json/README.md) and [SQLite backend](../../packages/storage/storage-sqlite/README.md) for layout and recovery behavior.
+JSON's `per-record` layout checks and stamps each document independently; an unsupported document reads as absent, and a malformed or unreadable document reads as absent while being reported to the opener, so an authoritative domain can quarantine it instead of mistaking corruption for absence. Its existing whole-unit bootstrap is an exception to read-only loading: it copies accepted historical values into current-stamped documents without converting them. An existing declared table directory, even when empty, or a declared global document suppresses bootstrap. SQLite retains unit-wide version checks regardless of the layout request. See the [JSON backend](../../packages/storage/storage-json/README.md) and [SQLite backend](../../packages/storage/storage-sqlite/README.md) for layout and recovery behavior.
 
 For a compatible successor, bump `version`, keep all still-readable stamps in `compatibleVersions`, and extend the same schema's decoding/defaults. Consumers normalize values when rewriting selected records; Storage does not assign application record versions. Verify historical and skipped upgrades, mixed values, reads without writes, failure rollback, restart, other-unit isolation, and unknown-version refusal. Table removal and layout changes require their own retention and upgrade policy; a compatible stamp alone does not define either.
 
@@ -129,6 +136,16 @@ interface Domain<S extends DomainSpec> {
   table<N extends keyof S['tables'] & string>(name: N): KvTable<TableKeyOf<S, N>, TableValueOf<S, N>>
 
   /**
+   * Record keys quarantined at open: stored documents that failed validation
+   * under the `'quarantine'` policy, or that the backend reported as damaged.
+   * Such a record is absent from its table and its document was left in
+   * place, so the owner must refuse to read or write it until restored.
+   * @param name - Declared table name.
+   * @returns the quarantined keys.
+   */
+  quarantined(name: string): readonly string[]
+
+  /**
    * Close this domain: reject new writes immediately, drain already-queued
    * writes (their events still emit), release the backend unit, then free
    * the domain name for a later open. Idempotent — repeated calls share one
@@ -144,7 +161,7 @@ Reads are synchronous from authoritative in-memory state: `KvTable` exposes `get
 
 ## The domain facility: `ctx.storageDomain`
 
-`DomainFacility` ([signatures](#ctxstoragedomain--domainfacility)) opens declared domains over routed backends. Routing is the domain plugin's configuration, never the hub's: `backend` names the required default route and `routes` overrides it per domain name. `open(spec)` runs a strict sequence, each step failing the whole call: it rejects a name already open or still closing (`already-open`), resolves the route (`backend-not-found`), requires the backend's `kv` facet (`facet-unsupported`), opens the unit (backend `version-mismatch`/`malformed-medium` pass through), and validates every stored record and global against the spec's zod schemas (`invalid-record` with the offending table and key). The caller owns the returned handle and releases it with `Domain.close()`; domains still open when the plugin unmounts are closed by the facility, and a closed domain's name frees for reopening only after teardown fully completes. `get(name)` is an untyped diagnostic lookup onto the package-private `DomainImpl` runtime behind every typed handle; `closeAll()` is the unmount path.
+`DomainFacility` ([signatures](#ctxstoragedomain--domainfacility)) opens declared domains over routed backends. Routing is the domain plugin's configuration, never the hub's: `backend` names the required default route and `routes` overrides it per domain name. `open(spec)` runs a strict sequence, each step failing the whole call: it rejects a name already open or still closing (`already-open`), resolves the route (`backend-not-found`), requires the backend's `kv` facet (`facet-unsupported`), opens the unit (backend `version-mismatch`/`malformed-medium` pass through), and validates every stored record and global against the spec's zod schemas (`invalid-record` with the offending table and key). A schema failure, or a document the backend reports as damaged, follows the spec's `invalidRecords` policy: the default rejects a schema failure and logs a damaged document as absent, `backup-and-skip` moves the document aside, and `quarantine` leaves it in place and lists the key on `Domain.quarantined` so the owner can refuse that record until it is restored. The caller owns the returned handle and releases it with `Domain.close()`; domains still open when the plugin unmounts are closed by the facility, and a closed domain's name frees for reopening only after teardown fully completes. `get(name)` is an untyped diagnostic lookup onto the package-private `DomainImpl` runtime behind every typed handle; `closeAll()` is the unmount path.
 
 ## The change event: `domain/changed`
 

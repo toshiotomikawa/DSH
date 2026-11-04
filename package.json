@@ -305,6 +305,10 @@
     "@deepseek-ai/dsh-experimental-forge": "workspace:*",
     "@deepseek-ai/dsh-experimental-forge-github": "workspace:*",
     "@deepseek-ai/dsh-experimental-forge-session": "workspace:*",
-    "@deepseek-ai/dsh-action-cards": "workspace:*"
+    "@deepseek-ai/dsh-action-cards": "workspace:*",
+    "@deepseek-ai/dsh-agent-registry": "workspace:*",
+    "@deepseek-ai/dsh-agent-memory": "workspace:*",
+    "@deepseek-ai/dsh-tool-agent-memory": "workspace:*",
+    "@deepseek-ai/dsh-agent-runtime": "workspace:*"
   }
 }

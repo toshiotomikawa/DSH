@@ -126,6 +126,16 @@ export interface Domain<S extends DomainSpec> {
   table<N extends keyof S['tables'] & string>(name: N): KvTable<TableKeyOf<S, N>, TableValueOf<S, N>>
 
   /**
+   * Record keys quarantined at open: stored documents that failed validation
+   * under the `'quarantine'` policy, or that the backend reported as damaged.
+   * Such a record is absent from its table and its document was left in
+   * place, so the owner must refuse to read or write it until restored.
+   * @param name - Declared table name.
+   * @returns the quarantined keys.
+   */
+  quarantined(name: string): readonly string[]
+
+  /**
    * Close this domain: reject new writes immediately, drain already-queued
    * writes (their events still emit), release the backend unit, then free
    * the domain name for a later open. Idempotent — repeated calls share one
@@ -182,6 +192,7 @@ export class DomainImpl {
    * the spec, so the entry set IS the table set.
    * @param globalValue - Validated stored global, or the spec's `initial`
    * when the medium held none; `undefined` when the spec declares no global.
+   * @param quarantined - Table → keys whose stored record was quarantined at open.
    * @param onClosed - Facility hook run once after teardown completes; frees
    * the domain name for a later open.
    */
@@ -191,6 +202,7 @@ export class DomainImpl {
     private readonly unit: KvUnit,
     records: Map<string, Map<string, unknown>>,
     globalValue: unknown,
+    private readonly quarantinedKeys: ReadonlyMap<string, ReadonlySet<string>>,
     private readonly onClosed: () => void,
   ) {
     this.name = spec.name
@@ -240,6 +252,18 @@ export class DomainImpl {
       throw new Error(`domain '${this.name}' declares no table '${name}'`)
     }
     return table
+  }
+
+  /**
+   * Keys quarantined at open for one declared table.
+   * @param name - Declared table name; an undeclared name is a caller bug.
+   * @returns the quarantined keys.
+   */
+  quarantined(name: string): readonly string[] {
+    if (!this.tables.has(name)) {
+      throw new Error(`domain '${this.name}' declares no table '${name}'`)
+    }
+    return [...this.quarantinedKeys.get(name) ?? []]
   }
 
   /**

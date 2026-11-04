@@ -274,6 +274,7 @@
     "scripts/client-bundle-purity.spec.ts"
   ],
   "references": [
+    { "path": "./packages/agents/agent-runtime" },
     { "path": "./packages/experimental/action-cards" },
     { "path": "./packages/experimental/creation-recommendations" },
     { "path": "./packages/experimental/plugin-recommendations" },
@@ -404,6 +405,8 @@
     { "path": "./packages/storage/storage-sqlite" },
     { "path": "./packages/storage/storage-tables" },
     { "path": "./packages/storage/tool-tables" },
+    { "path": "./packages/agents/agent-routine" },
+    { "path": "./packages/agents/tool-agent-routine" },
     { "path": "./packages/storage/storage-domain" },
     { "path": "./packages/feedback/message-feedback" },
     { "path": "./packages/workspace/workspace" },
@@ -553,6 +556,11 @@
     { "path": "./packages/jobs/jobs-local" },
     { "path": "./packages/jobs/tool-jobs" },
     { "path": "./packages/team/agent-team" },
+    { "path": "./packages/agents/agent-registry" },
+    { "path": "./packages/agents/agent-memory" },
+    { "path": "./packages/agents/tool-agent-memory" },
+    { "path": "./packages/agents/agent-mailbox" },
+    { "path": "./packages/agents/tool-agent-mailbox" },
     { "path": "./packages/experimental/inspector-profile" },
     { "path": "./packages/experimental/liveshare-protocol/tsconfig.host.json" },
     { "path": "./packages/team/tool-agent-team" },

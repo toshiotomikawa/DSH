@@ -571,6 +571,8 @@ export class ScheduleService extends TypertRemoteService {
       if (request.expectedUpdatedAt !== undefined && request.expectedUpdatedAt !== (current.updatedAt ?? null)) {
         return { id: request.id, code: 'schedule_conflict' }
       }
+      await this.ctx.serial('schedule/validate-edit', request)
+      signal?.throwIfAborted()
       if (request.action === 'delete') {
         await tasks.delete(request.id)
         this.emitChanged()
@@ -776,6 +778,7 @@ export class ScheduleService extends TypertRemoteService {
    */
   private async removeRows(ids: readonly ScheduleRecord['id'][], label: string, rearm: boolean): Promise<number> {
     if (ids.length === 0) return 0
+    for (const id of ids) await this.ctx.serial('schedule/validate-edit', { id, action: 'delete' })
     let removed: number
     try {
       removed = await (await this.getDomain()).table('tasks').deleteMany(ids)
