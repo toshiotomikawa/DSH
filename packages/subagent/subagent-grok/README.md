@@ -23,14 +23,22 @@ The deployment owns `providerName`, `command`, `args` (prefix arguments), `model
 
 Native `end_turn` maps to `completed`, refusal to `refusal`, length limit to `max-tokens`, cancellation to `aborted`. Other failures use the existing `error` stop reason with fixed diagnostics including `cota_baixa`, `cota_esgotada` or `tempo_esgotado`. Raw stderr, environment values and exception messages never enter diagnostics. A nonzero exit cannot complete successfully. Dispose is idempotent and waits for managed-range exit; an unobservable cleanup failure rejects disposal and warns that process state is unknown. Failure after starting a task is never permission to retry it automatically.
 
-## Model Experience
-
-The existing `tool-subagent` exposes `subagent_grok`, with provider-managed depth. The CLI does not inherit the parent's messages or accept `agentPreset`, `agentOptions`, or structured output. The model receives only final assistant text or a safe failure. Model, permissions and environment are configuration, not model-controlled tool fields.
-
-## Known Limitations and Deferred Work
-
-No continuation, follow-up messages, model discovery, interactive approvals or automatic quota collection. Quota freshness is the writer's responsibility. CLI versions must match the recorded JSON contract. Streaming tool traffic stays in bounded local audit artifacts. Native accounts and configuration can influence tools; this integration does not add a sandbox. The bundle is optional and is not enabled in default profiles.
-
 ## Dev Note
 
 Run `node node_modules/vitest/vitest.mjs run packages/subagent/subagent-grok packages/subagent/subagent-agy`. Fixtures need no credentials or network. The tests include real harmless Node subprocesses for secret scrubbing and deadline cleanup. Live provider calls are manual and limited separately.
+
+## Model Experience
+
+Indirectly, through `dsh-tool-subagent`, which owns the `subagent_grok` schema and result rendering; this provider adds no conversation inheritance, continuation, per-call model override or structured output, only final assistant text or a safe failure.
+
+#### KV Cache effect
+
+No direct invalidation; the provider contributes no request content of its own, so its lifecycle does not change the reusable prefix beyond the subagent tool's documented schema and result append.
+
+## Known Limitations and Deferred Work
+
+- No continuation, follow-up messages, model discovery, interactive approvals or automatic quota collection.
+- Quota freshness is the writer's responsibility, and CLI versions must match the recorded JSON contract.
+- Streaming tool traffic stays in bounded local audit artifacts.
+- Native accounts and configuration can influence tools; this integration does not add a sandbox.
+- The bundle is optional and is not enabled in default profiles.

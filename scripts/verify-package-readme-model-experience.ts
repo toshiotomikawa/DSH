@@ -49,6 +49,8 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/subagent/subagent-grok': { kind: 'indirect', reason: 'The provider only supplies managed CLI execution; dsh-tool-subagent owns the tool schema, guidance and result rendering.' },
+  'packages/subagent/subagent-agy': { kind: 'indirect', reason: 'The provider only supplies managed CLI execution; dsh-tool-subagent owns the tool schema, guidance and result rendering.' },
   'packages/client/ui-context-menu': { kind: 'none', reason: 'Client menu presentation and contributed callbacks add no model input.' },
   'packages/client/ui-file-actions': { kind: 'none', reason: 'Explicit user file saves and clipboard operations add no model input.' },
   'packages/client/ui-entry-customization': { kind: 'none', reason: 'Controls browser launchers and prepares a reviewable Creator draft without submitting model input.' },
