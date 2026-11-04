@@ -1,6 +1,6 @@
 /** One-shot Antigravity CLI provider using native authentication and NDJSON. */
 import type { Context } from '@deepseek-ai/cordis'
-import { configSchema, failure, isRecord, quotaExceeded, register, type HeadlessConfig, type Product } from '@deepseek-ai/dsh-subagent-grok'
+import { configSchema, failure, isRecord, quotaAnswer, quotaExceeded, register, type HeadlessConfig, type Product } from '@deepseek-ai/dsh-subagent-grok'
 import type { SubagentResult } from '@deepseek-ai/dsh-subagent'
 
 export const name = 'subagent-agy'
@@ -22,6 +22,7 @@ export function parse(stdout: string): SubagentResult {
   if (terminal === undefined) return failure('missing agy result')
   if (typeof terminal.status === 'string' && quotaExceeded(terminal.status)) return failure('cota_esgotada')
   if (typeof terminal.error === 'string' && quotaExceeded(terminal.error)) return failure('cota_esgotada')
+  if (typeof terminal.response === 'string' && quotaAnswer(terminal.response)) return failure('cota_esgotada')
   if (terminal.status === 'REFUSED') return { output: [], stopReason: 'refusal' }
   if (terminal.status === 'MAX_TOKENS') return { output: [], stopReason: 'max-tokens' }
   if (terminal.status !== 'SUCCESS' || typeof terminal.response !== 'string' || terminal.response.length === 0) return failure('agy failed')
@@ -32,7 +33,7 @@ export const product: Product = {
   name: 'agy', parse,
   argv: (config, prompt) => [
     '--print', prompt, '--output-format', 'stream-json', '--disable-slash-commands',
-    ...config.permission === 'allow' ? ['--dangerously-skip-permissions'] : ['--mode', 'plan'],
+    ...config.permission === 'allow' ? ['--dangerously-skip-permissions'] : [],
     ...config.model === undefined ? [] : ['--model', config.model],
   ],
 }
