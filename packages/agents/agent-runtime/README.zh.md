@@ -19,7 +19,15 @@ kind: "package-reference"
 
 同一个插件还提供 `accountGrants`，即账户之间显式的定向授权，保存在 `account_grants` 域中：`grant(ownerId, granteeId)`、`revoke(ownerId, granteeId)` 和 `allows(ownerId, granteeId)`。只有当另一个账户向调用方授权时，持久智能体目录和 `agent_send_message` 才会列出该账户的智能体；中断遵循同一授权。宿主账户和同一所有者的调用不需要授权。`list(ownerId)` 返回某个所有者已准许的账户。持久智能体通过邮箱工具中的 `agent_grant_access` 和 `agent_revoke_access` 授权与撤销，它们只对调用方自己的账户生效。撤销会在下一次目录读取时生效，同时也会切断已被接受的邮件：当尝试待处理的投递以及写入回复时，邮箱会再次询问 `agentDirectory.reaches(fromId, toId)`，因此跨越已撤销账户的未投递消息或回复会被记为 `refused`，并附带一个绝不提及对方账户的中性原因。已经收到消息的回合会保留该消息。
 
-`@deepseek-ai/dsh-agent-runtime/accounts` 插件打开按记录存储的 `accounts` 域，并提供 `accounts`：`create(name, role)` 返回新账户及其一次性令牌文件的路径，另有 `list`、`get`、`disable`、`reactivate` 和 `archive`，以及 `authenticate(token)` 和 `isAdministrator(id)`。令牌文本只会写入 `$DSH_HOME/accounts/tokens` 下权限为 `0o600` 的文件一次，该目录位于会话工作区之外，只保存其 SHA-256 哈希；返回值绝不携带密钥。已归档的账户保持可读但失去凭据；停用账户会保留其数据和令牌。`@deepseek-ai/dsh-agent-runtime/account-auth` 注册一个 Connection 主体来源，把 `Authorization: Bearer <token>` 映射为 `{ kind: 'account', ownerId }`，而 `accounts/ended` 会结束该账户已打开的 peer。`@deepseek-ai/dsh-agent-runtime/account-tools` 只向处于活动状态的管理员账户开放 `account_list`、`account_create`、`account_disable`、`account_reactivate` 和 `account_archive`；账户 id 绝不会被接受为调用方身份，`account_create` 返回令牌文件路径而不是令牌。没有出示账户令牌时，每个请求仍是单账户的 `owner`，因此不创建任何账户的安装行为与以前完全相同。
+`@deepseek-ai/dsh-agent-runtime/accounts` 插件打开按记录存储的 `accounts` 域，并提供 `accounts`：`create(name, role)` 返回新账户及其一次性令牌文件的路径，另有 `list`、`get`、`disable`、`reactivate` 和 `archive`，以及 `authenticate(token)` 和 `isAdministrator(id)`。令牌文本只会写入 `$DSH_HOME/accounts/tokens` 下权限为 `0o600` 的文件一次，该目录位于会话工作区之外，只保存其 SHA-256 哈希；返回值绝不携带密钥。已归档的账户保持可读但失去凭据；停用账户会保留其数据和令牌。`@deepseek-ai/dsh-agent-runtime/account-auth` 注册一个 Connection 主体来源，把 `Authorization: Bearer <token>` 映射为 `{ kind: 'account', ownerId }`，而 `accounts/ended` 会结束该账户已打开的 peer。`@deepseek-ai/dsh-agent-runtime/account-tools` 只向处于活动状态的管理员账户开放 `account_list`、`account_create`、`account_disable`、`account_reactivate` 和 `account_archive`；账户 id 绝不会被接受为调用方身份，`account_create` 返回令牌文件路径而不是令牌。没有账户凭据的请求保留原有的 owner 认证流程。
+
+<a id="browser-account-entry"></a>
+
+## 浏览器账户入口
+
+`@deepseek-ai/dsh-agent-runtime/account-web` 提供 `/account/login`、`/account/access` 和仅接受 POST 的 `/account/logout`。登录仅通过有大小上限的同源表单 POST 接收入口令牌，并交换为不透明的 HttpOnly、SameSite=Strict 会话 cookie（TLS 下带 Secure）；入口令牌既不返回也不保留。服务器只在内存中保存会话凭据的哈希，并绑定监听器来源和账户。`sessionMinutes` 默认 720（1–10080），`maxSessions` 默认 1000（1–100000）。到期、退出、账户停用或归档以及插件卸载会结束相关账户的 Peer；由于 Connection 每个账户共享一个 Peer，该账户的其他浏览器会话会重新连接。重启后需要重新登录。登录会清除旧的 owner cookie；退出不会自动恢复 owner 权限。
+
+授权页面调用与 `agent_grant_access`、`agent_revoke_access`、`agent_list_grants` 相同的 `accountGrants.grant`、`revoke`、`list` 服务。调用方来自已认证账户，绝不来自表单的 owner id。目标通过 id 输入，不公开账户目录。页面只列出向外授予的访问权限，并在 POST 前确认撤销。按浏览器语言选择英语或葡萄牙语，其他语言使用英语。这些页面不调用模型，不运行智能体回合，也不使用持久浏览器存储。
 
 ## 模型体验
 
@@ -42,13 +50,14 @@ kind: "package-reference"
 - 通过持久智能体目录进行的发现和中断，限于调用方配置的所有者，或在显式保存的授权之后限于另一个账户。
 - 没有所有者的旧配置属于 `owner`。
 - `owners` 策略在随附的 Web 组合包中默认开启，在其他所有组合中关闭；除此之外，这些插件不修改随附的配置。
-- `owners` 条目需要宿主连接适配器提供受信任的账户主体；账户的登录页面、令牌轮换与密码找回、分区的侧栏界面以及管理授权的界面延期实现。
-- 账户只能通过创建时写入的承载令牌进入；在登录界面出现之前，浏览器页面继续使用单账户的 owner peer。
+- 令牌轮换和密码找回不属于浏览器入口页面。
+- 账户表单要求 Origin 与接收监听器的协议和 Host 匹配；这些入口表单不支持在反向代理处终止 TLS。
+- 账户页面使用相对于根目录的路由；部署于反向代理路径前缀下时需要路由重写。尚未进行浏览器检查。
 - `account_create` 把入口令牌写入 `$DSH_HOME/accounts/tokens` 下的受限文件；模型只会收到该路径，文件必须私下交给账户持有者，然后删除。
 - 停用或归档账户会立即结束其 peer；不会取消这些 peer 内已经在运行的回合。
 - 账户管理只存在于 `account-tools` 插件中；没有它时，受信任的宿主代码必须调用 `accounts` 服务。
 - 旧的 `owner` 主体仍是受信任的宿主调用方，保留其现有的不受限访问。
 - 撤销无法收回正在运行的回合已经收到的消息。
-- 不引入账户专属的界面或事件授权。
+- 授权只允许智能体之间发送消息，不共享会话、记忆或表格。
 - 不实现提供方账户和自动回退。
 - 宿主关闭时会释放由例程运行器拥有的会话；邮箱拥有自己的投递会话。

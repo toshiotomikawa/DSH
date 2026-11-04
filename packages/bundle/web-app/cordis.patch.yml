@@ -134,6 +134,11 @@
       name: '@deepseek-ai/dsh-agent-runtime/accounts'
     - id: fork-account-auth
       name: '@deepseek-ai/dsh-agent-runtime/account-auth'
+    - id: fork-account-web
+      name: '@deepseek-ai/dsh-agent-runtime/account-web'
+      config:
+        sessionMinutes: 720
+        maxSessions: 1000
     - id: fork-account-tools
       name: '@deepseek-ai/dsh-agent-runtime/account-tools'
 

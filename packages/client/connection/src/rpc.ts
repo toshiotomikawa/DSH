@@ -175,8 +175,8 @@ export interface HostConnectionFetch {
   register(route: ConnectionFetchRoute): () => Promise<void>
 }
 
-/** One trusted adapter that turns a Host request into a non-owner Principal. */
-export type ConnectionPrincipalSource = (request: ConnectionTrustRequest) => Principal | undefined
+/** Trusted adapter: undefined abstains, null rejects credentials, otherwise admits a non-owner Principal. */
+export type ConnectionPrincipalSource = (request: ConnectionTrustRequest) => Principal | null | undefined
 
 /** Host registry for logical RPC channels carried by the current transport. */
 export interface HostConnectionRpc {
@@ -252,9 +252,9 @@ export interface HostConnectionHandle {
   /**
    * Admit requests by a credentialed account through one trusted source.
    * Sources are consulted in registration order before the browser credential,
-   * and the first non-owner Principal wins; every account Peer is reused for
+   * and the first Principal or explicit null rejection wins; every account Peer is reused for
    * its principal until it is revoked.
-   * @param source - maps one trusted HTTP request to the account it proves, or undefined.
+   * @param source - maps a trusted request to its account, undefined to abstain, or null to reject.
    * @returns asynchronous disposer removing this source.
    */
   registerPrincipalSource(source: ConnectionPrincipalSource): () => Promise<void>

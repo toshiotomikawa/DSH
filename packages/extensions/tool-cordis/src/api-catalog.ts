@@ -1091,8 +1091,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'registerPrincipalSource(source: ConnectionPrincipalSource): () => Promise<void>',
-        description: 'Admit requests by a credentialed account through one trusted source. Sources are consulted in registration order before the browser credential, and the first non-owner Principal wins; every account Peer is reused for its principal until it is revoked.',
-        parameters: [{ name: 'source', description: 'maps one trusted HTTP request to the account it proves, or undefined.' }],
+        description: 'Admit requests by a credentialed account through one trusted source. Sources are consulted in registration order before the browser credential, and the first Principal or explicit null rejection wins; every account Peer is reused for its principal until it is revoked.',
+        parameters: [{ name: 'source', description: 'maps a trusted request to its account, undefined to abstain, or null to reject.' }],
         returns: 'asynchronous disposer removing this source.',
       },
       {
@@ -6528,7 +6528,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ConnectionPrincipalSource',
-    declaration: 'export type ConnectionPrincipalSource = (request: ConnectionTrustRequest) => Principal | undefined;',
+    declaration: 'export type ConnectionPrincipalSource = (request: ConnectionTrustRequest) => Principal | null | undefined;',
   },
   {
     name: 'ConnectionRequestBodyMode',

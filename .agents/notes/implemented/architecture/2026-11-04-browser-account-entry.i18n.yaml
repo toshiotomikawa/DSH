@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-11-04-browser-account-entry.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-11-04-browser-account-entry.md
+/agent-note-account-entry-through-ephemeral-browser-sessions:
+  en: 9da4d7c8867989cc
+  zh: 205da5775162c99f
+/agent-note-account-entry-through-ephemeral-browser-sessions/problem:
+  en: f71f45d7ad8a1692
+  zh: 77d19e0b712681df
+/agent-note-account-entry-through-ephemeral-browser-sessions/decision:
+  en: 819d33b31a2fc752
+  zh: 37e7714dedce1d3b
+/agent-note-account-entry-through-ephemeral-browser-sessions/alternatives-considered:
+  en: 6070b18daea089fd
+  zh: c88e7ac8cce3dd9b
+/agent-note-account-entry-through-ephemeral-browser-sessions/consequences:
+  en: f711b30aa21d1344
+  zh: dfc2e65a6a9c135a

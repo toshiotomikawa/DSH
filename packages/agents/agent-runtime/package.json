@@ -36,6 +36,10 @@
     "./account-tools": {
       "types": "./lib/types/account-tools.d.ts",
       "default": "./lib/types/account-tools.js"
+    },
+    "./account-web": {
+      "types": "./lib/types/account-web.d.ts",
+      "default": "./lib/types/account-web.js"
     }
   },
   "files": [
@@ -60,7 +64,8 @@
     "@deepseek-ai/dsh-storage-domain": "workspace:*",
     "@deepseek-ai/dsh-session-query": "workspace:*",
     "zod": "^4.4.3",
-    "@deepseek-ai/dsh-tools": "workspace:*"
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -77,14 +82,18 @@
     "@deepseek-ai/dsh-tool-agent-mailbox": "workspace:*",
     "@deepseek-ai/dsh-tool-agent-routine": "workspace:*",
     "@deepseek-ai/dsh-tool-schedule": "workspace:*",
-    "@deepseek-ai/dsh-host-webserver": "workspace:*",
     "js-yaml": "^4.3.2",
     "@deepseek-ai/dsh-tool-testkit": "workspace:*",
     "@deepseek-ai/dsh-session-query-sqlite": "workspace:*",
     "@deepseek-ai/dsh-api-gateway": "workspace:*",
     "@deepseek-ai/dsh-typert-registry": "workspace:*",
+    "vitest": "^4.1.11",
+    "@deepseek-ai/dsh-host-frontend-static": "workspace:*",
+    "@deepseek-ai/dsh-credentials-local": "workspace:*",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/dsh-workspace": "workspace:*",
     "@deepseek-ai/dsh-client-connection": "workspace:*",
-    "vitest": "^4.1.11"
+    "@deepseek-ai/dsh-host-webserver": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"

@@ -146,6 +146,8 @@ URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发�
 -----
 
 <a id="model-experience"></a>
+随附 fork 在 `/account/login` 和 `/account/access` 组合账户入口与授权页面；未认证的 index 重定向到入口。侧栏的授权链接打开授权页面。会话与凭据处理见[账户运行时](../../agents/agent-runtime/README.zh.md#browser-account-entry)。
+
 ## 模型体验
 
 ### Web 运行时变量

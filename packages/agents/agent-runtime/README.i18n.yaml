@@ -12,8 +12,11 @@
   en: 4cc4c3129b9166ad
   zh: 79a1f1e7f8412fe1
 /deepseek-ai-dsh-agent-runtime/use-this-package:
-  en: fb280106a9695084
-  zh: 75f007aea0549404
+  en: d6c11a227a0a17c0
+  zh: 0c119ea84e876b2c
+/deepseek-ai-dsh-agent-runtime/browser-account-entry:
+  en: ccba909ce1b3cb63
+  zh: 274dc75922549a3e
 /deepseek-ai-dsh-agent-runtime/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -30,5 +33,5 @@
   en: dfe0d5767a162d3a
   zh: a546532304af3426
 /deepseek-ai-dsh-agent-runtime/known-limitations-and-deferred-work:
-  en: 9c337f76ac3db657
-  zh: 66cdac7bf3639eb8
+  en: 413143217bb03893
+  zh: 2da6669cee0e3c16

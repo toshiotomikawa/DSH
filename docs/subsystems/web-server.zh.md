@@ -154,9 +154,9 @@ createPeer(options: { readonly principal: Principal; readonly interactions?: 'an
 /**
  * Admit requests by a credentialed account through one trusted source.
  * Sources are consulted in registration order before the browser credential,
- * and the first non-owner Principal wins; every account Peer is reused for
+ * and the first Principal or explicit null rejection wins; every account Peer is reused for
  * its principal until it is revoked.
- * @param source - maps one trusted HTTP request to the account it proves, or undefined.
+ * @param source - maps a trusted request to its account, undefined to abstain, or null to reject.
  * @returns asynchronous disposer removing this source.
  */
 registerPrincipalSource(source: ConnectionPrincipalSource): () => Promise<void>

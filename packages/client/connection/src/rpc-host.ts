@@ -135,6 +135,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
     if (!this.isTrusted(request)) return { rejection: 403 }
     if (this.disposed) return { rejection: 401 }
     const source = this.sourcePrincipal(request)
+    if (source === null) return { rejection: 401 }
     if (source !== undefined) return { peer: this.accountPeer(source) }
     const secure = this.owner.get('webServer')?.protocol === 'https:'
     if (this.browserAuth.isAuthenticated(request, secure)) return { peer: this.browserPeer }
@@ -150,7 +151,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
 
   /**
    * Admit requests by a credentialed account through one trusted source.
-   * @param source - maps one trusted HTTP request to the account it proves, or undefined.
+   * @param source - maps a trusted request to its account, undefined to abstain, or null to reject.
    * @returns asynchronous disposer removing this source.
    */
   registerPrincipalSource(source: ConnectionPrincipalSource): () => Promise<void> {
@@ -176,9 +177,10 @@ export class HostConnectionService extends Service implements HostConnectionHand
     await peer.dispose()
   }
 
-  private sourcePrincipal(request: ConnectionTrustRequest): Principal | undefined {
+  private sourcePrincipal(request: ConnectionTrustRequest): Principal | null | undefined {
     for (const source of this.principalSources) {
       const principal = source(request)
+      if (principal === null) return null
       // A source may name an account, never the trusted host owner.
       if (principal !== undefined && principal.kind !== 'owner') return principal
       if (principal !== undefined) throw new Error('connection: a principal source must not claim the owner principal')
@@ -245,6 +247,26 @@ export class HostConnectionService extends Service implements HostConnectionHand
    * Authenticate an index request; native TLS listeners mint Secure cookies.
    */
   authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean {
+    if (!this.isTrusted(request) || this.disposed) {
+      response.writeHead(this.disposed ? 401 : 403, { 'cache-control': 'no-store' })
+      response.end()
+      return false
+    }
+    const source = this.sourcePrincipal(request)
+    if (source === null) {
+      response.writeHead(401, { 'cache-control': 'no-store' })
+      response.end()
+      return false
+    }
+    if (source !== undefined) {
+      const url = new URL(request.url ?? '/', 'http://dsh.invalid')
+      if (url.searchParams.has('token')) {
+        response.writeHead(303, { location: './', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' })
+        response.end()
+        return false
+      }
+      return true
+    }
     return this.browserAuth.authorizeIndex(request, response, this.ctx.get('webServer')?.protocol === 'https:')
   }
 

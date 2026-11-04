@@ -34,10 +34,13 @@ export const inject = ['webServer', 'connection']
 export interface Config {
   /** Absolute path of index.html inside the dist root. */
   distIndex: string
+  /** Local absolute login path for unauthenticated browsers; absent keeps the Connection 401. */
+  loginPath?: string
 }
 
 export const Config: z<Config> = z.object({
   distIndex: z.string().required(),
+  loginPath: z.string().pattern(/^\/(?!\/)[A-Za-z0-9/_-]+$/),
 })
 
 const HTML_MIME = 'text/html; charset=utf-8'
@@ -147,21 +150,28 @@ export function apply(ctx: Context, config: Config): void {
       },
       end(text) { body = text },
     })
-    return admitted ? undefined : new Response(body, { status, headers })
+    if (admitted) return undefined
+    if (status === 401 && config.loginPath !== undefined) {
+      return new Response(null, { status: 303, headers: { location: config.loginPath, 'cache-control': 'no-store' } })
+    }
+    return new Response(body, { status, headers })
   }
   ctx.effect(() => ctx.webServer.registerFallback({
-    resource: (request, peer) => serveStatic(
-      request,
-      distRoot,
-      distIndex,
-      // A read with a Peer was admitted by its caller; an HTTP request carries
-      // none and passes Connection's browser authentication instead.
-      () => peer === undefined ? authorizeIndex(request) : undefined,
-      // The browser authentication admits the owner's shared browser Peer. The
-      // base goes in after all index transforms, so it precedes every resource
-      // reference they insert.
-      html => ctx.webServer.renderIndex(html, peer ?? ctx.connection.browserPeer)
-        .replace(/<head(?:\s[^>]*)?>/i, open => `${open}<base href="./">`),
-    ),
+    resource: (request, peer) => {
+      let indexPeer = peer
+      return serveStatic(request, distRoot, distIndex, () => {
+        if (peer !== undefined) return undefined
+        const refusal = authorizeIndex(request)
+        if (refusal !== undefined) return refusal
+        const admission = ctx.connection.admit(request)
+        if ('rejection' in admission) return new Response(null, { status: admission.rejection })
+        indexPeer = admission.peer
+        return undefined
+      }, (html) => {
+        if (indexPeer === undefined) throw new Error('frontend-static: index requires an admitted Peer')
+        return ctx.webServer.renderIndex(html, indexPeer)
+          .replace(/<head(?:\s[^>]*)?>/i, open => `${open}<base href="./">`)
+      })
+    },
   }), 'frontend-static: fallback seat')
 }

@@ -1,6 +1,7 @@
 /** English fallback for agent management in locales without dedicated copy. */
 const agentCopy = {
   'agents.title': 'Agents',
+  'agents.access': 'Manage access',
   'agents.refresh': 'Refresh',
   'agents.create': 'New section',
   'agents.name': 'Section name',
@@ -132,6 +133,7 @@ export const ru = {
 export const pt = {
   ...agentCopy,
   'agents.title': 'Agentes',
+  'agents.access': 'Gerenciar acesso',
   'agents.refresh': 'Atualizar',
   'agents.create': 'Nova seção',
   'agents.name': 'Nome da seção',

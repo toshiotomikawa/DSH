@@ -146,6 +146,8 @@ Read these pages when you want to go deeper into the shared core, the browser re
 -----
 
 <a id="model-experience"></a>
+The shipped fork composes the account entry and grants pages at `/account/login` and `/account/access`; an unauthenticated index redirects to entry. The sidebar’s access link opens the grants page. See [account runtime](../../agents/agent-runtime/README.md#browser-account-entry) for session and credential handling.
+
 ## Model Experience
 
 ### Web runtime variable
