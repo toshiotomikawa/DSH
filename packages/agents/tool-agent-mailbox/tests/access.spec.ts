@@ -91,6 +91,14 @@ describe('account grant tools', () => {
     expect(f.grants.stored.size).toBe(0)
   })
 
+  it('states the real scope of a revoke: undelivered mail is refused, a running turn keeps what it got (grants audit 2)', async () => {
+    const f = await fixture()
+    const text = f.ctx.tools.get('agent_revoke_access')!.description
+    expect(text).toContain('not been delivered yet are cut at once and recorded as refused')
+    expect(text).toContain('a turn that already received a message keeps it')
+    expect(text).not.toContain('takes effect at once')
+  })
+
   it('revokes at once and gives other accounts the same error as a missing grant', async () => {
     const f = await fixture()
     await f.value('agent_grant_access', { account_id: 'b' }, f.agentA)

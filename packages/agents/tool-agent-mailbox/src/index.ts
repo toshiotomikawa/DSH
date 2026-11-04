@@ -182,7 +182,8 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'agent_revoke_access',
     description:
-      'Withdraw access you granted to another account; it takes effect at once. '
+      'Withdraw access you granted to another account. Messages and replies that have not been delivered yet are cut at once and recorded as refused, '
+      + 'and no new one crosses the account; a turn that already received a message keeps it. '
       + 'Unknown grants, including ones that belong to other accounts, are reported as not found.',
     parameters: { account_id: { type: 'string', required: true, description: 'Account that loses access to your agents.' } },
     output: {

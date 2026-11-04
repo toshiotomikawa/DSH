@@ -2666,7 +2666,7 @@ Source: [`packages/agents/tool-agent-mailbox/src/index.ts`](../packages/agents/t
 
 ### `agent_revoke_access`
 
-Withdraw access you granted to another account; it takes effect at once. Unknown grants, including ones that belong to other accounts, are reported as not found.
+Withdraw access you granted to another account. Messages and replies that have not been delivered yet are cut at once and recorded as refused, and no new one crosses the account; a turn that already received a message keeps it. Unknown grants, including ones that belong to other accounts, are reported as not found.
 
 ```json
 {

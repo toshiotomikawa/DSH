@@ -28,6 +28,9 @@ class ScriptedDirectory implements MailboxDirectory {
   readonly hidden = new Set<string>()
   readonly authority = new Set<string>()
   readonly failFind = new Set<string>()
+  readonly revoked = new Set<string>()
+  /** Relations that stay allowed for this many more checks, then are withdrawn. */
+  readonly quota = new Map<string, number>()
   private threads = 0
 
   add(target: MailboxTarget): MailboxTarget {
@@ -54,6 +57,16 @@ class ScriptedDirectory implements MailboxDirectory {
 
   mayInterrupt(caller: Agent, target: MailboxTarget): boolean {
     return this.authority.has(`${this.describe(caller).id}->${target.id}`)
+  }
+
+  reaches(fromId: string, toId: string): boolean {
+    const key = `${fromId}->${toId}`
+    const left = this.quota.get(key)
+    if (left !== undefined) {
+      this.quota.set(key, left - 1)
+      return left > 0
+    }
+    return !this.revoked.has(key)
   }
 
   thread(target: MailboxTarget, _title?: string): SessionId {
@@ -340,6 +353,100 @@ describe('agent mailbox', () => {
       .rejects.toThrow('different message')
     await expect(ctx.agentMailbox.send(receiver, { replyToMessageId: first.messageId, text: 'again' }))
       .rejects.toThrow('already answered')
+  })
+
+  it('cuts a pending delivery, with a neutral reason, once the permission is withdrawn (grants audit 1)', async () => {
+    const b = new TextAdapter()
+    const { ctx, directory, root } = await fixture({ 'mock-a': new TextAdapter(), 'mock-b': b })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a'), ownerId: 'owner-x' })
+    directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b'), ownerId: 'owner-y' })
+    const sender = await agent(ctx, 'a-main')
+    const receiver = await agent(ctx, 'b-main', 'mock-b')
+    directory.revoked.add('a->b')
+    const receipt = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'late work' })
+    await ctx.agentMailbox.flush()
+    await receiver.whenIdle()
+    expect(b.requestCount).toBe(0)
+    expect(JSON.stringify(receiver.session.deriveMessages())).not.toContain('late work')
+    const stored = (await storedMessages(root)).find(message => message['id'] === receipt.messageId) as { deliveries: Array<Record<string, unknown>> }
+    expect(stored.deliveries[0]).toMatchObject({ state: 'refused', error: 'Refused: access to that agent is no longer granted' })
+    expect(JSON.stringify(stored.deliveries)).not.toContain('owner-')
+    expect(ctx.agentMailbox.list(sender).find(summary => summary.id === 'b')).toMatchObject({ queued: false, pending: 0 })
+  })
+
+  it('cuts a delivery queued behind a running turn when the permission is withdrawn (grants audit 1)', async () => {
+    const gated = new GateAdapter('first-turn')
+    const { ctx, directory, root } = await fixture({ 'mock-a': new TextAdapter(), 'mock-b': gated })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') })
+    const sender = await agent(ctx, 'a-main')
+    const receiver = await agent(ctx, 'b-main', 'mock-b')
+    await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'first task' })
+    await ctx.agentMailbox.flush()
+    await vi.waitFor(() => { expect(receiver.status).toBe('running') })
+    const second = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'second task' })
+    directory.revoked.add('a->b')
+    await ctx.agentMailbox.flush()
+    const during = (await storedMessages(root)).find(message => message['id'] === second.messageId) as { deliveries: Array<Record<string, unknown>> }
+    expect(during.deliveries[0]?.['state']).toBe('refused')
+    gated.release()
+    await receiver.whenIdle()
+    await ctx.agentMailbox.flush()
+    expect(gated.requestCount).toBe(1)
+    expect(JSON.stringify(receiver.session.deriveMessages())).not.toContain('second task')
+  })
+
+  it('refuses a reply after the permission that opened the conversation is withdrawn (grants audit 1)', async () => {
+    const { ctx, directory, root } = await fixture({ 'mock-a': new TextAdapter(), 'mock-b': new TextAdapter() })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a'), ownerId: 'owner-x' })
+    directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b'), ownerId: 'owner-y' })
+    const sender = await agent(ctx, 'a-main')
+    const receiver = await agent(ctx, 'b-main', 'mock-b')
+    const first = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'ask' })
+    await ctx.agentMailbox.flush()
+    await receiver.whenIdle()
+    directory.revoked.add('a->b')
+    const before = (await storedMessages(root)).length
+    await expect(ctx.agentMailbox.send(receiver, { replyToMessageId: first.messageId, text: 'late answer' }))
+      .rejects.toThrow('Refused: access to that agent is no longer granted')
+    expect((await storedMessages(root)).length).toBe(before)
+  })
+
+  it('cuts an accepted reply when the opener loses access (grants audit 1)', async () => {
+    const { ctx, directory, root } = await fixture({ 'mock-a': new TextAdapter(), 'mock-b': new TextAdapter() })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') })
+    const sender = await agent(ctx, 'a-main')
+    const receiver = await agent(ctx, 'b-main', 'mock-b')
+    const first = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'hop0' })
+    await ctx.agentMailbox.flush()
+    await receiver.whenIdle()
+    directory.quota.set('a->b', 1)
+    const answer = await ctx.agentMailbox.send(receiver, { replyToMessageId: first.messageId, text: 'hop1' })
+    await ctx.agentMailbox.flush()
+    const cut = (await storedMessages(root)).find(message => message['id'] === answer.messageId) as { deliveries: Array<Record<string, unknown>> }
+    expect(cut.deliveries[0]?.['state']).toBe('refused')
+    expect(JSON.stringify(sender.session.deriveMessages())).not.toContain('hop1')
+  })
+
+  it('cuts a reply to a reply written by the opener when the permission is withdrawn (grants audit 1)', async () => {
+    const { ctx, directory, root } = await fixture({ 'mock-a': new TextAdapter(), 'mock-b': new TextAdapter() })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') })
+    const sender = await agent(ctx, 'a-main')
+    const receiver = await agent(ctx, 'b-main', 'mock-b')
+    const first = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'hop0' })
+    await ctx.agentMailbox.flush()
+    await receiver.whenIdle()
+    const answer = await ctx.agentMailbox.send(receiver, { replyToMessageId: first.messageId, text: 'hop1', expectsReply: true })
+    await ctx.agentMailbox.flush()
+    await sender.whenIdle()
+    directory.quota.set('a->b', 1)
+    const again = await ctx.agentMailbox.send(sender, { replyToMessageId: answer.messageId, text: 'hop2' })
+    await ctx.agentMailbox.flush()
+    const second = (await storedMessages(root)).find(message => message['id'] === again.messageId) as { deliveries: Array<Record<string, unknown>> }
+    expect(second.deliveries[0]?.['state']).toBe('refused')
+    expect(JSON.stringify(receiver.session.deriveMessages())).not.toContain('hop2')
   })
 
   it('queues for a busy target and keeps one turn at a time (3)', async () => {

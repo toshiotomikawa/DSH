@@ -94,10 +94,19 @@ export interface MailboxDirectory {
    * @param sessionId - the unopened conversation.
    */
   prepare?(target: MailboxTarget, sessionId: SessionId): Promise<void>
+  /**
+   * Whether the first agent may still address the second one right now. It is
+   * asked again when a pending delivery is attempted and when a reply is
+   * written, so a withdrawn permission cuts both. Omitted means always.
+   * @param fromId - the agent that opened the relation.
+   * @param toId - the agent it addresses.
+   * @returns true when the relation is still allowed.
+   */
+  reaches?(fromId: string, toId: string): boolean
 }
 
 /** Per-recipient delivery state. */
-export type DeliveryState = 'queued' | 'started' | 'completed' | 'interrupted' | 'uncertain'
+export type DeliveryState = 'queued' | 'started' | 'completed' | 'interrupted' | 'uncertain' | 'refused'
 
 /** One accepted recipient and its current delivery state. */
 export interface DeliveryReceipt {
@@ -149,6 +158,8 @@ export interface AgentSummary {
 
 const MAX_TEXT = 64 * 1024
 const MAX_RECIPIENTS = 32
+/** Neutral reason for a cut delivery or reply; it never names the other account. */
+const REFUSED = 'Refused: access to that agent is no longer granted'
 
 const routeSchema = z.object({
   provider: z.string().min(1),
@@ -159,7 +170,7 @@ const routeSchema = z.object({
 const deliverySchema = z.object({
   recipientId: z.string().min(1),
   sessionId: z.string().min(1).transform(SessionId),
-  state: z.enum(['queued', 'started', 'completed', 'interrupted', 'uncertain']),
+  state: z.enum(['queued', 'started', 'completed', 'interrupted', 'uncertain', 'refused']),
   attempts: z.number().int().nonnegative(),
   error: z.string().optional(),
   turn: z.number().int().nonnegative().optional(),
@@ -446,6 +457,8 @@ export class AgentMailbox {
     // A message the caller cannot answer must look exactly like a missing one.
     if (delivery === undefined) throw new Error(`Unknown message: ${original.id}`)
     if (this.hasReply(original.id, sender.id)) throw new Error('This request was already answered')
+    // The permission that opened the conversation must still hold when the answer is written.
+    if (!this.allowed(sender.id, original.senderId, original.id)) throw new Error(REFUSED)
     const message: Message = {
       id: randomUUID(),
       senderId: sender.id,
@@ -510,7 +523,7 @@ export class AgentMailbox {
         if (delivery.state === 'uncertain') {
           entry.uncertain = delivery.error ?? 'Delivery outcome is unknown after a restart'
         }
-        if (message.expectsReply && !replies.has(keyOf(message.id, delivery.recipientId))) entry.pending += 1
+        if (delivery.state !== 'refused' && message.expectsReply && !replies.has(keyOf(message.id, delivery.recipientId))) entry.pending += 1
       }
     }
     return stats
@@ -599,6 +612,11 @@ export class AgentMailbox {
     // The caller indexes one delivery it just read from the same record.
     // oxlint-disable-next-line typescript/no-non-null-assertion
     const delivery = message.deliveries[index]!
+    // A withdrawn permission cuts the delivery before anything else, even while the target runs.
+    if (!this.allowed(message.senderId, delivery.recipientId, message.replyToMessageId)) {
+      await this.patch(messageId, index, { state: 'refused', error: REFUSED })
+      return
+    }
     // A running conversation keeps the delivery queued; its turn/end schedules another pump.
     if (this.ctx.agents.get(delivery.sessionId)?.status === 'running') return
     const attempts = delivery.attempts + 1
@@ -608,6 +626,20 @@ export class AgentMailbox {
     } catch (error) {
       await this.patch(messageId, index, { state: 'queued', attempts, error: describeError(error) })
     }
+  }
+
+  /** The agent that opened the conversation a message belongs to. */
+  private rootSender(messageId: string): string {
+    let current = this.mustMessage(messageId)
+    while (current.replyToMessageId !== undefined) current = this.mustMessage(current.replyToMessageId)
+    return current.senderId
+  }
+
+  /** Whether the opening agent may still reach the other party; replies keep the opener's permission. */
+  private allowed(senderId: string, recipientId: string, replyTo: string | undefined): boolean {
+    if (replyTo === undefined) return this.ctx.agentDirectory.reaches?.(senderId, recipientId) !== false
+    const opener = this.rootSender(replyTo)
+    return this.ctx.agentDirectory.reaches?.(opener, opener === senderId ? recipientId : senderId) !== false
   }
 
   private async wake(message: Message, delivery: Delivery): Promise<void> {
