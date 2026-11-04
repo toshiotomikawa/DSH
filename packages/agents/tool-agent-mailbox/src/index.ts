@@ -34,9 +34,11 @@ const summaryValue = {
     name: { type: 'string', required: true },
     title: { type: 'string', required: true },
     description: { type: 'string', required: true },
-    status: { type: 'string', enum: ['working', 'queued', 'ready'], required: true },
+    status: { type: 'string', enum: ['working', 'queued', 'uncertain', 'ready'], required: true },
     queued: { type: 'boolean', required: true },
     pending: { type: 'integer', required: true },
+    working_sessions: { type: 'array', required: true, items: { type: 'string' } },
+    uncertain: { type: 'boolean', required: true },
     blocked: { type: 'string' },
   },
 } as const
@@ -109,7 +111,18 @@ export function apply(ctx: Context): void {
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
     },
     execute(_args, exec) {
-      return Promise.resolve(ctx.agentMailbox.list(caller(exec.agent)))
+      return Promise.resolve(ctx.agentMailbox.list(caller(exec.agent)).map(summary => ({
+        id: summary.id,
+        name: summary.name,
+        title: summary.title,
+        description: summary.description,
+        status: summary.status,
+        queued: summary.queued,
+        pending: summary.pending,
+        working_sessions: [...summary.workingSessions],
+        uncertain: summary.uncertain,
+        ...(summary.blocked === undefined ? {} : { blocked: summary.blocked }),
+      })))
     },
   })), 'agentMailbox.list()')
   ctx.effect(() => ctx.tools.register(defineTool({

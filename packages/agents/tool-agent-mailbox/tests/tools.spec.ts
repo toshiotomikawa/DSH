@@ -93,11 +93,27 @@ describe('agent mailbox tools', () => {
 
   it('lists summaries with and without a blocking reason', async () => {
     const calls: Call[] = []
-    const summary = { id: 'b', name: 'B', title: 'Receiver', description: '', status: 'queued', queued: true, pending: 2, blocked: 'quota' }
-    const ctx = await harness(calls, { list: [summary] })
+    const summary = {
+      id: 'b', name: 'B', title: 'Receiver', description: '', status: 'working', queued: true, pending: 2,
+      workingSessions: [SessionId('b-main')], uncertain: true, blocked: 'quota',
+    }
+    const plain = {
+      id: 'c', name: 'C', title: 'Idle', description: '', status: 'ready', queued: false, pending: 0,
+      workingSessions: [], uncertain: false,
+    }
+    const ctx = await harness(calls, { list: [summary, plain] })
     const result = await run(ctx, 'agent_list', {})
     expect(result.isError).toBe(false)
-    expect(result.isError ? undefined : result.value).toEqual([summary])
+    expect(result.isError ? undefined : result.value).toEqual([
+      {
+        id: 'b', name: 'B', title: 'Receiver', description: '', status: 'working', queued: true, pending: 2,
+        working_sessions: ['b-main'], uncertain: true, blocked: 'quota',
+      },
+      {
+        id: 'c', name: 'C', title: 'Idle', description: '', status: 'ready', queued: false, pending: 0,
+        working_sessions: [], uncertain: false,
+      },
+    ])
     expect(calls[0]?.method).toBe('list')
   })
 

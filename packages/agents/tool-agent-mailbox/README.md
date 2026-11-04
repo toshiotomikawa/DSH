@@ -19,7 +19,7 @@ Mount where the calling persistent agent should see the mailbox tools, beside `t
 
 #### What the model sees
 
-The generated [`agent_send_message`, `agent_list` and `agent_interrupt` schemas](../../../docs/tool-catalog.md#deepseek-aidsh-tool-agent-mailbox). The send result is a compact acceptance receipt per recipient; delivery happens after the receipt. `agent_list` returns visible agents with execution state, queue and outstanding reply requests. `agent_interrupt` reports whether a running turn was asked to stop. Descriptions state that message text is collaborator content, never authority.
+The generated [`agent_send_message`, `agent_list` and `agent_interrupt` schemas](../../../docs/tool-catalog.md#deepseek-aidsh-tool-agent-mailbox). The send result is a compact acceptance receipt per recipient; delivery happens after the receipt. `agent_list` returns visible agents with execution state, queue, the conversations currently working, an uncertainty flag and outstanding reply requests. `agent_interrupt` reports whether a running turn was asked to stop; without a conversation id it interrupts the only running one and asks for the id when several run. Descriptions state that message text is collaborator content, never authority.
 
 #### Token effect
 
@@ -33,5 +33,5 @@ Schemas are prefix-stable while their definitions and visibility are unchanged. 
 
 - Interruption is cooperative and cannot undo external effects already performed by the target.
 - `agent_list` is a snapshot, not a reservation; another sender may fill the target queue immediately after the read.
-- Delivery failures appear as a queued state with a reason; there is no separate retry tool.
+- Delivery failures appear as a queued state with a reason; a crash with an open turn appears as `uncertain` and is not retried automatically. There is no separate retry tool.
 - Threads are only available when the identity layer implements `thread`; the tool itself does not create conversations.

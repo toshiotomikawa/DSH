@@ -13,7 +13,7 @@ import { z } from 'zod'
 import type { Agent, AgentHandle, AgentOptions } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-session-persistence'
+import type { SessionHandle } from '@deepseek-ai/dsh-session-persistence'
 import { defineDomain, domainTable, type Domain, type KvTable } from '@deepseek-ai/dsh-storage-domain'
 
 declare module '@deepseek-ai/dsh-llm' {
@@ -69,7 +69,7 @@ export interface MailboxDirectory {
 }
 
 /** Per-recipient delivery state. */
-export type DeliveryState = 'queued' | 'started' | 'completed' | 'interrupted'
+export type DeliveryState = 'queued' | 'started' | 'completed' | 'interrupted' | 'uncertain'
 
 /** One accepted recipient and its current delivery state. */
 export interface DeliveryReceipt {
@@ -108,10 +108,14 @@ export interface AgentSummary {
   readonly name: string
   readonly title: string
   readonly description: string
-  readonly status: 'working' | 'queued' | 'ready'
+  readonly status: 'working' | 'queued' | 'uncertain' | 'ready'
   readonly queued: boolean
   readonly pending: number
-  /** Reason a queued delivery is blocked, when the last attempt failed. */
+  /** Conversations of this target with a working turn. */
+  readonly workingSessions: readonly SessionId[]
+  /** Whether a delivery outcome is unknown after a restart. */
+  readonly uncertain: boolean
+  /** Reason a delivery is blocked or uncertain. */
   readonly blocked?: string
 }
 
@@ -127,7 +131,7 @@ const routeSchema = z.object({
 const deliverySchema = z.object({
   recipientId: z.string().min(1),
   sessionId: z.string().min(1).transform(SessionId),
-  state: z.enum(['queued', 'started', 'completed', 'interrupted']),
+  state: z.enum(['queued', 'started', 'completed', 'interrupted', 'uncertain']),
   attempts: z.number().int().nonnegative(),
   error: z.string().optional(),
   turn: z.number().int().nonnegative().optional(),
@@ -143,11 +147,12 @@ const messageSchema = z.object({
   expectsReply: z.boolean(),
   createdAt: z.number(),
   replyToMessageId: z.string().optional(),
+  key: z.string().optional(),
+  newThread: z.boolean().optional(),
+  title: z.string().optional(),
   ownerId: z.string().optional(),
   deliveries: z.array(deliverySchema).min(1),
 }).strict()
-
-const idempotencySchema = z.object({ messageId: z.string().min(1) }).strict()
 
 type Message = z.infer<typeof messageSchema>
 type Delivery = Message['deliveries'][number]
@@ -158,7 +163,6 @@ const mailboxDomain = defineDomain({
   layout: 'per-record',
   tables: {
     messages: domainTable<string, Message>(messageSchema),
-    idempotency: domainTable<string, z.infer<typeof idempotencySchema>>(idempotencySchema),
   },
 })
 
@@ -166,14 +170,8 @@ interface Stats {
   queued: boolean
   pending: number
   blocked?: string
+  uncertain?: string
   readonly sessions: Set<SessionId>
-}
-
-function sameRequest(message: Message, input: SendInput, text: string, expectsReply: boolean): boolean {
-  if (message.text !== text || message.expectsReply !== expectsReply || message.replyToMessageId !== input.replyToMessageId) return false
-  if (input.recipients === undefined) return message.deliveries.length === 1
-  return message.deliveries.length === input.recipients.length
-    && input.recipients.every((id, index) => message.deliveries[index]?.recipientId === id)
 }
 
 function keyOf(messageId: string, recipientId: string): string {
@@ -187,7 +185,7 @@ function describeError(error: unknown): string {
 /** Durable message store and delivery pump. */
 export class AgentMailbox {
   private readonly messages: KvTable<string, Message>
-  private readonly idempotency: KvTable<string, z.infer<typeof idempotencySchema>>
+  private readonly keyIndex = new Map<string, string>()
   private readonly owned = new Map<SessionId, AgentHandle>()
   private tail: Promise<void> = Promise.resolve()
   private closed = false
@@ -197,7 +195,10 @@ export class AgentMailbox {
 
   constructor(private readonly ctx: Context, private readonly domain: Domain<typeof mailboxDomain>) {
     this.messages = domain.table('messages')
-    this.idempotency = domain.table('idempotency')
+    for (const messageId of this.messages.keys()) {
+      const message = this.messages.get(messageId)
+      if (message?.key !== undefined) this.keyIndex.set(message.key, messageId)
+    }
   }
 
   /** Persist and accept one message, then schedule delivery.
@@ -213,19 +214,19 @@ export class AgentMailbox {
       const expectsReply = input.expectsReply ?? input.replyToMessageId === undefined
       const idempotencyKey = input.idempotencyKey === undefined ? undefined : createHash('sha256').update(`${sender.id}\u0000${input.idempotencyKey}`).digest('hex')
       if (idempotencyKey !== undefined) {
-        const previous = this.idempotency.get(idempotencyKey)
+        const previous = this.keyIndex.get(idempotencyKey)
         if (previous !== undefined) {
-          const message = this.mustMessage(previous.messageId)
-          if (!sameRequest(message, input, text, expectsReply)) {
+          const message = this.mustMessage(previous)
+          if (!this.sameRequest(message, input, text, expectsReply)) {
             throw new Error('Idempotency key was already used for a different message')
           }
           return receiptOf(message)
         }
       }
       const message = input.replyToMessageId === undefined
-        ? await this.fresh(caller, sender, input, text, expectsReply)
-        : await this.reply(sender, input, text, expectsReply)
-      if (idempotencyKey !== undefined) await this.idempotency.put(idempotencyKey, { messageId: message.id })
+        ? await this.fresh(caller, sender, input, text, expectsReply, idempotencyKey)
+        : await this.reply(caller, sender, input, text, expectsReply, idempotencyKey)
+      if (idempotencyKey !== undefined) this.keyIndex.set(idempotencyKey, message.id)
       this.background(() => this.pump())
       return receiptOf(message)
     })
@@ -241,17 +242,20 @@ export class AgentMailbox {
       const entry = stats.get(target.id)
       const sessions = new Set(entry?.sessions ?? [])
       sessions.add(target.sessionId)
-      const working = [...sessions].some(sessionId => this.ctx.agents.get(sessionId)?.status === 'running')
+      const workingSessions = [...sessions].filter(sessionId => this.ctx.agents.get(sessionId)?.status === 'running')
       const queued = entry?.queued ?? false
+      const blocked = entry?.uncertain ?? entry?.blocked
       return {
         id: target.id,
         name: target.name,
         title: target.title,
         description: target.description,
-        status: working ? 'working' : queued ? 'queued' : 'ready',
+        status: workingSessions.length > 0 ? 'working' : entry?.uncertain !== undefined ? 'uncertain' : queued ? 'queued' : 'ready',
         queued,
         pending: entry?.pending ?? 0,
-        ...(entry?.blocked === undefined ? {} : { blocked: entry.blocked }),
+        workingSessions,
+        uncertain: entry?.uncertain !== undefined,
+        ...(blocked === undefined ? {} : { blocked }),
       }
     })
   }
@@ -266,11 +270,22 @@ export class AgentMailbox {
   async interrupt(caller: Agent, agentId: string, sessionId?: SessionId): Promise<{ interrupted: boolean }> {
     this.assertOpen()
     const target = this.ctx.agentDirectory.find(agentId)
-    if (target === undefined) throw new Error(`Unknown agent: ${agentId}`)
+    const visible = target !== undefined && this.ctx.agentDirectory.visible(caller).some(item => item.id === agentId)
+    if (target === undefined || !visible) throw new Error(`Unknown agent: ${agentId}`)
     if (!this.ctx.agentDirectory.mayInterrupt(caller, target)) {
       throw new Error('Not authorized to interrupt this agent')
     }
-    const conversation = sessionId === undefined ? target.sessionId : this.knownSession(target, sessionId)
+    let conversation: SessionId
+    if (sessionId !== undefined) {
+      conversation = this.knownSession(target, sessionId)
+    } else {
+      const running = this.sessionsOf(target).filter(item => this.ctx.agents.get(item)?.status === 'running')
+      if (running.length === 0) return { interrupted: false }
+      if (running.length > 1) throw new Error('Several conversations are running; pass session_id')
+      // The filter above guarantees one running conversation.
+      // oxlint-disable-next-line typescript/no-non-null-assertion
+      conversation = running[0]!
+    }
     const agent = this.ctx.agents.get(conversation)
     if (agent === undefined || agent.status === 'idle') return { interrupted: false }
     agent.cancel({ kind: 'parent' }, { keepInbox: true })
@@ -319,14 +334,21 @@ export class AgentMailbox {
         const index = message.deliveries.findIndex(delivery => delivery.sessionId === sessionId && delivery.turn === turn && delivery.state === 'started')
         if (index === -1) continue
         await this.patch(messageId, index, { state: aborted ? 'interrupted' : 'completed' })
-        return
+        break
       }
+      // Another queued delivery may be waiting for this conversation's next turn.
+      const agent = this.ctx.agents.get(sessionId)
+      if (agent !== undefined) await agent.whenIdle()
+      await this.pump()
     })
   }
 
   /** Attempt queued deliveries when the plugin mounts. */
   start(): void {
-    this.background(() => this.pump())
+    this.background(async () => {
+      await this.reconcileStarted()
+      await this.pump()
+    })
   }
 
   /** Drain the pump, release opened agents, then close storage.
@@ -342,9 +364,10 @@ export class AgentMailbox {
   }
 
   private async fresh(
-    caller: Agent, sender: MailboxTarget, input: SendInput, text: string, expectsReply: boolean,
+    caller: Agent, sender: MailboxTarget, input: SendInput, text: string, expectsReply: boolean, key: string | undefined,
   ): Promise<Message> {
     const recipients = z.array(z.string().min(1)).min(1).max(MAX_RECIPIENTS).parse(input.recipients)
+    if (new Set(recipients).size !== recipients.length) throw new Error('Recipient ids must be unique')
     const visible = new Map(this.ctx.agentDirectory.visible(caller).map(target => [target.id, target]))
     const targets = recipients.map((id) => {
       const target = visible.get(id)
@@ -364,6 +387,9 @@ export class AgentMailbox {
       text,
       expectsReply,
       createdAt: Date.now(),
+      ...(input.newThread === true ? { newThread: true } : {}),
+      ...(input.title === undefined ? {} : { title: input.title }),
+      ...(key === undefined ? {} : { key }),
       ...(sender.ownerId === undefined ? {} : { ownerId: sender.ownerId }),
       deliveries: targets.map((target) => {
         const sessionId = thread === undefined ? target.sessionId : thread
@@ -380,7 +406,9 @@ export class AgentMailbox {
     return message
   }
 
-  private async reply(sender: MailboxTarget, input: SendInput, text: string, expectsReply: boolean): Promise<Message> {
+  private async reply(
+    caller: Agent, sender: MailboxTarget, input: SendInput, text: string, expectsReply: boolean, key: string | undefined,
+  ): Promise<Message> {
     if (input.recipients !== undefined) throw new Error('A reply addresses its original sender; omit recipients')
     if (input.newThread === true) throw new Error('A reply cannot open a new thread')
     // The caller routes replies here only with an id.
@@ -393,11 +421,12 @@ export class AgentMailbox {
       id: randomUUID(),
       senderId: sender.id,
       senderName: sender.name,
-      senderSessionId: original.senderSessionId,
+      senderSessionId: caller.id,
       text,
       expectsReply,
       createdAt: Date.now(),
       replyToMessageId: original.id,
+      ...(key === undefined ? {} : { key }),
       ...(sender.ownerId === undefined ? {} : { ownerId: sender.ownerId }),
       deliveries: [{
         recipientId: original.senderId,
@@ -408,6 +437,17 @@ export class AgentMailbox {
     }
     await this.messages.put(message.id, message)
     return message
+  }
+
+  private sameRequest(message: Message, input: SendInput, text: string, expectsReply: boolean): boolean {
+    if (message.text !== text || message.expectsReply !== expectsReply || message.replyToMessageId !== input.replyToMessageId) return false
+    if ((message.newThread === true) !== (input.newThread === true)) return false
+    if (message.title !== input.title) return false
+    if (input.recipients === undefined) return message.deliveries.length === 1
+    if (message.deliveries.length !== input.recipients.length) return false
+    if (!input.recipients.every((id, index) => message.deliveries[index]?.recipientId === id)) return false
+    if (input.newThread === true) return true
+    return input.recipients.every((id, index) => this.ctx.agentDirectory.find(id)?.sessionId === message.deliveries[index]?.sessionId)
   }
 
   private hasReply(originalId: string, senderId: string): boolean {
@@ -438,10 +478,24 @@ export class AgentMailbox {
           /* v8 ignore next -- a queued delivery accepted in the same tick has no attempt reason yet */
           if (delivery.error !== undefined) entry.blocked = delivery.error
         }
+        if (delivery.state === 'uncertain') {
+          entry.uncertain = delivery.error ?? 'Delivery outcome is unknown after a restart'
+        }
         if (message.expectsReply && !replies.has(keyOf(message.id, delivery.recipientId))) entry.pending += 1
       }
     }
     return stats
+  }
+
+  private sessionsOf(target: MailboxTarget): SessionId[] {
+    const sessions = new Set<SessionId>([target.sessionId])
+    for (const messageId of this.messages.keys()) {
+      const message = this.mustMessage(messageId)
+      for (const delivery of message.deliveries) {
+        if (delivery.recipientId === target.id) sessions.add(delivery.sessionId)
+      }
+    }
+    return [...sessions]
   }
 
   private knownSession(target: MailboxTarget, requested: SessionId): SessionId {
@@ -464,11 +518,60 @@ export class AgentMailbox {
     }
   }
 
+  private async reconcileStarted(): Promise<void> {
+    for (const messageId of [...this.messages.keys()]) {
+      const message = this.mustMessage(messageId)
+      for (const [index, delivery] of message.deliveries.entries()) {
+        if (delivery.state !== 'started') continue
+        const outcome = await this.turnOutcome(delivery.sessionId, delivery.turn)
+        if (outcome === 'completed' || outcome === 'aborted') {
+          await this.patch(messageId, index, { state: outcome === 'aborted' ? 'interrupted' : 'completed' })
+        } else if (outcome === 'none') {
+          await this.patch(messageId, index, { state: 'queued' })
+        } else {
+          await this.patch(messageId, index, {
+            state: 'uncertain',
+            error: 'Execution outcome is unknown after a restart; the target was not contacted again',
+          })
+          this.ctx.logger.warn(`agent mailbox: delivery ${messageId} to ${delivery.recipientId} is uncertain after restart`)
+        }
+      }
+    }
+  }
+
+  private async turnOutcome(sessionId: SessionId, turn: number | undefined): Promise<'completed' | 'aborted' | 'open' | 'closed' | 'none'> {
+    let handle: SessionHandle | undefined
+    try {
+      const stored = await this.ctx.sessionPersistence.stat(sessionId)
+      if (stored === undefined) return turn === undefined ? 'none' : 'open'
+      handle = await this.ctx.sessionPersistence.open(sessionId, 'read')
+      const events = (await handle.read(0)).events
+      const starts = new Set<number>()
+      const ends = new Map<number, 'completed' | 'aborted'>()
+      for (const event of events) {
+        if (event.type === 'turn/start') starts.add(event.data.turn)
+        if (event.type === 'turn/end') {
+          ends.set(event.data.turn, event.data.reason.kind === 'aborted' ? 'aborted' : 'completed')
+        }
+      }
+      if (turn !== undefined) return ends.get(turn) ?? 'open'
+      if (starts.size === 0) return 'none'
+      for (const started of starts) if (!ends.has(started)) return 'open'
+      return 'closed'
+    } catch {
+      return 'open'
+    } finally {
+      await handle?.close()
+    }
+  }
+
   private async attempt(messageId: string, index: number): Promise<void> {
     const message = this.mustMessage(messageId)
     // The caller indexes one delivery it just read from the same record.
     // oxlint-disable-next-line typescript/no-non-null-assertion
     const delivery = message.deliveries[index]!
+    // A running conversation keeps the delivery queued; its turn/end schedules another pump.
+    if (this.ctx.agents.get(delivery.sessionId)?.status === 'running') return
     const attempts = delivery.attempts + 1
     await this.patch(messageId, index, { state: 'started', attempts })
     try {

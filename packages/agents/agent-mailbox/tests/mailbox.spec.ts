@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile, copyFile, appendFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -8,7 +9,7 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import * as SessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import Storage from '@deepseek-ai/dsh-storage'
@@ -115,7 +116,7 @@ class GateAdapter extends MockAdapter {
   }
 }
 
-async function harness(root: string, adapters: Record<string, MockAdapter>) {
+async function harness(root: string, adapters: Record<string, MockAdapter>, mountMailbox = true) {
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
@@ -132,7 +133,7 @@ async function harness(root: string, adapters: Record<string, MockAdapter>) {
   for (const [route, adapter] of Object.entries(adapters)) ctx.llm.registerAdapter([route], adapter)
   const directory = new ScriptedDirectory()
   ctx.provide('agentDirectory', directory)
-  await ctx.plugin(Mailbox)
+  if (mountMailbox) await ctx.plugin(Mailbox)
   return { ctx, directory }
 }
 
@@ -159,6 +160,49 @@ async function storedMessages(root: string): Promise<Array<Record<string, unknow
   } catch {
     return []
   }
+}
+
+async function persistedSession(root: string, id: string, turns: readonly { turn: number; end?: 'completed' | 'aborted' }[]): Promise<void> {
+  const ctx = new Context()
+  await ctx.plugin(SessionPersistence, { root: join(root, 'sessions'), compression: 'none' })
+  const handle = await ctx.sessionPersistence.create({
+    version: SESSION_FORMAT_VERSION, id: SessionId(id), createdAt: Date.now(), isSeeded: false,
+  })
+  const events = turns.length === 0
+    ? [{ type: 'session/end-seed' as const, seq: 0, time: Date.now(), data: {} }]
+    : turns.flatMap((turn, index) => [
+      { type: 'turn/start' as const, seq: index * 2, time: Date.now(), data: { turn: turn.turn } },
+      ...turn.end === undefined ? [] : [{ type: 'turn/end' as const, seq: index * 2 + 1, time: Date.now(), data: { turn: turn.turn, reason: { kind: turn.end } } }],
+    ])
+  await handle.append(events)
+  await handle.flush()
+  await handle.close()
+  await ctx.fiber.dispose()
+}
+
+async function seedMessage(
+  root: string,
+  input: { id: string; recipientId: string; sessionId: string; state: string; turn?: number; text?: string },
+): Promise<void> {
+  const directory = join(root, 'data/agent_mailbox/messages')
+  await mkdir(directory, { recursive: true })
+  const record = {
+    id: input.id,
+    senderId: 'a',
+    senderName: 'A',
+    senderSessionId: 'a-main',
+    text: input.text ?? input.id,
+    expectsReply: true,
+    createdAt: Date.now(),
+    deliveries: [{
+      recipientId: input.recipientId,
+      sessionId: input.sessionId,
+      state: input.state,
+      attempts: 1,
+      ...(input.turn === undefined ? {} : { turn: input.turn }),
+    }],
+  }
+  await writeFile(join(directory, `${input.id}.json`), JSON.stringify({ version: 1, record }), 'utf8')
 }
 
 async function fixture(adapters: Record<string, MockAdapter> = {}) {
@@ -515,5 +559,270 @@ describe('agent mailbox', () => {
     mailbox.settle(SessionId('a-main'), 99, false)
     await vi.waitFor(() => { expect(warn).toHaveBeenCalled() })
     warn.mockRestore()
+  })
+
+  it('returns a reply to a reply to the agent that produced it (audit 1)', async () => {
+    const { ctx, directory, root } = await fixture({ 'mock-a': new TextAdapter(), 'mock-b': new TextAdapter() })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') })
+    const sender = await agent(ctx, 'a-main')
+    const receiver = await agent(ctx, 'b-main', 'mock-b')
+    const first = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'hop0' })
+    await ctx.agentMailbox.flush()
+    await receiver.whenIdle()
+    const answer = await ctx.agentMailbox.send(receiver, { replyToMessageId: first.messageId, text: 'hop1' })
+    await ctx.agentMailbox.flush()
+    await sender.whenIdle()
+    await ctx.agentMailbox.send(sender, { replyToMessageId: answer.messageId, text: 'hop2' })
+    await ctx.agentMailbox.flush()
+    await receiver.whenIdle()
+    await ctx.agentMailbox.flush()
+    expect(receiver.session.deriveMessages().some(message => JSON.stringify(message.content).includes('hop2'))).toBe(true)
+    const follow = (await storedMessages(root)).find(message => message['text'] === 'hop2') as { senderSessionId: string; deliveries: Array<Record<string, unknown>> }
+    expect(follow.senderSessionId).toBe('a-main')
+    expect(follow.deliveries[0]).toMatchObject({ recipientId: 'b', sessionId: 'b-main' })
+  })
+
+  it('returns a thread reply to the thread that produced it (audit 1)', async () => {
+    const { ctx, directory, root } = await fixture({ 'mock-a': new TextAdapter(), 'mock-b': new TextAdapter() })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') })
+    const sender = await agent(ctx, 'a-main')
+    await agent(ctx, 'b-main', 'mock-b')
+    const first = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'thread-hop0', newThread: true, title: 'T' })
+    await ctx.agentMailbox.flush()
+    const thread = ctx.agents.get(SessionId('b-main-thread-1'))
+    await thread!.whenIdle()
+    await ctx.agentMailbox.flush()
+    const answer = await ctx.agentMailbox.send(thread!, { replyToMessageId: first.messageId, text: 'thread-hop1' })
+    await ctx.agentMailbox.flush()
+    await sender.whenIdle()
+    await ctx.agentMailbox.send(sender, { replyToMessageId: answer.messageId, text: 'thread-hop2' })
+    await ctx.agentMailbox.flush()
+    await thread!.whenIdle()
+    await ctx.agentMailbox.flush()
+    expect(thread!.session.deriveMessages().some(message => JSON.stringify(message.content).includes('thread-hop2'))).toBe(true)
+    const follow = (await storedMessages(root)).find(message => message['text'] === 'thread-hop2') as { deliveries: Array<Record<string, unknown>> }
+    expect(follow.deliveries[0]).toMatchObject({ recipientId: 'b', sessionId: 'b-main-thread-1' })
+  })
+
+  it('delivers the next queued message after an interrupted turn (audit 2)', async () => {
+    const gated = new GateAdapter()
+    const { ctx, directory, root } = await fixture({ 'mock-a': new TextAdapter(), 'mock-b': gated })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') })
+    directory.authority.add('a->b')
+    const sender = await agent(ctx, 'a-main')
+    const receiver = await agent(ctx, 'b-main', 'mock-b')
+    const first = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'first-held' })
+    const second = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'second-unique' })
+    await ctx.agentMailbox.flush()
+    await vi.waitFor(() => { expect(receiver.status).toBe('running') })
+    expect(gated.requests).toBe(1)
+    const before = (await storedMessages(root)).find(message => message['id'] === second.messageId) as { deliveries: Array<Record<string, unknown>> }
+    expect(before.deliveries[0]).toMatchObject({ state: 'queued' })
+    expect(await ctx.agentMailbox.interrupt(sender, 'b')).toEqual({ interrupted: true })
+    gated.release()
+    await receiver.whenIdle()
+    await ctx.agentMailbox.settled()
+    await ctx.agentMailbox.flush()
+    expect(gated.requests).toBe(2)
+    expect(receiver.session.deriveMessages().some(message => JSON.stringify(message.content).includes('second-unique'))).toBe(true)
+    await receiver.whenIdle()
+    await ctx.agentMailbox.settled()
+    await ctx.agentMailbox.flush()
+    const stored = await storedMessages(root)
+    expect((stored.find(message => message['id'] === first.messageId) as { deliveries: Array<Record<string, unknown>> }).deliveries[0]).toMatchObject({ state: 'interrupted' })
+    expect((stored.find(message => message['id'] === second.messageId) as { deliveries: Array<Record<string, unknown>> }).deliveries[0]).toMatchObject({ state: 'completed' })
+  })
+
+  it('marks a started delivery uncertain on restart and requeues only one that never started (audit 3)', async () => {
+    await mkdir('.dsh-test', { recursive: true })
+    const root = await mkdtemp(join(process.cwd(), '.dsh-test/mailbox-reconcile-'))
+    onTestFinished(() => rm(root, { recursive: true, force: true }))
+    await persistedSession(root, 'done-main', [{ turn: 1, end: 'completed' }])
+    await persistedSession(root, 'aborted-main', [{ turn: 1, end: 'aborted' }])
+    await persistedSession(root, 'empty-main', [])
+    await seedMessage(root, { id: 'crash-open', recipientId: 'b', sessionId: 'missing-main', state: 'started', turn: 1 })
+    await seedMessage(root, { id: 'crash-done', recipientId: 'b', sessionId: 'done-main', state: 'started', turn: 1 })
+    await seedMessage(root, { id: 'crash-aborted', recipientId: 'b', sessionId: 'aborted-main', state: 'started', turn: 1 })
+    await seedMessage(root, { id: 'crash-turn99', recipientId: 'b', sessionId: 'done-main', state: 'started', turn: 99 })
+    await seedMessage(root, { id: 'crash-closed', recipientId: 'b', sessionId: 'done-main', state: 'started' })
+    await seedMessage(root, { id: 'crash-empty', recipientId: 'e', sessionId: 'empty-main', state: 'started' })
+    await seedMessage(root, { id: 'crash-ghost', recipientId: 'g', sessionId: 'ghost-main', state: 'started' })
+
+    const built = await harness(root, { 'mock-a': new TextAdapter(), 'mock-b': new TextAdapter() }, false)
+    built.directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    built.directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') })
+    const sender = await agent(built.ctx, 'a-main')
+    built.directory.failFind.add('e')
+    built.directory.failFind.add('g')
+    await built.ctx.plugin(Mailbox)
+    await built.ctx.agentMailbox.settled()
+
+    const stored = await storedMessages(root)
+    const stateOf = (id: string) => (stored.find(message => message['id'] === id) as { deliveries: Array<Record<string, unknown>> }).deliveries[0]
+    expect(stateOf('crash-open')).toMatchObject({ state: 'uncertain' })
+    expect(stateOf('crash-done')).toMatchObject({ state: 'completed' })
+    expect(stateOf('crash-aborted')).toMatchObject({ state: 'interrupted' })
+    expect(stateOf('crash-turn99')).toMatchObject({ state: 'uncertain' })
+    expect(stateOf('crash-closed')).toMatchObject({ state: 'uncertain' })
+    expect(stateOf('crash-empty')).toMatchObject({ state: 'queued', error: 'Error: registry unavailable' })
+    expect(stateOf('crash-ghost')).toMatchObject({ state: 'queued', error: 'Error: registry unavailable' })
+    expect(built.ctx.agents.get(SessionId('missing-main'))).toBeUndefined()
+    expect(built.ctx.agents.get(SessionId('ghost-main'))).toBeUndefined()
+    expect(built.ctx.agentMailbox.list(sender).find(summary => summary.id === 'b')).toMatchObject({ status: 'uncertain', uncertain: true })
+    await built.ctx.fiber.dispose()
+  })
+
+  it('keeps the idempotency key in the message record across restart (audit 4)', async () => {
+    await mkdir('.dsh-test', { recursive: true })
+    const root = await mkdtemp(join(process.cwd(), '.dsh-test/mailbox-key-'))
+    onTestFinished(() => rm(root, { recursive: true, force: true }))
+    const target = { id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') }
+    const first = await harness(root, { 'mock-a': new TextAdapter(), 'mock-b': new TextAdapter() })
+    first.directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    first.directory.add(target)
+    const sender = await agent(first.ctx, 'a-main')
+    sender.followup(createUserMessage({ content: [{ type: 'text', text: 'warm' }], source: { kind: 'user' } }))
+    await sender.whenIdle()
+    const receipt = await first.ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'same-body', idempotencyKey: 'k-record' })
+    await first.ctx.agentMailbox.settled()
+    const record = (await storedMessages(root)).find(message => message['id'] === receipt.messageId) as { key?: string }
+    expect(record.key).toMatch(/^[0-9a-f]{64}$/u)
+    expect(existsSync(join(root, 'data/agent_mailbox/idempotency'))).toBe(false)
+    await first.ctx.fiber.dispose()
+
+    const second = await harness(root, { 'mock-a': new TextAdapter(), 'mock-b': new TextAdapter() })
+    second.directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    second.directory.add(target)
+    const resumed = (await second.ctx.agents.resume({ resumeSessionId: SessionId('a-main') })).agent
+    const repeated = await second.ctx.agentMailbox.send(resumed, { recipients: ['b'], text: 'same-body', idempotencyKey: 'k-record' })
+    expect(repeated.messageId).toBe(receipt.messageId)
+    expect(await storedMessages(root)).toHaveLength(1)
+    await second.ctx.fiber.dispose()
+  })
+
+  it('treats a different newThread, title or destination as an idempotency conflict (audit 5)', async () => {
+    const { ctx, directory } = await fixture({ 'mock-a': new TextAdapter(), 'mock-b': new TextAdapter() })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') })
+    const sender = await agent(ctx, 'a-main')
+    await agent(ctx, 'b-main', 'mock-b')
+    const plain = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'same-body', idempotencyKey: 'k-plain' })
+    expect((await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'same-body', idempotencyKey: 'k-plain' })).messageId).toBe(plain.messageId)
+    await expect(ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'same-body', idempotencyKey: 'k-plain', newThread: true }))
+      .rejects.toThrow('different message')
+    await expect(ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'same-body', idempotencyKey: 'k-plain', title: 'Other' }))
+      .rejects.toThrow('different message')
+    await expect(ctx.agentMailbox.send(sender, { recipients: ['b', 'c'], text: 'same-body', idempotencyKey: 'k-plain' }))
+      .rejects.toThrow('different message')
+    directory.add({ ...directory.targets.get('b')!, sessionId: SessionId('b-other'), model: options('mock-b') })
+    await expect(ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'same-body', idempotencyKey: 'k-plain' }))
+      .rejects.toThrow('different message')
+    const threaded = await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'thread-body', idempotencyKey: 'k-thread', newThread: true, title: 'One' })
+    expect((await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'thread-body', idempotencyKey: 'k-thread', newThread: true, title: 'One' })).messageId)
+      .toBe(threaded.messageId)
+    await expect(ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'thread-body', idempotencyKey: 'k-thread', newThread: true, title: 'Two' }))
+      .rejects.toThrow('different message')
+  })
+
+  it('rejects duplicated recipient ids before writing (audit 6)', async () => {
+    const { ctx, directory, root } = await fixture({ 'mock-a': new TextAdapter(), 'mock-b': new TextAdapter() })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') })
+    const sender = await agent(ctx, 'a-main')
+    await expect(ctx.agentMailbox.send(sender, { recipients: ['b', 'b'], text: 'twice' })).rejects.toThrow('unique')
+    expect(await storedMessages(root)).toHaveLength(0)
+  })
+
+  it('reports working conversations and interrupts a single running thread without its id (audit 7)', async () => {
+    const gated = new GateAdapter()
+    const { ctx, directory } = await fixture({ 'mock-a': new TextAdapter(), 'mock-b': gated, 'mock-c': new TextAdapter() })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') })
+    directory.add({ id: 'c', name: 'C', title: '', description: '', sessionId: SessionId('c-main'), model: options('mock-c') })
+    directory.authority.add('a->b')
+    const sender = await agent(ctx, 'a-main')
+    await agent(ctx, 'b-main', 'mock-b')
+    await agent(ctx, 'c-main', 'mock-c')
+    await ctx.agentMailbox.send(sender, { recipients: ['c'], text: 'other-target' })
+    await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'thread-one', newThread: true })
+    await ctx.agentMailbox.flush()
+    const firstThread = ctx.agents.get(SessionId('b-main-thread-1'))!
+    await vi.waitFor(() => { expect(firstThread.status).toBe('running') })
+    expect(ctx.agentMailbox.list(sender).find(summary => summary.id === 'b')?.workingSessions).toEqual(['b-main-thread-1'])
+    expect(await ctx.agentMailbox.interrupt(sender, 'b')).toEqual({ interrupted: true })
+    await firstThread.whenIdle()
+    await ctx.agentMailbox.flush()
+    expect(ctx.agentMailbox.list(sender).find(summary => summary.id === 'b')?.workingSessions).toEqual([])
+
+    gated.hold = true
+    await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'thread-two', newThread: true })
+    await ctx.agentMailbox.send(sender, { recipients: ['b'], text: 'thread-three', newThread: true })
+    await ctx.agentMailbox.flush()
+    const secondThread = ctx.agents.get(SessionId('b-main-thread-2'))!
+    const thirdThread = ctx.agents.get(SessionId('b-main-thread-3'))!
+    await vi.waitFor(() => { expect(secondThread.status).toBe('running'); expect(thirdThread.status).toBe('running') })
+    await expect(ctx.agentMailbox.interrupt(sender, 'b')).rejects.toThrow('Several conversations')
+    expect(await ctx.agentMailbox.interrupt(sender, 'b', SessionId('b-main-thread-2'))).toEqual({ interrupted: true })
+    expect(await ctx.agentMailbox.interrupt(sender, 'b', SessionId('b-main-thread-3'))).toEqual({ interrupted: true })
+    await secondThread.whenIdle()
+    await thirdThread.whenIdle()
+    await ctx.agentMailbox.flush()
+  })
+
+  it('answers an invisible target with the same unknown error as an absent one (audit 8)', async () => {
+    const { ctx, directory } = await fixture({ 'mock-a': new TextAdapter(), 'mock-c': new TextAdapter() })
+    directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    directory.add({ id: 'c', name: 'C', title: 'Hidden', description: '', sessionId: SessionId('c-main'), model: options('mock-c') })
+    directory.hidden.add('c')
+    const sender = await agent(ctx, 'a-main')
+    await expect(ctx.agentMailbox.interrupt(sender, 'c')).rejects.toThrow('Unknown agent: c')
+    await expect(ctx.agentMailbox.interrupt(sender, 'no-such')).rejects.toThrow('Unknown agent: no-such')
+  })
+
+  it('reconciles a corrupt log, an open turn without a claim, and a detached turn end', async () => {
+    await mkdir('.dsh-test', { recursive: true })
+    const root = await mkdtemp(join(process.cwd(), '.dsh-test/mailbox-defensive-'))
+    onTestFinished(() => rm(root, { recursive: true, force: true }))
+    await persistedSession(root, 'open-main', [{ turn: 1 }])
+    await mkdir(join(root, 'sessions/_no-cwd/corrupt-main'), { recursive: true })
+    await writeFile(join(root, 'sessions/_no-cwd/corrupt-main/session.v4.jsonl'), 'not a session\n', 'utf8')
+    await mkdir(join(root, 'sessions/_no-cwd/torn-main'), { recursive: true })
+    await copyFile(
+      join(root, 'sessions/_no-cwd/open-main/session.v4.jsonl'),
+      join(root, 'sessions/_no-cwd/torn-main/session.v4.jsonl'),
+    )
+    await appendFile(join(root, 'sessions/_no-cwd/torn-main/session.v4.jsonl'), '{"broken":\n', 'utf8')
+    await seedMessage(root, { id: 'crash-corrupt', recipientId: 'b', sessionId: 'corrupt-main', state: 'started', turn: 1 })
+    await seedMessage(root, { id: 'crash-torn', recipientId: 'b', sessionId: 'torn-main', state: 'started', turn: 1 })
+    await seedMessage(root, { id: 'crash-open-turn', recipientId: 'b', sessionId: 'open-main', state: 'started' })
+    await seedMessage(root, { id: 'crash-uncertain', recipientId: 'u', sessionId: 'u-main', state: 'uncertain' })
+    await seedMessage(root, { id: 'crash-ghost', recipientId: 'b', sessionId: 'ghost-main', state: 'completed' })
+
+    const built = await harness(root, { 'mock-a': new TextAdapter(), 'mock-b': new TextAdapter() }, false)
+    built.directory.add({ id: 'a', name: 'A', title: '', description: '', sessionId: SessionId('a-main'), model: options('mock-a') })
+    built.directory.add({ id: 'b', name: 'B', title: '', description: '', sessionId: SessionId('b-main'), model: options('mock-b') })
+    built.directory.add({ id: 'u', name: 'U', title: '', description: '', sessionId: SessionId('u-main') })
+    built.directory.authority.add('a->b')
+    const sender = await agent(built.ctx, 'a-main')
+    await built.ctx.plugin(Mailbox)
+    await built.ctx.agentMailbox.settled()
+
+    const stored = await storedMessages(root)
+    const stateOf = (id: string) => (stored.find(message => message['id'] === id) as { deliveries: Array<Record<string, unknown>> }).deliveries[0]
+    expect(stateOf('crash-corrupt')).toMatchObject({ state: 'uncertain' })
+    expect(stateOf('crash-torn')).toMatchObject({ state: 'uncertain' })
+    expect(stateOf('crash-open-turn')).toMatchObject({ state: 'uncertain' })
+    expect(built.ctx.agentMailbox.list(sender).find(summary => summary.id === 'u'))
+      .toMatchObject({ status: 'uncertain', uncertain: true, blocked: 'Delivery outcome is unknown after a restart' })
+    expect(await built.ctx.agentMailbox.interrupt(sender, 'b', SessionId('ghost-main'))).toEqual({ interrupted: false })
+
+    const detached = built.ctx.sessions.create(SessionId('detached-main'))
+    detached.append('turn/start', { turn: 1 })
+    detached.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    await built.ctx.agentMailbox.settled()
+    await built.ctx.fiber.dispose()
   })
 })

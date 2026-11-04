@@ -11,9 +11,9 @@ Stores durable messages and per-recipient deliveries between persistent agents w
 
 ## Use this package
 
-Mount beside `storage-domain`, `agents` and `session-persistence`, and provide an `agentDirectory` implementation from the persistent-agent integration. The directory resolves stable ids to conversations, decides visibility and interruption authority, and creates a fresh conversation for `newThread`. Delivery opens or resumes the target conversation through `ctx.agents` and queues one turn through `followup`; a busy target keeps the message for its next turn. The companion `@deepseek-ai/dsh-tool-agent-mailbox` exposes `agent_send_message`, `agent_list` and `agent_interrupt`.
+Mount beside `storage-domain`, `agents` and `session-persistence`, and provide an `agentDirectory` implementation from the persistent-agent integration. The directory resolves stable ids to conversations, decides visibility and interruption authority, and creates a fresh conversation for `newThread`. Delivery opens or resumes the target conversation through `ctx.agents` and queues one turn through `followup`; a busy target keeps the message for its next turn, and the end of that turn resumes the queue. The companion `@deepseek-ai/dsh-tool-agent-mailbox` exposes `agent_send_message`, `agent_list` and `agent_interrupt`.
 
-Messages and pending deliveries live in the `agent_mailbox` storage domain. A repeated `idempotencyKey` returns the previous message instead of accepting a second one. A reply is accepted only from a recipient of the original message, only once, and returns to the conversation that sent the original request.
+Messages, delivery state and the hashed `idempotencyKey` live in one message record, so the key and the message cannot diverge. A repeated key returns the previous message; a different text, recipient set, thread flag, title or destination is a conflict. A reply is accepted only from a recipient of the original message, only once, and returns to the conversation that sent it. On restart, a delivery whose recorded turn has no `turn/end` in its session log becomes `uncertain` and is never re-sent; a delivery that never started goes back to `queued`.
 
 ## Model Experience
 
@@ -33,7 +33,7 @@ The delivery appends after the target conversation's existing history and does n
 
 ## Known Limitations and Deferred Work
 
-- Delivery is process-local and serialized through one pump; a restart retries queued deliveries, but an unobservable crash after an external turn starts is not exactly-once.
+- Delivery is process-local and serialized through one pump; a restart retries queued deliveries, and a delivery whose turn was open at the crash is marked `uncertain` instead of being re-sent, so external work is never repeated blindly.
 - `ownerId` is stored without access filtering until the multi-user milestone.
 - Interruption asks the target's agent loop to cancel its current turn; it cannot undo external effects that already ran.
 - A new conversation uses the route supplied by the identity layer; a target without a route can only be woken when its session already records a selection.
