@@ -1,5 +1,7 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { request as httpRequest, type IncomingHttpHeaders } from 'node:http'
+import { connect as netConnect } from 'node:net'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -42,6 +44,26 @@ function input(host: Context, ownerId: string, cwd = ''): TurnBridgeInput {
 }
 
 interface Reply { status: number; headers: IncomingHttpHeaders; text: string }
+
+function rawRequest(port: string, payload: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = netConnect(Number(port), '127.0.0.1', () => { socket.end(payload) })
+    const chunks: Buffer[] = []
+    socket.on('data', (chunk: Buffer) => chunks.push(chunk))
+    socket.on('error', reject)
+    socket.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+  })
+}
+
+function denyRead(path: string): void {
+  const user = process.env['USERNAME'] ?? ''
+  execFileSync('icacls', [path, '/deny', `${user}:(R)`], { stdio: 'ignore', windowsHide: true })
+}
+
+function allowRead(path: string): void {
+  const user = process.env['USERNAME'] ?? ''
+  execFileSync('icacls', [path, '/remove:d', user], { stdio: 'ignore', windowsHide: true })
+}
 
 function talk(url: string, method: string, headers: Record<string, string>, body?: Buffer | string): Promise<Reply> {
   return new Promise((resolve, reject) => {
@@ -224,6 +246,8 @@ it('serves admitted tools in process and on loopback, then revokes them', async 
   expect((await talk(bridge.endpoint, 'POST', { authorization: 'Token raw' })).status).toBe(401)
   expect((await talk(`${bridge.endpoint}?mcp=${secret}`, 'POST', auth)).text).toBe('not found')
   expect((await talk(bridge.endpoint.replace('/mcp', '/nope'), 'POST', auth)).status).toBe(404)
+  const missingHost = await rawRequest(port, 'GET /mcp HTTP/1.0\r\n\r\n')
+  expect(missingHost).toContain('403')
   expect((await talk(bridge.endpoint, 'POST', { ...auth, host: 'evil.test' })).status).toBe(403)
   expect((await talk(bridge.endpoint, 'POST', { ...auth, origin: 'http://evil.test' })).status).toBe(403)
   expect((await talk(bridge.endpoint, 'POST', { ...auth, host: `localhost:${port}`, origin: `http://localhost:${port}` })).status).not.toBe(403)
@@ -323,6 +347,11 @@ it('serves admitted tools in process and on loopback, then revokes them', async 
   expect(failed).toMatchObject({ code: 'tool_denied' })
   expect(failed.content[0]?.text).toBe('tool call failed')
   expect(failed.content[0]?.text).not.toContain(f.root)
+  const empty = vi.spyOn(f.ctx.tools, 'execute').mockResolvedValueOnce({ results: [], additionalContexts: [] } as never)
+  expect(await bridge.call('empty-1', 'remember', { text: 'z' })).toMatchObject({
+    code: 'tool_denied', content: [{ type: 'text', text: 'tool call failed' }],
+  })
+  empty.mockRestore()
   const during = new AbortController()
   const duringBridge = await openTurnBridge({
     host: f.ctx, agent: handle.agent, ownerId: f.accountA.id, turn: 1, step: 2, model: 'external',
@@ -506,6 +535,44 @@ it('proves mailbox, private tables and memory across two accounts', async () => 
     recipients: [f.profileB.id], message: 'after-revoke', expects_reply: false,
   })).isError).toBe(true)
   await later.close()
+})
+
+it('does not open auth.json while listing or calling a tool', async () => {
+  const f = await boot()
+  const credential = join(f.homeA, 'auth.json')
+  await writeFile(credential, 'synthetic credential: the bridge must not read this')
+  denyRead(credential)
+  try {
+    const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+    let releaseTurn = (): void => {}
+    let parked = false
+    service.sdk = {
+      run: input => new Promise((resolve) => {
+        parked = true
+        const finish = (text: string): void => resolve({ text })
+        releaseTurn = () => finish('held')
+        input.signal.addEventListener('abort', () => finish('aborted'), { once: true })
+      }),
+    }
+    onTestFinished(() => releaseTurn())
+    const handle = await f.open(f.profileA.id)
+    handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'hold' }], source: { kind: 'user' } }))
+    await vi.waitFor(() => expect(parked).toBe(true))
+    const bridge = await openTurnBridge({
+      host: f.ctx, agent: handle.agent, ownerId: f.accountA.id, turn: 1, step: 1, model: 'external',
+      signal: new AbortController().signal, onEnded: () => {},
+    })
+    await bridge.list()
+    const result = await bridge.call('auth-1', 'remember', { text: 'no-credential' })
+    expect(result.isError, result.content[0]?.text).toBe(false)
+    expect(result.content[0]?.text ?? '').not.toMatch(/auth\.json|EPERM|EACCES/)
+    await bridge.close()
+    releaseTurn()
+    await handle.agent.whenIdle()
+  } finally {
+    allowRead(credential)
+  }
+  expect(await readFile(credential, 'utf8')).toContain('synthetic credential')
 })
 
 function json(reply: Reply | Promise<Reply>): { error?: { code: number }; result?: Record<string, unknown> } {

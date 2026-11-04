@@ -187,7 +187,7 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
           ownerId, agentId, sessionId: session.id, runtime, revision: binding.revision, sdkSessionId,
         })
       }
-      agent.arm(sdkSessionId)
+      agent.arm(sdkSessionId, ownerId)
       const dispose = async (): Promise<void> => {
         agent.closeAdmission()
         agent.cancel({ kind: 'disposed' })
@@ -401,16 +401,11 @@ class ExternalAgent implements Agent {
   get id(): SessionId { return this.session.id }
 
   /** Called after publication so a listener can queue work that starts immediately after. */
-  arm(sdkSessionId: string): void {
+  arm(sdkSessionId: string, ownerId: string): void {
     this.sdkSessionId = sdkSessionId
     this.published = true
-    /* v8 ignore next -- publication writes the sidecar before arm */
-    this.ownerId = sidecarOf(this.session)?.ownerId ?? 'owner'
-    const ownerId = this.ownerId
-    const accounts = this.host.get('accounts')
-    /* v8 ignore next -- fixture hosts always register accounts */
-    const bus = accounts === undefined ? this.host : (accounts as unknown as { ctx: Context }).ctx
-    this.scope.ctx.effect(() => bus.on('accounts/ended', (accountId) => {
+    this.ownerId = ownerId
+    this.scope.ctx.effect(() => this.host.on('accounts/ended', (accountId) => {
       if (accountId === ownerId) this.cancel({ kind: 'disposed' })
     }))
     this.wake()

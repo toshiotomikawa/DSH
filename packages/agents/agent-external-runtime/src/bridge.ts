@@ -130,7 +130,6 @@ function textOf(content: readonly { type: string; text?: string }[]): string {
 }
 
 function hostOk(value: string | undefined): boolean {
-  /* v8 ignore next -- Node sets Host on every TCP request this server accepts */
   if (value === undefined) return false
   const name = value.replace(/:\d+$/, '')
   return name === '127.0.0.1' || name === 'localhost'
@@ -179,16 +178,14 @@ class StepBridge {
   }
 
   /** Reject a dead account or a stale binding before the port opens. */
-  prepare(): Promise<void> {
-    return this.admit()
+  async prepare(): Promise<void> {
+    await this.admit()
   }
 
   async listen(): Promise<void> {
     this.server.listen(0, '127.0.0.1')
     await once(this.server, 'listening')
-    const address = this.server.address()
-    /* v8 ignore next -- TCP listen on 127.0.0.1 returns AddressInfo */
-    if (address === null || typeof address === 'string') throw new Error('loopback listen failed')
+    const address = this.server.address() as { port: number }
     this.port = address.port
     this.endpoint = `http://127.0.0.1:${this.port}/mcp`
   }
@@ -212,10 +209,10 @@ class StepBridge {
 
   async list(): Promise<readonly TurnToolSchema[]> {
     if (this.closed || this.input.signal.aborted) throw new Error('closed')
-    await this.admit()
+    const toolSet = await this.admit()
     const tools = this.input.host.get('tools')
     if (tools === undefined) throw new HarnessBindingError('binding_missing')
-    return tools.schemas(this.input.agent, this.toolSet)
+    return tools.schemas(this.input.agent, toolSet)
       .filter(schema => ALLOWED.has(schema.name))
       .map(schema => ({ name: schema.name, description: schema.description, inputSchema: schema.parameters }))
   }
@@ -243,8 +240,9 @@ class StepBridge {
     if (cached !== undefined) return cached
     if (!ALLOWED.has(name)) return this.remember(id, denied('tool_denied', 'tool_denied'))
     if (forbidden(args)) return this.remember(id, denied('tool_denied', 'tool_denied'))
+    let toolSet: ResolvedToolSet
     try {
-      await this.admit()
+      toolSet = await this.admit()
     } catch (error) {
       this.input.onEnded()
       const text = error instanceof HarnessBindingError ? error.code : 'tool_denied'
@@ -255,9 +253,6 @@ class StepBridge {
     try {
       const tools = this.input.host.get('tools')
       if (tools === undefined) throw new HarnessBindingError('binding_missing')
-      const toolSet = this.toolSet
-      /* v8 ignore next -- admit assigns the tool set or throws */
-      if (toolSet === undefined) throw new HarnessBindingError('binding_missing')
       batch = await tools.execute({
         agent: this.input.agent,
         signal: this.input.signal,
@@ -271,7 +266,6 @@ class StepBridge {
     }
     for (const message of batch.additionalContexts) this.input.agent.inject(message)
     const outcome = batch.results[0]?.result
-    /* v8 ignore next -- the executor returns one result for the one call in this batch */
     if (outcome === undefined) return this.remember(id, FAILED)
     if (this.closed || this.input.signal.aborted) return CANCELLED
     const message = outcome.isError ? outcome.error.message : ''
@@ -289,7 +283,7 @@ class StepBridge {
     return result
   }
 
-  private async admit(): Promise<void> {
+  private async admit(): Promise<ResolvedToolSet> {
     if (this.input.ownerId !== 'owner') {
       const accounts = this.input.host.get('accounts')
       if (accounts === undefined) throw new HarnessBindingError('binding_missing')
@@ -305,17 +299,18 @@ class StepBridge {
     this.toolSet?.dispose()
     const tools = this.input.host.get('tools')
     if (tools === undefined) throw new HarnessBindingError('binding_missing')
-    this.toolSet = await tools.resolve({
+    const toolSet = await tools.resolve({
       agent: this.input.agent,
       modelSelection: { provider: 'external', model: this.input.model },
       signal: this.input.signal,
     })
+    this.toolSet = toolSet
+    return toolSet
   }
 
   private async http(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
-      /* v8 ignore next -- Node sets the request URL */
-      const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+      const url = new URL(String(req.url), 'http://127.0.0.1')
       if (!hostOk(req.headers.host) || !originOk(header(req, 'origin'), this.port)) {
         write(res, 403, 'forbidden')
         return
@@ -346,8 +341,6 @@ class StepBridge {
       await this.route(req, res, message)
     } catch (error) {
       const tooLarge = error instanceof Error && error.message === 'too large'
-      /* v8 ignore next -- a handler that already replied must not write again */
-      if (res.headersSent) return
       write(res, tooLarge ? 413 : 400, tooLarge ? 'too large' : 'bad request')
       req.destroy()
     }
@@ -440,8 +433,6 @@ function header(req: IncomingMessage, name: string): string | undefined {
 }
 
 function write(res: ServerResponse, status: number, body: string): void {
-  /* v8 ignore next -- callers send one response */
-  if (res.headersSent) return
   const headers = status === 204 ? {} : { 'content-type': 'text/plain; charset=utf-8' }
   res.writeHead(status, headers)
   res.end(status === 204 ? undefined : body)
@@ -459,8 +450,6 @@ function rpc(
     : { jsonrpc: '2.0', id, error }
   const headers: Record<string, string> = { 'content-type': 'application/json; charset=utf-8' }
   if (session !== undefined) headers['mcp-session-id'] = session
-  /* v8 ignore next -- callers send one response */
-  if (res.headersSent) return
   res.writeHead(200, headers)
   res.end(JSON.stringify(payload))
 }
