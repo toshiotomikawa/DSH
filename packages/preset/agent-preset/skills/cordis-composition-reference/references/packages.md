@@ -19,7 +19,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-agent-registry` | no | Stores named profiles and binds sessions to stable agent identities. |
 | `@deepseek-ai/dsh-agent-routine` | yes | Per-agent routines over the host scheduler: one record per execution, queue, quota wait, missed-occurrence policies and an authenticated local script entry |
 | `@deepseek-ai/dsh-agent-runtime` | no | Connects persistent agent identities to mailbox and routine sessions. |
-| `@deepseek-ai/dsh-tool-agent-mailbox` | no | Model tools to send messages between persistent agents. |
+| `@deepseek-ai/dsh-tool-agent-mailbox` | no | Model tools to message persistent agents, share them with other accounts and group them in sections. |
 | `@deepseek-ai/dsh-tool-agent-memory` | no | Remembers, forgets and searches data for the calling agent. |
 | `@deepseek-ai/dsh-tool-agent-routine` | no | Model-facing routine tools: routine_create, routine_update, routine_list, routine_test and routine_no_update |
 

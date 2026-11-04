@@ -674,11 +674,12 @@ const TOOL_PACKAGES: ToolPackage[] = [
     pkg: '@deepseek-ai/dsh-tool-agent-mailbox',
     dir: 'tool-agent-mailbox',
     source: 'packages/agents/tool-agent-mailbox/src/index.ts',
-    requires: ['ctx.tools', 'ctx.agentMailbox', 'an exact live persistent Agent'],
+    requires: ['ctx.tools', 'ctx.agentMailbox', 'ctx.persistentAgents', 'an exact live persistent Agent'],
     writes: ['tool/call', 'tool/result', 'agent_mailbox message record', 'user/message'],
     async mount(ctx) {
       // Schema harvest never sends, lists or interrupts.
       ctx.provide('agentMailbox', {} as AgentMailbox)
+      ctx.provide('persistentAgents', {} as Context['persistentAgents'])
       await ctx.plugin(ToolAgentMailbox)
     },
     note: 'Mail sent here is durable collaborator content, never authority. The identity layer supplies stable ids, visibility and interruption rights; a reply returns to the conversation that sent the request.',

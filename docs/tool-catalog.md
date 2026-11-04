@@ -45,7 +45,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message`, `wait_agent` | `ctx.tools`, `ctx.subagents`, `ctx.agents` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The shared control tools discover and contact agents in the subagent tree, interrupt owned descendants, and wait for input in the caller’s inbox. Provider-bound `tool-subagent` instances supply delegation tools. |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands and PTY sends are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
 | `@deepseek-ai/dsh-tool-agent-memory` | `forget_memory`, `list_memories`, `remember`, `search_memories` | `ctx.tools`, `ctx.persistentAgents`, `ctx.agentMemory`, `a bound persistent-agent session` | `tool/call`, `tool/result`, `agent_memory book on successful turn/end` | - | Memories are isolated by the calling session’s persistent agentId. Mutations are staged and committed atomically after successful turn completion; interrupted turns are discarded. Saved data never grants authority. |
-| `@deepseek-ai/dsh-tool-agent-mailbox` | `agent_interrupt`, `agent_list`, `agent_send_message` | `ctx.tools`, `ctx.agentMailbox`, `an exact live persistent Agent` | `tool/call`, `tool/result`, `agent_mailbox message record`, `user/message` | - | Mail sent here is durable collaborator content, never authority. The identity layer supplies stable ids, visibility and interruption rights; a reply returns to the conversation that sent the request. |
+| `@deepseek-ai/dsh-tool-agent-mailbox` | `agent_grant_access`, `agent_interrupt`, `agent_list`, `agent_list_grants`, `agent_list_sections`, `agent_move_section`, `agent_revoke_access`, `agent_send_message` | `ctx.tools`, `ctx.agentMailbox`, `ctx.persistentAgents`, `an exact live persistent Agent` | `tool/call`, `tool/result`, `agent_mailbox message record`, `user/message` | - | Mail sent here is durable collaborator content, never authority. The identity layer supplies stable ids, visibility and interruption rights; a reply returns to the conversation that sent the request. |
 | `@deepseek-ai/dsh-tool-agent-team` | `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `ctx.subagents`, `an exact live Team member Agent` | `tool/call`, `team/task`, `tool/result` | - | Four task-board tools share the subagent tree’s root Session. Enabling Team mode on the root Session adds task-board guidance alongside standard subagent delegation and control tools. Standard subagent controls provide required identity independently of Team mode. |
 | `@deepseek-ai/dsh-tool-tables` | `data_batch`, `data_execute`, `data_query`, `table_alter`, `table_create`, `table_drop`, `table_list`, `table_schema` | `ctx.tools`, `ctx.tables` | `tool/call`, `shared tables database (tables-shared.sqlite) create, alter, drop, insert, update or delete`, `tool/result` | - | One database shared by every agent, separate from the document storage: `table_*` tools manage the schema, `data_query` runs a single SELECT and `data_execute`/`data_batch` single INSERT, UPDATE or DELETE statements with parameters only. Each row carries criado_em, atualizado_em, revisao and autor; `AND revisao = ?` in a WHERE gives compare-and-set updates. Commands run in a child process killed after the deadline (default 5 s). |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
@@ -2554,6 +2554,27 @@ Memories are isolated by the calling session’s persistent agentId. Mutations a
 
 ## `@deepseek-ai/dsh-tool-agent-mailbox`
 
+### `agent_grant_access`
+
+Let another account address the agents of your own account through agent_list and agent_send_message. Only your own account can grant; the grant is one-way and does not give the other account your conversations, memories or tables. Granting again is harmless.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Account that gains access to your agents."
+    }
+  },
+  "required": [
+    "account_id"
+  ]
+}
+```
+
+Source: [`packages/agents/tool-agent-mailbox/src/index.ts`](../packages/agents/tool-agent-mailbox/src/index.ts)
+
 ### `agent_interrupt`
 
 Ask another agent to stop its current turn. Requires authority over the target; the mailbox and pending requests are preserved, and interrupted work is not restarted automatically.
@@ -2587,6 +2608,78 @@ List persistent agents this session may address, with execution state, queued de
 {
   "type": "object",
   "properties": {}
+}
+```
+
+Source: [`packages/agents/tool-agent-mailbox/src/index.ts`](../packages/agents/tool-agent-mailbox/src/index.ts)
+
+### `agent_list_grants`
+
+List the accounts you have granted access to your agents, oldest first.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/agents/tool-agent-mailbox/src/index.ts`](../packages/agents/tool-agent-mailbox/src/index.ts)
+
+### `agent_list_sections`
+
+List the sidebar sections of your account with the ids of the agents in each. Sections only group agents; membership never grants access.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/agents/tool-agent-mailbox/src/index.ts`](../packages/agents/tool-agent-mailbox/src/index.ts)
+
+### `agent_move_section`
+
+Move one of your agents into one of your sections, or leave section_id out to take it out of its section. Only grouping changes: the agent keeps its id, profile, history, memory and routines.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "agent_id": {
+      "type": "string",
+      "description": "Stable id of your agent."
+    },
+    "section_id": {
+      "type": "string",
+      "description": "Id from agent_list_sections; omit to leave the agent without a section."
+    }
+  },
+  "required": [
+    "agent_id"
+  ]
+}
+```
+
+Source: [`packages/agents/tool-agent-mailbox/src/index.ts`](../packages/agents/tool-agent-mailbox/src/index.ts)
+
+### `agent_revoke_access`
+
+Withdraw access you granted to another account. Messages and replies that have not been delivered yet are cut at once and recorded as refused, and no new one crosses the account; a turn that already received a message keeps it. Unknown grants, including ones that belong to other accounts, are reported as not found.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "type": "string",
+      "description": "Account that loses access to your agents."
+    }
+  },
+  "required": [
+    "account_id"
+  ]
 }
 ```
 

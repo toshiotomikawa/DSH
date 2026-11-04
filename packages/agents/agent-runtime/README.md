@@ -15,7 +15,7 @@ Mount globally after agent-registry, agent-memory, agents and system-prompt, bef
 
 The optional `@deepseek-ai/dsh-agent-runtime/owners` plugin mounts the account policy in `remote-access`. Add its `fork-owner-policy` entry to a Web composition that already mounts persistent storage and the Session Controller; the shipped Web bundle composes it ON. It stores optional `ownerId` metadata in the per-record `session_owners` domain, leaving released Session headers and logs unchanged. Existing Sessions are adopted by `owner`; create, fork and persistent-agent binding save their trusted owner before returning. A Session whose owner write fails is recorded as denied instead of keeping the account the creation event adopted first, so it stays hidden from every account until a later assignment succeeds. Account principals see only owned Session rows and FTS results, and foreign and unknown Session ids receive the same access denial. Sidecar damage blocks account-policy activation and preserves the damaged document. Disposing the plugin removes its service and policy.
 
-The same plugin provides `accountGrants`, an explicit directional grant between accounts stored in the `account_grants` domain: `grant(ownerId, granteeId)`, `revoke(ownerId, granteeId)` and `allows(ownerId, granteeId)`. The persistent-agent directory and `agent_send_message` list another account's agents only when that account granted the caller; interruption follows the same grant. The host account and same-owner calls need no grant. Grant creation has no tool or UI yet: trusted Host code calls the service.
+The same plugin provides `accountGrants`, an explicit directional grant between accounts stored in the `account_grants` domain: `grant(ownerId, granteeId)`, `revoke(ownerId, granteeId)` and `allows(ownerId, granteeId)`. The persistent-agent directory and `agent_send_message` list another account's agents only when that account granted the caller; interruption follows the same grant. The host account and same-owner calls need no grant. `list(ownerId)` returns the accounts one owner admitted. Persistent agents grant and revoke through `agent_grant_access` and `agent_revoke_access` of the mailbox tools, which act only for the caller’s own account. A revoke applies on the next directory read and also cuts mail that was already accepted: the mailbox asks `agentDirectory.reaches(fromId, toId)` again when a pending delivery is attempted and when a reply is written, so an undelivered message or reply across the revoked account is recorded as `refused` with a neutral reason that never names the other account. A turn that already received a message keeps it.
 
 ## Model Experience
 
@@ -36,9 +36,10 @@ New sessions reuse the profile's persona content; session-specific messages and 
 ## Known Limitations and Deferred Work
 
 - Discovery and interruption through the persistent-agent directory stay within the calling profile owner, or another account after an explicit stored grant.
+- A revoke cannot recall a message a running turn already received.
 - Legacy ownerless profiles belong to `owner`.
 - The `owners` policy is composed ON in the shipped Web bundle and off in every other composition; the plugins otherwise do not modify shipped profiles.
-- The `owners` entry requires a trusted account principal supplied by a Host connection adapter; account provisioning and sign-in, the sidebar UI for sections, and a tool or UI to create grants are deferred.
+- The `owners` entry requires a trusted account principal supplied by a Host connection adapter; account provisioning and sign-in, the sidebar UI for sections, and a UI to manage grants are deferred.
 - The legacy `owner` principal remains the trusted Host caller with its existing unrestricted access.
 - No account-specific UI or event grants are introduced.
 - Provider accounts and automatic fallback are not implemented.

@@ -250,6 +250,20 @@ describe('account ownership through the Host service', () => {
     expect(ctx.accountGrants.allows('a', 'b')).toBe(false)
   })
 
+  it('lists the grantees of one owner oldest first and never mixes owners', async () => {
+    const { ctx } = await fixture()
+    expect(ctx.accountGrants.list('a')).toEqual([])
+    vi.spyOn(Date, 'now').mockReturnValueOnce(2).mockReturnValueOnce(1).mockReturnValueOnce(3)
+    await ctx.accountGrants.grant('a', 'late')
+    await ctx.accountGrants.grant('a', 'early')
+    await ctx.accountGrants.grant('c', 'other')
+    expect(ctx.accountGrants.list('a')).toEqual(['early', 'late'])
+    expect(ctx.accountGrants.list('c')).toEqual(['other'])
+    await ctx.accountGrants.revoke('a', 'early')
+    expect(ctx.accountGrants.list('a')).toEqual(['late'])
+    vi.restoreAllMocks()
+  })
+
   it('reads a missing or ownerless sidecar record as the host owner', async () => {
     const ctx = new Context()
     onTestFinished(() => ctx.fiber.dispose())

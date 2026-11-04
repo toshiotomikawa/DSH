@@ -35,6 +35,7 @@ async function harness(calls: Call[], result: { send?: unknown; list?: unknown; 
     },
   } as unknown as AgentMailbox
   ctx.provide('agentMailbox', mailbox)
+  ctx.provide('persistentAgents', {} as unknown as Context['persistentAgents'])
   await ctx.plugin(ToolAgentMailbox)
   onTestFinished(() => ctx.fiber.dispose())
   return ctx
