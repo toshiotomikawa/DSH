@@ -19,7 +19,6 @@ export type TablesErrorCode =
   | 'banco_cheio'
   | 'ocupado'
   | 'cancelado'
-  | 'cursor_invalido'
   | 'interno'
 
 /** A failure the caller can act on. */

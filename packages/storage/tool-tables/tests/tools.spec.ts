@@ -1,5 +1,4 @@
 /* oxlint-disable typescript/no-explicit-any, typescript/no-unsafe-member-access, typescript/no-unsafe-call -- JSON parsed from text. */
-/* oxlint-disable typescript/no-unsafe-assignment -- same. */
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,7 +22,7 @@ async function boot(provide?: (ctx: Context) => void): Promise<Context> {
   await context.plugin(SystemPrompt)
   await context.plugin(ToolRuntime)
   await context.plugin(NativeToolExecutor)
-  if (provide === undefined) await context.plugin(StorageTables, { path: join(dir, 'tables.sqlite'), commandTimeoutMs: 20_000 })
+  if (provide === undefined) await context.plugin(StorageTables, { path: join(dir, 'tables-shared.sqlite'), commandTimeoutMs: 20_000 })
   else provide(context)
   await context.plugin(ToolTables)
   return context
@@ -75,7 +74,7 @@ describe('tool registration', () => {
       'data_batch', 'data_execute', 'data_query', 'table_alter', 'table_create', 'table_drop', 'table_list', 'table_schema',
     ])
     const query = ctx.tools.schemas().find(schema => schema.name === 'data_query')
-    expect(Object.keys((query?.parameters as { properties: object }).properties)).toEqual(['sql', 'parametros', 'limite', 'cursor'])
+    expect(Object.keys((query?.parameters as { properties: object }).properties)).toEqual(['sql', 'parametros', 'limite'])
   })
 })
 
@@ -136,17 +135,29 @@ describe('data tools', () => {
     expect((await call('table_list', {})).json.tabelas[0].linhas).toBe(1)
   })
 
-  it('pages 500 rows as 200 + 200 + 100 with a cursor (criterion 4)', async () => {
+  it('cuts at 200 rows (ceiling 1000) and flags truncado, with no cursor (criterion 4)', async () => {
     const insert = { sql: 'INSERT INTO notas (titulo) WITH RECURSIVE s(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM s WHERE x < 500) SELECT x FROM s' }
     await call('data_execute', insert)
     const sql = 'SELECT id FROM notas ORDER BY id'
     const first = await call('data_query', { sql })
-    expect(first.json.linhas).toHaveLength(200)
-    expect(first.json.truncado).toBe(true)
-    const second = await call('data_query', { sql, cursor: first.json.cursor })
-    const third = await call('data_query', { sql, cursor: second.json.cursor, limite: 1000 })
-    expect([second.json.linhas.length, third.json.linhas.length, third.json.truncado]).toEqual([200, 100, false])
-    expect(third.json.cursor).toBeUndefined()
+    expect([first.json.linhas.length, first.json.truncado, first.json.cursor]).toEqual([200, true, undefined])
+    const wide = await call('data_query', { sql, limite: 1000 })
+    expect([wide.json.linhas.length, wide.json.truncado]).toEqual([500, false])
+    expect((await call('data_query', { sql, limite: 1001 })).isError).toBe(true)
+  })
+
+  it('supports UNIQUE groups and upsert with ON CONFLICT', async () => {
+    await call('table_create', { nome: 'placar', colunas: [{ nome: 'jogador', tipo: 'texto' }, { nome: 'pontos', tipo: 'inteiro' }], unicas: [['jogador']] })
+    const upsert = {
+      sql: 'INSERT INTO placar (jogador, pontos) VALUES (?, ?) ON CONFLICT (jogador) DO UPDATE SET pontos = excluded.pontos',
+    }
+    await call('data_execute', { ...upsert, parametros: ['ana', 1] })
+    const again = await call('data_execute', { ...upsert, parametros: ['ana', 5] })
+    expect(again.isError).toBe(false)
+    expect((await call('data_query', { sql: 'SELECT jogador, pontos, revisao FROM placar' })).json.linhas).toEqual([{ jogador: 'ana', pontos: 5, revisao: 2 }])
+    const duplicate = await call('data_execute', { sql: "INSERT INTO placar (jogador, pontos) VALUES ('ana', 9)" })
+    expect(duplicate.text).toContain('restricao:')
+    expect((await call('table_schema', { tabela: 'placar' })).json.indices).toEqual([{ nome: 'unica_1', colunas: ['jogador'], unica: true }])
   })
 
   it('refuses UPDATE and DELETE without WHERE unless permitir_tudo (criterion 5)', async () => {

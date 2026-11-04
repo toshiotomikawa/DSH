@@ -34,7 +34,7 @@ declare module '@deepseek-ai/cordis' {
 
 /** Plugin configuration. */
 export interface Config {
-  /** Database file; omitted means `<dshHome>/data/tables.sqlite`. */
+  /** Database file; omitted means `<dshHome>/data/tables-shared.sqlite`. */
   path?: string
   /** Harness home; omitted follows `DSH_HOME`, then `~/.dsh`. */
   dshHome?: string
@@ -90,7 +90,7 @@ export class TablesService {
   constructor(config: Config) {
     const home = config.dshHome ?? process.env.DSH_HOME ?? join(homedir(), '.dsh')
     const options: EngineOptions = {
-      path: config.path ?? join(home, 'data', 'tables.sqlite'),
+      path: config.path ?? join(home, 'data', 'tables-shared.sqlite'),
       maxDbBytes: config.maxDbBytes ?? DEFAULT_LIMITS.maxDbBytes,
       maxValueBytes: config.maxValueBytes ?? DEFAULT_LIMITS.maxValueBytes,
       busyTimeoutMs: config.busyTimeoutMs ?? DEFAULT_LIMITS.busyTimeoutMs,

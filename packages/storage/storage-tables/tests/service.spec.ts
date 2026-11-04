@@ -35,7 +35,7 @@ async function codeOf(run: Promise<unknown>): Promise<string> {
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'dsh-tables-svc-'))
-  path = join(dir, 'data', 'tables.sqlite')
+  path = join(dir, 'data', 'tables-shared.sqlite')
   services = []
 })
 
@@ -233,10 +233,10 @@ describe('configuration and plugin', () => {
       if (saved === undefined) delete process.env.DSH_HOME
       else process.env.DSH_HOME = saved
     }
-    const check = new StorageTables.TablesService({ path: join(dir, 'data', 'tables.sqlite') })
+    const check = new StorageTables.TablesService({ path: join(dir, 'data', 'tables-shared.sqlite') })
     expect((await check.listTables(AGENT)).map(table => table.nome)).toEqual(['notas'])
     await check.close()
-    const envCheck = new StorageTables.TablesService({ path: join(dir, 'env-home', 'data', 'tables.sqlite') })
+    const envCheck = new StorageTables.TablesService({ path: join(dir, 'env-home', 'data', 'tables-shared.sqlite') })
     expect((await envCheck.listTables(AGENT)).map(table => table.nome)).toEqual(['notas'])
     await envCheck.close()
   })

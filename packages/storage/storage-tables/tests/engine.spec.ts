@@ -11,7 +11,7 @@ let dir: string
 let engine: TablesEngine
 
 function open(overrides: Partial<EngineOptions> = {}): TablesEngine {
-  return new TablesEngine({ path: join(dir, 'tables.sqlite'), ...DEFAULT_LIMITS, ...overrides })
+  return new TablesEngine({ path: join(dir, 'tables-shared.sqlite'), ...DEFAULT_LIMITS, ...overrides })
 }
 
 function codeOf(run: () => unknown): string {
@@ -182,7 +182,7 @@ describe('criterion 3: only the expected statement is admitted', () => {
   })
 
   it('refuses writes, ATTACH, PRAGMA and multiple statements in a query', () => {
-    const before = statSync(join(dir, 'tables.sqlite')).mtimeMs
+    const before = statSync(join(dir, 'tables-shared.sqlite')).mtimeMs
     for (const sql of [
       "INSERT INTO notas (titulo) VALUES ('x')",
       "ATTACH DATABASE ':memory:' AS outro",
@@ -199,7 +199,7 @@ describe('criterion 3: only the expected statement is admitted', () => {
       expect(codeOf(() => engine.query({ sql })), sql).toBe('sql_recusado')
     }
     expect(engine.listTables()[0]?.linhas).toBe(0)
-    expect(statSync(join(dir, 'tables.sqlite')).mtimeMs).toBe(before)
+    expect(statSync(join(dir, 'tables-shared.sqlite')).mtimeMs).toBe(before)
   })
 
   it('accepts one statement with separators, comments and a CTE', () => {
@@ -240,40 +240,56 @@ describe('criterion 3: only the expected statement is admitted', () => {
   })
 })
 
-describe('criterion 4: paging with a continuation cursor', () => {
-  it('returns 200 rows, truncado and a cursor that delivers the rest in two calls', () => {
+describe('criterion 4: row limit without a cursor', () => {
+  it('returns 200 rows flagged truncado out of 500 and the whole set with limite 1000', () => {
     engine.createTable({ nome: 'n', colunas: [{ nome: 'v', tipo: 'inteiro' }] }, 'a')
     engine.batch(Array.from({ length: 100 }, () => ({ sql: 'INSERT INTO n (v) WITH RECURSIVE s(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM s WHERE x < 5) SELECT x FROM s' })), 'a')
     expect(engine.query({ sql: 'SELECT count(*) AS c FROM n' }).linhas).toEqual([{ c: 500 }])
     const sql = 'SELECT id FROM n ORDER BY id'
     const first = engine.query({ sql })
     expect(first.linhas).toHaveLength(200)
-    expect(first.truncado).toBe(true)
-    expect(first.cursor).toBeTypeOf('string')
-    const second = engine.query({ sql, cursor: first.cursor })
-    expect(second.linhas).toHaveLength(200)
-    expect(second.linhas[0]).toEqual({ id: 201 })
-    expect(second.truncado).toBe(true)
-    const third = engine.query({ sql, cursor: second.cursor })
-    expect(third.linhas).toHaveLength(100)
-    expect(third.truncado).toBe(false)
-    expect(third.cursor).toBeUndefined()
+    expect(first).toMatchObject({ truncado: true })
+    expect('cursor' in first).toBe(false)
+    expect(engine.query({ sql, limite: 1000 })).toMatchObject({ truncado: false })
   })
 
-  it('honors the page limit and refuses bad limits and foreign cursors', () => {
+  it('honors the limit and refuses bad limits', () => {
     engine.createTable({ nome: 'n', colunas: [{ nome: 'v', tipo: 'inteiro' }] }, 'a')
     engine.batch([{ sql: 'INSERT INTO n (v) WITH RECURSIVE s(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM s WHERE x < 30) SELECT x FROM s' }], 'a')
-    const page = engine.query({ sql: 'SELECT id FROM n ORDER BY id', limite: 10 })
-    expect(page.linhas).toHaveLength(10)
+    expect(engine.query({ sql: 'SELECT id FROM n ORDER BY id', limite: 10 }).linhas).toHaveLength(10)
     expect(engine.query({ sql: 'SELECT id FROM n', limite: 30 }).truncado).toBe(false)
     for (const limite of [0, 1001, 1.5]) {
       expect(codeOf(() => engine.query({ sql: 'SELECT 1', limite }))).toBe('argumento_invalido')
     }
     expect(engine.query({ sql: 'SELECT id FROM n', limite: 1000 }).linhas).toHaveLength(30)
-    expect(codeOf(() => engine.query({ sql: 'SELECT id FROM n ORDER BY id DESC', limite: 10, cursor: page.cursor }))).toBe('cursor_invalido')
-    expect(codeOf(() => engine.query({ sql: 'SELECT 1', cursor: 'lixo' }))).toBe('cursor_invalido')
-    const forged = Buffer.from(JSON.stringify({ o: -1, h: 'x' })).toString('base64url')
-    expect(codeOf(() => engine.query({ sql: 'SELECT 1', cursor: forged }))).toBe('cursor_invalido')
+  })
+})
+
+describe('UNIQUE groups', () => {
+  const base = { nome: 'u', colunas: [{ nome: 'a', tipo: 'texto' as const }, { nome: 'b', tipo: 'texto' as const }] }
+
+  it('enforces single and composite UNIQUE groups and reports them as indexes', () => {
+    const schema = engine.createTable({ ...base, unicas: [['a'], ['a', 'b']] }, 'x')
+    expect(schema.indices).toEqual([
+      { nome: 'unica_1', colunas: ['a'], unica: true },
+      { nome: 'unica_2', colunas: ['a', 'b'], unica: true },
+    ])
+    engine.execute({ sql: "INSERT INTO u (a, b) VALUES ('1', 'x')" }, 'x')
+    expect(codeOf(() => engine.execute({ sql: "INSERT INTO u (a, b) VALUES ('1', 'y')" }, 'x'))).toBe('restricao')
+  })
+
+  it('upserts through ON CONFLICT', () => {
+    engine.createTable({ ...base, unicas: [['a']] }, 'x')
+    const sql = 'INSERT INTO u (a, b) VALUES (?, ?) ON CONFLICT (a) DO UPDATE SET b = excluded.b'
+    engine.execute({ sql, parametros: ['1', 'x'] }, 'x')
+    engine.execute({ sql, parametros: ['1', 'z'] }, 'y')
+    expect(engine.query({ sql: 'SELECT b, revisao, autor FROM u' }).linhas).toEqual([{ b: 'z', revisao: 2, autor: 'y' }])
+  })
+
+  it('refuses malformed unicas', () => {
+    for (const unicas of [[[]], [['nada']], 'a' as never, [['a'], 7 as never]]) {
+      expect(codeOf(() => engine.createTable({ ...base, unicas }, 'x'))).toBe('argumento_invalido')
+    }
   })
 })
 
@@ -502,7 +518,7 @@ describe('persistence and the database file', () => {
     expect(memory.listTables()).toHaveLength(1)
     memory.close()
     expect(() => new TablesEngine({ path: dir, ...DEFAULT_LIMITS })).toThrow()
-    expect(() => new TablesEngine({ path: join(dir, 'tables.sqlite', 'sub', 'x.sqlite'), ...DEFAULT_LIMITS })).toThrow()
+    expect(() => new TablesEngine({ path: join(dir, 'tables-shared.sqlite', 'sub', 'x.sqlite'), ...DEFAULT_LIMITS })).toThrow()
   })
 
   it('maps other SQLite failures to typed errors', () => {
@@ -516,7 +532,7 @@ describe('persistence and the database file', () => {
 describe('busy database', () => {
   it('reports ocupado with advice when another connection holds the write lock', () => {
     const impatient = open({ busyTimeoutMs: 20 })
-    const blocker = new DatabaseSync(join(dir, 'tables.sqlite'))
+    const blocker = new DatabaseSync(join(dir, 'tables-shared.sqlite'))
     blocker.exec('BEGIN IMMEDIATE')
     try {
       const error = (() => {

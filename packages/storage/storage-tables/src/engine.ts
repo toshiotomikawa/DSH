@@ -6,7 +6,6 @@
  * @module @deepseek-ai/dsh-storage-tables/engine
  */
 
-import { createHash } from 'node:crypto'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { DatabaseSync, constants as nativeConstants } from 'node:sqlite'
@@ -36,6 +35,8 @@ export interface CreateTableRequest {
   readonly nome: string
   readonly colunas: readonly ColumnSpec[]
   readonly chavePrimaria?: readonly string[]
+  /** UNIQUE constraints: each entry lists the declared columns that must be unique together (usable as upsert targets). */
+  readonly unicas?: readonly (readonly string[])[]
 }
 
 /** Column as reported by the schema (declared or automatic). */
@@ -94,7 +95,6 @@ export interface QueryRequest {
   readonly sql: string
   readonly parametros?: SqlParams
   readonly limite?: number
-  readonly cursor?: string
 }
 
 /** Rows of one page. */
@@ -102,7 +102,6 @@ export interface QueryResult {
   readonly colunas: readonly string[]
   readonly linhas: readonly Record<string, unknown>[]
   readonly truncado: boolean
-  readonly cursor?: string
 }
 
 /** Single write request. */
@@ -327,6 +326,15 @@ export class TablesEngine {
       if (!seen.has(key)) fail('argumento_invalido', `a chave primária cita a coluna inexistente '${key}'`)
     }
     const declared = request.colunas.map(column => this.normalizeColumn(column))
+    const uniques = request.unicas ?? []
+    if (!isList(uniques)) fail('argumento_invalido', 'unicas deve ser uma lista de listas de colunas')
+    const uniqueInfo: IndexInfo[] = uniques.map((group, position) => {
+      if (!isList(group) || group.length === 0) fail('argumento_invalido', 'cada item de unicas precisa de ao menos uma coluna')
+      for (const column of group) {
+        if (!seen.has(column)) fail('argumento_invalido', `unicas cita a coluna inexistente '${column}'`)
+      }
+      return { nome: `unica_${position + 1}`, colunas: [...group], unica: true }
+    })
     const parts: string[] = []
     if (primaryKey.length === 0) parts.push('"id" INTEGER PRIMARY KEY')
     for (const column of declared) {
@@ -339,6 +347,7 @@ export class TablesEngine {
       '"autor" TEXT',
     )
     if (primaryKey.length > 0) parts.push(`PRIMARY KEY (${primaryKey.map(ident).join(', ')})`)
+    for (const group of uniqueInfo) parts.push(`UNIQUE (${group.colunas.map(ident).join(', ')})`)
     this.checkSize()
     this.transaction(() => {
       if (this.findMeta(name) !== undefined) fail('ja_existe', `a tabela '${name}' já existe; escolha outro nome`)
@@ -346,7 +355,7 @@ export class TablesEngine {
       this.db.exec(this.triggersSql(name, declared.map(column => column.nome).concat(primaryKey.length === 0 ? ['id'] : [])))
       this.db.prepare(
         'INSERT INTO _dsh_meta (nome, criador, escopo, criado_em, colunas, chave_primaria, indices) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      ).run(name, agent, 'compartilhada', new Date().toISOString(), JSON.stringify(declared), JSON.stringify(primaryKey), '[]')
+      ).run(name, agent, 'compartilhada', new Date().toISOString(), JSON.stringify(declared), JSON.stringify(primaryKey), JSON.stringify(uniqueInfo))
     })
     return this.tableSchema(name)
   }
@@ -484,9 +493,9 @@ export class TablesEngine {
   // ------------------------------------------------------------------ data
 
   /**
-   * Run one `SELECT` and return one page of rows.
-   * @param request - SQL, parameters, page size and continuation cursor.
-   * @returns rows as objects, with `truncado` and a cursor when more remain.
+   * Run one `SELECT` and return up to `limite` rows.
+   * @param request - SQL, parameters and row limit.
+   * @returns rows as objects; `truncado` is true when more rows matched than the limit.
    */
   query(request: QueryRequest): QueryResult {
     const limit = request.limite ?? DEFAULT_PAGE
@@ -495,17 +504,13 @@ export class TablesEngine {
     }
     if (typeof request.sql !== 'string' || request.sql.trim() === '') fail('argumento_invalido', 'sql deve ser um texto não vazio')
     const binding = this.bind(request.parametros)
-    const fingerprint = createHash('sha256').update(request.sql).update(JSON.stringify(request.parametros ?? null)).digest('hex').slice(0, 16)
-    const offset = request.cursor === undefined ? 0 : this.decodeCursor(request.cursor, fingerprint)
     const { statement } = this.prepare(request.sql, 'query')
     const rows: Record<string, unknown>[] = []
     let truncated = false
     statement.setReadBigInts(true)
     this.db.exec('PRAGMA query_only = ON')
     try {
-      let seen = 0
       for (const row of statement.iterate(...bindArgs(binding))) {
-        if (seen++ < offset) continue
         if (rows.length === limit) {
           truncated = true
           break
@@ -518,9 +523,7 @@ export class TablesEngine {
       this.db.exec('PRAGMA query_only = OFF')
     }
     const columns = statement.columns().map(column => column.name)
-    if (!truncated) return { colunas: columns, linhas: rows, truncado: false }
-    const next = Buffer.from(JSON.stringify({ o: offset + rows.length, h: fingerprint })).toString('base64url')
-    return { colunas: columns, linhas: rows, truncado: true, cursor: next }
+    return { colunas: columns, linhas: rows, truncado: truncated }
   }
 
   /**
@@ -688,16 +691,6 @@ export class TablesEngine {
     if (params === undefined) return { positional: [], named: [] }
     if (isList(params)) return { positional: params.map(convert), named: [] }
     return { positional: [], named: [Object.fromEntries(Object.entries(params).map(([key, value]) => [key, convert(value)]))] }
-  }
-
-  private decodeCursor(cursor: string, fingerprint: string): number {
-    try {
-      const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString()) as { o?: unknown; h?: unknown }
-      if (Number.isInteger(parsed.o) && (parsed.o as number) >= 0 && parsed.h === fingerprint) return parsed.o as number
-    } catch {
-      // Malformed cursors fall through to the failure below.
-    }
-    return fail('cursor_invalido', 'cursor inválido ou de outra consulta; repita a mesma consulta e os mesmos parâmetros com o cursor devolvido')
   }
 
   /** Prepare exactly one statement of the allowed family; the SQLite authorizer is the authority. */
