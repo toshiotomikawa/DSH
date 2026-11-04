@@ -31,4 +31,7 @@ New sessions reuse the profile's persona content; session-specific messages and 
 
 ## Known Limitations and Deferred Work
 
-All registered profiles are visible in the single-user deployment. ownerId is retained without authorization logic until multi-user support. The plugin is opt-in and does not modify shipped profiles. Provider accounts and automatic fallback are not implemented. Host shutdown disposes sessions owned by the routine runner; mailbox owns its own delivery sessions.
+- All registered profiles are visible in the single-user deployment. ownerId is retained without authorization logic until multi-user support.
+- The plugin is opt-in and does not modify shipped profiles.
+- Provider accounts and automatic fallback are not implemented.
+- Host shutdown disposes sessions owned by the routine runner; mailbox owns its own delivery sessions.
