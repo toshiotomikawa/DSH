@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Rotinas de agentes",
+    "description": "Rotinas por agente sobre o agendador do host, com fila, espera de cota e entrada autenticada para scripts."
+  }
+}

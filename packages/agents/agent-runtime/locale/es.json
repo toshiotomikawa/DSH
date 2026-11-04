@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Entorno de ejecución de agentes persistentes",
+    "description": "Conecta las identidades de agentes persistentes con las sesiones del buzón y de las rutinas."
+  }
+}

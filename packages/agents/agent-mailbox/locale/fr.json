@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Boîte aux lettres des agents",
+    "description": "Messages durables entre agents persistants rattachés à des sessions différentes."
+  }
+}

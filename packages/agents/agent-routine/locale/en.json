@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agent routines",
+    "description": "Per-agent routines over the host scheduler, with a queue, quota wait and an authenticated script entry."
+  }
+}

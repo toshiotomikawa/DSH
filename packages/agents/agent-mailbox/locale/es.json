@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Buzón de agentes",
+    "description": "Mensajes duraderos entre agentes persistentes que viven en sesiones distintas."
+  }
+}
