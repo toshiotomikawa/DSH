@@ -88,7 +88,9 @@ export function resolveConfig(config: Config, providerName: string): ResolvedCon
   return {
     args: [], permission: 'reject', env: {},
     timeoutMs: 120_000, disposeGraceMs: 3_000, maxOutputBytes: 4 * 1024 * 1024,
-    minimumRemainingPercent: 10, ...config,
+    minimumRemainingPercent: 10,
+    // oxlint-disable-next-line typescript/no-misused-spread -- Config is a plain deployment object, not a class instance
+    ...config,
     providerName: config.providerName ?? providerName,
     command: config.command ?? providerName,
   }

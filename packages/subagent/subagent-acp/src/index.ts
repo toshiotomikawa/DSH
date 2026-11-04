@@ -17,6 +17,7 @@ import type {
 import { assertUsableCwd } from '@deepseek-ai/dsh-subagent'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { acpConfigurationFailure, type AcpRunSpec, DEFAULT_DISPOSE_EOF_GRACE_MS, DEFAULT_DISPOSE_GRACE_MS, type PermissionPolicy, startAcpRun } from './run.ts'
+import { resolveCommand } from './command.ts'
 
 export const name = 'subagent-acp'
 export const inject = ['subagents', 'subprocess']
@@ -101,8 +102,16 @@ class AcpProvider implements SubagentProvider {
       this.ctx.logger.warn(`subagent-acp "${this.name}": child start failed: %o`, error)
       throw failure
     }
+    let command: string
+    try {
+      command = resolveCommand(this.config.command)
+    } catch (error: unknown) {
+      const failure = acpConfigurationFailure(error)
+      this.ctx.logger.warn(`subagent-acp "${this.name}": command refused: %o`, error)
+      throw failure
+    }
     const spec: AcpRunSpec = {
-      command: this.config.command,
+      command,
       args: this.config.args,
       cwd,
       permission: this.config.permission,
