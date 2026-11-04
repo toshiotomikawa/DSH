@@ -1,12 +1,13 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { request as httpRequest } from 'node:http'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import Typert from '@deepseek-ai/dsh-typert-registry'
 import Gateway from '@deepseek-ai/dsh-api-gateway'
 import Query from '@deepseek-ai/dsh-session-query-sqlite'
-import { appendPluginRecord, pluginRecordOf, SessionId, SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { appendPluginRecord, pluginRecordOf, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import { createUserMessage, MessageId } from '@deepseek-ai/dsh-llm'
-import '@deepseek-ai/dsh-experimental-agent-external-runtime'
+import type {} from '@deepseek-ai/dsh-experimental-agent-external-runtime'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { harness, inherited } from '../../agent-registry/tests/harness.ts'
@@ -21,10 +22,6 @@ import { ExternalAgentActivationService } from '../src/driver.ts'
 
 function prompt(text: string) {
   return createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })
-}
-
-function rawRecord(event: object): SessionEvent {
-  return event as unknown as SessionEvent
 }
 
 function events(agent: Agent) {
@@ -434,9 +431,9 @@ it('covers workspace, sidecar, codex resume, and an abort between steps', async 
   await f.ctx.persistentAgents.bind(quiet, f.profile.id)
   const prepared = f.ctx.sessions.prepare(quiet, { meta: { cwd: f.workspace } })
   const quietWriter = await f.ctx.sessionPersistence.create(prepared.header)
-  await quietWriter.append([rawRecord({
+  await quietWriter.append([{
     type: 'plugin:agent-external-runtime/other', seq: SessionSeq(0), time: Date.now(), data: { n: 1 }, ignorable: true,
-  })])
+  } as never])
   await quietWriter.close()
   const quietHandle = await f.open(quiet)
   await quietHandle.dispose()
@@ -444,9 +441,9 @@ it('covers workspace, sidecar, codex resume, and an abort between steps', async 
   await f.ctx.persistentAgents.bind(bare, f.profile.id)
   const bareSession = f.ctx.sessions.prepare(bare, { meta: {} })
   const bareWriter = await f.ctx.sessionPersistence.create(bareSession.header)
-  await bareWriter.append([rawRecord({
+  await bareWriter.append([{
     type: 'plugin:agent-external-runtime/other', seq: SessionSeq(0), time: Date.now(), data: { n: 1 }, ignorable: true,
-  })])
+  } as never])
   await bareWriter.close()
   const bareHandle = await f.open(bare)
   await bareHandle.dispose()
@@ -471,10 +468,11 @@ it('covers workspace, sidecar, codex resume, and an abort between steps', async 
     const row = f.ctx.sessions.prepare(sessionId, { meta: { cwd: f.workspace } })
     const writer = await f.ctx.sessionPersistence.create(row.header)
     const fields = data as { sessionId?: unknown } | null
-    await writer.append([rawRecord({
+    const payload = fields === null ? null : { ...fields, sessionId: fields.sessionId ?? sessionId }
+    await writer.append([{
       type: 'plugin:agent-external-runtime/session', seq: SessionSeq(0), time: Date.now(),
-      data: fields === null ? null : { ...fields, sessionId: fields.sessionId ?? sessionId }, ignorable: true,
-    })])
+      data: payload, ignorable: true,
+    } as never])
     await writer.close()
     await expect(f.open(sessionId)).rejects.toMatchObject({ code: 'binding_stale' })
   }
@@ -510,4 +508,103 @@ it('covers workspace, sidecar, codex resume, and an abort between steps', async 
     kind: 'aborted', reason: { kind: 'parent' },
   })
   await boundary.dispose()
+})
+
+function portClosed(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url)
+    const req = httpRequest({
+      hostname: target.hostname, port: target.port, path: target.pathname, method: 'GET', timeout: 1000,
+    }, () => { reject(new Error('still open')) })
+    req.on('error', () => resolve())
+    req.on('timeout', () => { req.destroy(); resolve() })
+    req.end()
+  })
+}
+
+it('aborts only the account that ended and closes its loopback port', async () => {
+  const f = await fixture()
+  const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  hold(service)
+  const handle = await f.open()
+  onTestFinished(() => handle.dispose())
+  handle.agent.followup(prompt('live'))
+  await vi.waitFor(() => expect(service.calls).toHaveLength(1))
+  const endpoint = service.calls[0]?.tools.endpoint ?? ''
+  const other = (await f.ctx.accounts.create('Other', 'member')).account
+  await f.ctx.accounts.disable(other.id)
+  expect(handle.agent.status).toBe('running')
+  await f.ctx.accounts.disable(f.account.id)
+  await handle.agent.whenIdle()
+  expect(events(handle.agent).filter(event => event.type === 'turn/end').at(-1)?.data.reason).toMatchObject({
+    kind: 'aborted', reason: { kind: 'disposed' },
+  })
+  await portClosed(endpoint)
+})
+
+it('fails a turn opened after the account is disabled', async () => {
+  const f = await fixture()
+  const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  const handle = await f.open()
+  onTestFinished(() => handle.dispose())
+  await f.ctx.accounts.disable(f.account.id)
+  handle.agent.followup(prompt('late'))
+  await handle.agent.whenIdle()
+  expect(service.calls).toHaveLength(0)
+  expect(events(handle.agent).filter(event => event.type === 'turn/end').at(-1)?.data.reason).toMatchObject({
+    kind: 'error', error: { message: 'External harness: account_inactive' },
+  })
+})
+
+it('closes the loopback port when the fake SDK fails and keeps the credential out of the transcript', async () => {
+  const f = await fixture()
+  const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  let endpoint = ''
+  let secret = ''
+  service.sdk = {
+    run: (input) => {
+      service.calls.push(input)
+      endpoint = input.tools.endpoint
+      const header = input.tools.authorizationHeader()
+      secret = header.slice('Bearer '.length)
+      expect(endpoint).not.toContain(secret)
+      expect(secret.length).toBeGreaterThan(0)
+      expect(input.runtime).toBe('claude-sdk')
+      expect(input.tools.childEnv()).toEqual({ MCP_LOOPBACK_AUTHORIZATION: header })
+      return Promise.reject(new Error('sdk failed'))
+    },
+  }
+  const handle = await f.open()
+  onTestFinished(() => handle.dispose())
+  handle.agent.followup(prompt('boom'))
+  await handle.agent.whenIdle()
+  expect(events(handle.agent).filter(event => event.type === 'turn/end').at(-1)?.data.reason).toMatchObject({
+    kind: 'error', error: { message: 'sdk failed' },
+  })
+  expect(JSON.stringify(events(handle.agent))).not.toContain(secret)
+  await portClosed(endpoint)
+})
+
+it('cancels the live turn when a later tool call sees an inactive account', async () => {
+  const f = await fixture()
+  const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  service.sdk = {
+    run: async (input) => {
+      service.calls.push(input)
+      const accounts = f.ctx.accounts
+      const list = accounts.list.bind(accounts)
+      accounts.list = () => list().map(entry => entry.id === f.account.id ? { ...entry, state: 'disabled' } : entry)
+      const result = await input.tools.call('late', 'remember', { text: 'late' })
+      expect(result.code).toBe('tool_denied')
+      return { text: 'ignored' }
+    },
+  }
+  const handle = await f.open()
+  onTestFinished(() => handle.dispose())
+  handle.agent.followup(prompt('late'))
+  await handle.agent.whenIdle()
+  const reason = events(handle.agent).filter(event => event.type === 'turn/end').at(-1)?.data.reason
+  expect(reason, JSON.stringify(reason)).toMatchObject({
+    kind: 'aborted', reason: { kind: 'disposed' },
+  })
 })

@@ -13,6 +13,8 @@ import {
 import type { SessionHandle } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionSidecar } from '@deepseek-ai/dsh-experimental-agent-external-runtime'
 import type { AccountHarnessBinding, HarnessBindings } from './index.ts'
+import type {} from '@deepseek-ai/dsh-agent-runtime/accounts'
+import { openTurnBridge, type TurnToolBridge } from './bridge.ts'
 import { HarnessBindingError } from './errors.ts'
 
 /** One fake-SDK turn. Tests replace {@link ExternalAgentActivationService.sdk}. */
@@ -33,6 +35,10 @@ export interface ExternalTurnInput {
   readonly sdkSessionId: string
   /** Model name stored for a later official adapter. */
   readonly runtimeModel: string | undefined
+  /** Profile runtime. Both transports exist; the adapter picks one. */
+  readonly runtime: 'claude-sdk' | 'codex-sdk'
+  /** Step-local tool bridge. Closed when the step ends. */
+  readonly tools: TurnToolBridge
 }
 
 /** Replacement for an official SDK. The default records text and calls nothing else. */
@@ -146,7 +152,7 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
     runtimeModel: string | undefined,
     resumed: boolean,
   ): Promise<AgentHandle> {
-    const agent = new ExternalAgent(host, session, this, instructions, runtimeModel)
+    const agent = new ExternalAgent(host, session, this, runtime, instructions, runtimeModel)
     let detachSession: (() => void) | undefined
     let detachAgent: (() => void) | undefined
     const fail = async (error: unknown): Promise<never> => {
@@ -376,11 +382,13 @@ class ExternalAgent implements Agent {
   private pendingWake = false
   private activity: Activity | undefined
   private sdkSessionId = ''
+  private ownerId = 'owner'
 
   constructor(
-    host: Context,
+    private readonly host: Context,
     readonly session: Session,
     private readonly activation: ExternalAgentActivationService,
+    private readonly runtime: 'claude-sdk' | 'codex-sdk',
     private readonly instructions: string,
     private readonly runtimeModel: string | undefined,
   ) {
@@ -396,6 +404,15 @@ class ExternalAgent implements Agent {
   arm(sdkSessionId: string): void {
     this.sdkSessionId = sdkSessionId
     this.published = true
+    /* v8 ignore next -- publication writes the sidecar before arm */
+    this.ownerId = sidecarOf(this.session)?.ownerId ?? 'owner'
+    const ownerId = this.ownerId
+    const accounts = this.host.get('accounts')
+    /* v8 ignore next -- fixture hosts always register accounts */
+    const bus = accounts === undefined ? this.host : (accounts as unknown as { ctx: Context }).ctx
+    this.scope.ctx.effect(() => bus.on('accounts/ended', (accountId) => {
+      if (accountId === ownerId) this.cancel({ kind: 'disposed' })
+    }))
     this.wake()
   }
 
@@ -494,21 +511,31 @@ class ExternalAgent implements Agent {
         opened = true
         for (const message of batch) this.session.append('user/message', message, { surfaceOp: 'append' })
         this.session.append('step/start', { turn, step })
-        const result = await this.activation.sdk.run({
-          sessionId: this.session.id, turn, step, messages: batch, instructions: this.instructions,
-          signal: activity.abort.signal, sdkSessionId: this.sdkSessionId, runtimeModel: this.runtimeModel,
+        const bridge = await openTurnBridge({
+          host: this.host, agent: this, ownerId: this.ownerId, turn, step,
+          signal: activity.abort.signal, model: this.runtimeModel ?? 'external',
+          onEnded: () => { this.cancel({ kind: 'disposed' }) },
         })
-        activity.abort.signal.throwIfAborted()
-        this.session.append('assistant/message', {
-          turn, step, stream: [],
-          message: createAssistantMessage({
-            content: [{ type: 'text', text: result.text }],
-            source: { provider: 'external', model: this.runtimeModel ?? 'external' },
-          }),
-        }, { surfaceOp: 'append' })
-        this.session.append('step/end', { turn, step })
-        opened = false
-        batch = this.inbox.nextStep.length === 0 ? [] : this.inbox.take('next-step', turn, this.inbox.nextStep.length)
+        try {
+          const result = await this.activation.sdk.run({
+            sessionId: this.session.id, turn, step, messages: batch, instructions: this.instructions,
+            signal: activity.abort.signal, sdkSessionId: this.sdkSessionId, runtimeModel: this.runtimeModel,
+            runtime: this.runtime, tools: bridge,
+          })
+          activity.abort.signal.throwIfAborted()
+          this.session.append('assistant/message', {
+            turn, step, stream: [],
+            message: createAssistantMessage({
+              content: [{ type: 'text', text: result.text }],
+              source: { provider: 'external', model: this.runtimeModel ?? 'external' },
+            }),
+          }, { surfaceOp: 'append' })
+          this.session.append('step/end', { turn, step })
+          opened = false
+          batch = this.inbox.nextStep.length === 0 ? [] : this.inbox.take('next-step', turn, this.inbox.nextStep.length)
+        } finally {
+          await bridge.close()
+        }
       }
       if (activity.abort.signal.aborted) throw activity.abort.signal.reason
       this.session.append('turn/end', { turn, reason: { kind: 'completed' } })
