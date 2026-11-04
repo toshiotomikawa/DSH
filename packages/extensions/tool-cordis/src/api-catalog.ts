@@ -1953,6 +1953,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'harnessBindings',
+    summary: 'Immutable deployment bindings, resolved again against current identity on every activation.',
+    description: 'Immutable deployment bindings, resolved again against current identity on every activation.',
+    methods: [
+      {
+        signature: 'async resolve(sessionId: SessionId, workspace: string): Promise<AccountHarnessBinding>',
+        description: 'Resolve only the owner recorded by the registry and Session sidecar.',
+        parameters: [{ name: 'sessionId', description: 'durably bound DSH conversation.' }, { name: 'workspace', description: 'actual workspace of the agent; overlapping harness folders are refused.' }],
+        returns: 'detached private Host binding; never put it in a tool result or prompt.',
+      },
+    ],
+  },
+  {
     key: 'headlessStartup',
     summary: 'What the runner row reads from HEADLESS_STARTUP_SERVICE.',
     description: 'What the runner row reads from HEADLESS_STARTUP_SERVICE.',
@@ -5932,6 +5945,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AccountDetails',
     declaration: 'export interface AccountDetails {\n    readonly profile: {\n        readonly status: \'ready\';\n        readonly value: AccountProfile;\n    } | {\n        readonly status: \'failed\';\n    };\n    readonly balance: {\n        readonly status: \'ready\';\n        readonly value: readonly AccountWallet[];\n        readonly bonusWallets: readonly AccountWallet[];\n    } | {\n        readonly status: \'failed\';\n    };\n}',
+  },
+  {
+    name: 'AccountHarnessBinding',
+    declaration: 'export interface AccountHarnessBinding {\n    accountId: string;\n    runtime: \'claude-sdk\' | \'codex-sdk\';\n    configDirectory: string;\n    revision: number;\n}',
   },
   {
     name: 'AccountLinks',

@@ -14,6 +14,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 
 | Package | Config | Description |
 |---|---|---|
+| `@deepseek-ai/dsh-agent-external-runtime` | yes | Resolves explicit account harness bindings for persistent external agents. |
 | `@deepseek-ai/dsh-agent-mailbox` | no | Durable messages between persistent agents rooted in different sessions. |
 | `@deepseek-ai/dsh-agent-memory` | yes | Stores isolated memories and commits changes after a successful turn. |
 | `@deepseek-ai/dsh-agent-registry` | no | Stores named profiles and binds sessions to stable agent identities. |

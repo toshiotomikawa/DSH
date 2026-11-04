@@ -29,6 +29,8 @@ const editableSchema = z.object({
   name: z.string().trim().min(1), title: z.string(), description: z.string(), instructions: z.string(), firstTask: z.string(),
   model: routeSchema, reserves: z.array(routeSchema), automaticFallback: z.boolean(), ownerId: z.string().optional(),
   sectionId: z.string().min(1).optional(),
+  runtime: z.enum(['native', 'claude-sdk', 'codex-sdk']).optional(),
+  runtimeModel: z.string().trim().min(1).optional(),
 }).strict()
 const avatarInput = { avatarPath: z.string().optional(), avatarSeed: z.string().optional() }
 const patchSchema = editableSchema.partial().extend({
@@ -38,6 +40,7 @@ function profileFields(patch: z.infer<typeof patchSchema>) {
   return Object.fromEntries(Object.entries(patch).filter(([key, value]) => key !== 'avatarPath' && key !== 'avatarSeed' && value !== undefined))
 }
 const profileSchema = editableSchema.extend({
+  runtime: z.enum(['native', 'claude-sdk', 'codex-sdk']).default('native'),
   id: z.string().transform(PersistentAgentId), revision: z.number().int().positive(), createdAt: z.number(), updatedAt: z.number(),
   avatar: z.object({ kind: z.enum(['generated', 'image']), value: z.string() }),
   permissions: z.object({ source: z.literal('deployment') }),
@@ -316,6 +319,7 @@ export class PersistentAgents {
    */
   async selection(id: PersistentAgentId): Promise<ModelSelection> {
     const profile = this.get(id)
+    if (profile.runtime !== 'native') throw new Error('External agent runtime is not activated; API execution is refused')
     await this.validateRoutes(profile)
     const { provider, model, reasoningEffort } = profile.model
     return { provider, model, ...(reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(reasoningEffort) }) }
@@ -325,7 +329,7 @@ export class PersistentAgents {
     if (profile.automaticFallback && profile.reserves.length === 0) {
       throw new Error('Automatic fallback consent requires at least one reserve')
     }
-    for (const route of [profile.model, ...profile.reserves]) {
+    for (const route of [...(profile.runtime === 'native' ? [profile.model] : []), ...profile.reserves]) {
       const models = await this.ctx.llm.listModels(route.provider)
       if (!models.some(model => model.id === route.model)) throw new Error(`Unknown model: ${route.provider}/${route.model}`)
       const info = await this.ctx.llm.resolveModelInfo(route.provider, route.model)

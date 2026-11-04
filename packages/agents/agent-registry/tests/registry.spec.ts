@@ -17,6 +17,31 @@ async function fixture() {
 }
 
 describe('durable persistent profiles', () => {
+  it('defaults legacy runtime to native, separates SDK models from API validation and refuses native activation of external profiles', async () => {
+    const { ctx, root, registryFiber } = await fixture()
+    const legacy = await ctx.persistentAgents.create({ name: 'Legacy runtime' }, inherited)
+    expect(legacy.runtime).toBe('native')
+    await registryFiber.dispose()
+    const path = join(root, 'data/agents/profiles', `${legacy.id}.json`)
+    const document = JSON.parse(await readFile(path, 'utf8')) as { record: { runtime?: string } }
+    delete document.record.runtime
+    await writeFile(path, JSON.stringify(document))
+    const reopened = await harness(root)
+    onTestFinished(() => reopened.ctx.fiber.dispose())
+    expect(reopened.ctx.persistentAgents.get(legacy.id).runtime).toBe('native')
+    const profile = await reopened.ctx.persistentAgents.create({ name: 'SDK', runtime: 'claude-sdk', runtimeModel: 'sonnet' }, { provider: 'unavailable', model: 'unavailable' })
+    expect(profile.runtimeModel).toBe('sonnet')
+    await expect(reopened.ctx.persistentAgents.selection(profile.id)).rejects.toThrow('API execution is refused')
+    await expect(reopened.ctx.persistentAgents.update(profile.id, profile.revision, { reserves: [{ provider: 'mock', model: 'missing' }] })).rejects.toThrow('Unknown model')
+    await expect(reopened.ctx.persistentAgents.update(profile.id, profile.revision, { automaticFallback: true })).rejects.toThrow('consent requires')
+    const edited = await reopened.ctx.persistentAgents.update(profile.id, profile.revision, { runtime: 'codex-sdk', runtimeModel: 'gpt-6.1-sol', reserves: [inherited] })
+    expect(edited.runtime).toBe('codex-sdk')
+    expect(edited.automaticFallback).toBe(false)
+    await expect(reopened.ctx.persistentAgents.update(profile.id, edited.revision, { runtimeModel: ' ' })).rejects.toThrow()
+    const native = await reopened.ctx.persistentAgents.update(profile.id, edited.revision, { runtime: 'native', model: inherited })
+    expect(native.runtimeModel).toBe('gpt-6.1-sol')
+    expect(await reopened.ctx.persistentAgents.selection(profile.id)).toEqual(inherited)
+  })
   it('reads legacy ownerless profiles as the single-account owner and stamps new session bindings', async () => {
     const { ctx, root, registryFiber } = await fixture()
     const profile = await ctx.persistentAgents.create({ name: 'Legacy' }, inherited)

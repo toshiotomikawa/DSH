@@ -30,6 +30,8 @@ Mutations are staged for the exact active turn. The existing `session/event` fee
 
 The tools return staged results. After successful turn-end observation, the service queues the write; the next agent prompt waits for admitted commits. Commit failures are logged, retained for the affected session and surfaced once before retry. A crash before the queued write completes may lose that staged update; no unconfirmed tool result claims durability. A storage failure does not partially apply a book. `agentMemory.settled(sessionId)` lets a consumer await the write and observe a failure.
 
+Profiles resolve an omitted `runtime` as `native`. `claude-sdk` and `codex-sdk` store a separate optional `runtimeModel`; it is retained but unused in native mode. External profiles skip validation of the unused primary API route, while every saved reserve remains validated and automatic fallback still requires explicit consent. `selection()` refuses external profiles before API activation; changing runtime never silently selects an API provider. The optional [external runtime configuration](../../packages/agents/agent-external-runtime/README.md) resolves private account harness directories.
+
 ## Verification
 
 Run `pnpm exec vitest run packages/agents`. The Loader test boots the three plugins from test-only cordis.yml with real storage, sessions, tools and agent loop; only the provider is scripted. Tests cover profile reopen, avatar validation, model validation, partial updates, bindings, memory isolation, successful/cancelled turns, CAS conflicts, user locks, limits and literal prompt rendering. Coverage uses `pnpm exec vitest run packages/agents --coverage --coverage.include=packages/agents/*/src/**/*.ts` with the repository's per-file 100% thresholds.
@@ -385,6 +387,25 @@ Thin Remote adapter; the registry owns validation, isolation and persistence.
 ```
 
 Source: [`packages/client/ui-sidebar/src/index.ts`](../../packages/client/ui-sidebar/src/index.ts)
+
+<a id="ctxharnessbindings--harnessbindings"></a>
+
+### `ctx.harnessBindings` — `HarnessBindings`
+
+Immutable deployment bindings, resolved again against current identity on every activation.
+
+```ts cordis-catalog
+/** Resolve only the owner recorded by the registry and Session sidecar.
+ * @param sessionId - durably bound DSH conversation.
+ * @param workspace - actual workspace of the agent; overlapping harness folders are refused.
+ * @returns detached private Host binding; never put it in a tool result or prompt.
+ */
+async resolve(sessionId: SessionId, workspace: string): Promise<AccountHarnessBinding>
+```
+
+Types: [SessionId](core.md)
+
+Source: [`packages/agents/agent-external-runtime/src/index.ts`](../../packages/agents/agent-external-runtime/src/index.ts)
 
 <a id="ctxpersistentagents--persistentagents"></a>
 

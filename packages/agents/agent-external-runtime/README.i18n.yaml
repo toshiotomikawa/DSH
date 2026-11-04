@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/agents/agent-external-runtime/README.md
+/:
+  en: 62e94c6d0cbef5c1
+  zh: 1a7a088b3a12833e
+/deepseek-ai-dsh-agent-external-runtime:
+  en: 2d021204e7278482
+  zh: 2bfe27be3fbf13d6
+/deepseek-ai-dsh-agent-external-runtime/summary:
+  en: d75263f5bcb74382
+  zh: 29d4068104d28ed2
+/deepseek-ai-dsh-agent-external-runtime/use-this-package:
+  en: 55f31e9533a616b0
+  zh: edc3f2174faaa4b3
+/deepseek-ai-dsh-agent-external-runtime/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-agent-external-runtime/model-experience/account-harness-configuration:
+  en: 159a7a32c0b30efa
+  zh: fd170d4055c6d279
+/deepseek-ai-dsh-agent-external-runtime/model-experience/account-harness-configuration/what-the-model-sees:
+  en: dbaeff8ad69dfe53
+  zh: ccbe1b2055d74a6a
+/deepseek-ai-dsh-agent-external-runtime/model-experience/account-harness-configuration/token-effect:
+  en: 99391cea02f1a1e7
+  zh: 752bfa4974a8ac0d
+/deepseek-ai-dsh-agent-external-runtime/model-experience/account-harness-configuration/kv-cache-effect:
+  en: b956b7a9ade986ec
+  zh: 5d6c6fbc1bbc3657
+/deepseek-ai-dsh-agent-external-runtime/known-limitations-and-deferred-work:
+  en: 5e4df3353c6688a4
+  zh: 19e50cdf75884d91
