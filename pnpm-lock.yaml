@@ -3372,6 +3372,9 @@ importers:
       '@deepseek-ai/dsh-agent-preset-registry':
         specifier: workspace:*
         version: link:../../preset/agent-preset-registry
+      '@deepseek-ai/dsh-agent-runtime':
+        specifier: workspace:*
+        version: link:../../agents/agent-runtime
       '@deepseek-ai/dsh-agent-tool-presentation':
         specifier: workspace:*
         version: link:../../core/agent-tool-presentation
