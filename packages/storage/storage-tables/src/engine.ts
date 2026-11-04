@@ -9,7 +9,8 @@
 import { createHash } from 'node:crypto'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { DatabaseSync, constants } from 'node:sqlite'
+import { DatabaseSync, constants as nativeConstants } from 'node:sqlite'
+import type { SQLInputValue } from 'node:sqlite'
 import { TablesError } from './errors.ts'
 
 /** Logical column types exposed to agents. */
@@ -144,6 +145,29 @@ export const MAX_PAGE = 1000
 /** Maximum commands in one batch. */
 export const MAX_BATCH = 100
 
+/** Authorizer callback: action code plus up to four context strings (table, column, database, trigger). */
+type Authorizer = (action: number, a1: string | null, a2: string | null, a3: string | null, a4: string | null) => number
+
+/** The `node:sqlite` surface this engine relies on (Node 24+), narrower than the bundled typings. */
+interface AuthorizingDatabase extends DatabaseSync {
+  setAuthorizer(callback: Authorizer | null): void
+}
+
+const constants = nativeConstants as unknown as Record<
+  'SQLITE_OK' | 'SQLITE_DENY' | 'SQLITE_SELECT' | 'SQLITE_READ' | 'SQLITE_FUNCTION' | 'SQLITE_RECURSIVE'
+  | 'SQLITE_INSERT' | 'SQLITE_UPDATE' | 'SQLITE_DELETE', number
+>
+
+/** Flatten a binding into the argument list `node:sqlite` expects (named parameters go as one object). */
+function bindArgs(binding: { positional: SQLInputValue[]; named: Record<string, SQLInputValue>[] }): SQLInputValue[] {
+  return [...binding.positional, ...binding.named] as unknown as SQLInputValue[]
+}
+
+/** Array check that keeps a readonly array's element type (plain `Array.isArray` widens it to `any[]`). */
+function isList(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value)
+}
+
 const NAME_RE = /^[a-z0-9_]{1,48}$/
 const RESERVED_PREFIXES = ['sqlite_', '_dsh_'] as const
 const AUTO_COLUMNS = ['criado_em', 'atualizado_em', 'revisao', 'autor'] as const
@@ -235,7 +259,7 @@ function plainRow(row: Record<string, unknown>): Record<string, unknown> {
 
 /** The relational engine. One instance owns one connection. */
 export class TablesEngine {
-  private readonly db: DatabaseSync
+  private readonly db: AuthorizingDatabase
   private readonly options: EngineOptions
 
   /**
@@ -250,7 +274,9 @@ export class TablesEngine {
       // Create the file owner-only when missing; appending nothing leaves an existing file untouched.
       appendFileSync(path, '', { mode: 0o600 })
     }
-    this.db = new DatabaseSync(path, { timeout: options.busyTimeoutMs, allowExtension: false, defensive: true })
+    this.db = new DatabaseSync(path, {
+      timeout: options.busyTimeoutMs, allowExtension: false, defensive: true,
+    } as ConstructorParameters<typeof DatabaseSync>[1]) as AuthorizingDatabase
     this.db.exec('PRAGMA foreign_keys = ON')
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec(`
@@ -278,7 +304,7 @@ export class TablesEngine {
    */
   createTable(request: CreateTableRequest, agent: string): TableSchema {
     const name = this.guardName('tabela', request.nome)
-    if (!Array.isArray(request.colunas) || request.colunas.length === 0) {
+    if (!isList(request.colunas) || request.colunas.length === 0) {
       fail('argumento_invalido', 'colunas deve ser uma lista com pelo menos uma coluna')
     }
     const primaryKey = request.chavePrimaria === undefined ? [] : [...request.chavePrimaria]
@@ -413,7 +439,7 @@ export class TablesEngine {
       const known = [
         ...declared.map(column => column.nome), ...AUTO_COLUMNS, ...primaryKey.length === 0 ? ['id'] : [],
       ]
-      if (!Array.isArray(index.colunas) || index.colunas.length === 0) {
+      if (!isList(index.colunas) || index.colunas.length === 0) {
         fail('argumento_invalido', 'o índice precisa de ao menos uma coluna')
       }
       for (const column of index.colunas) {
@@ -478,7 +504,7 @@ export class TablesEngine {
     this.db.exec('PRAGMA query_only = ON')
     try {
       let seen = 0
-      for (const row of statement.iterate(...binding.positional, ...binding.named)) {
+      for (const row of statement.iterate(...bindArgs(binding))) {
         if (seen++ < offset) continue
         if (rows.length === limit) {
           truncated = true
@@ -514,7 +540,7 @@ export class TablesEngine {
    * @returns one result per write.
    */
   batch(requests: readonly ExecuteRequest[], agent: string): ExecuteResult[] {
-    if (!Array.isArray(requests) || requests.length === 0 || requests.length > MAX_BATCH) {
+    if (!isList(requests) || requests.length === 0 || requests.length > MAX_BATCH) {
       fail('argumento_invalido', `o lote precisa ter de 1 a ${MAX_BATCH} comandos`)
     }
     const prepared = requests.map((request, indice) => {
@@ -536,7 +562,7 @@ export class TablesEngine {
       this.transaction(() => {
         this.db.prepare('UPDATE _dsh_ctx SET agente = ? WHERE id = 1').run(agent)
         for (const item of prepared) {
-          const outcome = item.statement.run(...item.binding.positional, ...item.binding.named)
+          const outcome = item.statement.run(...bindArgs(item.binding))
           results.push({
             linhasAfetadas: Number(outcome.changes),
             ultimoId: item.insert ? Number(outcome.lastInsertRowid) : null,
@@ -569,6 +595,7 @@ export class TablesEngine {
   private requireMeta(name: string): MetaRow {
     const row = typeof name === 'string' ? this.findMeta(name) : undefined
     if (row !== undefined) return row
+    // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- callers outside the type system may pass any value.
     throw this.notFound(String(name))
   }
 
@@ -586,7 +613,7 @@ export class TablesEngine {
     const bad = () => fail('argumento_invalido', `o valor padrão da coluna '${column.nome}' não é do tipo ${column.tipo}`)
     switch (column.tipo) {
       case 'inteiro':
-        return Number.isInteger(value) ? String(value) : bad()
+        return Number.isInteger(value) ? String(Number(value)) : bad()
       case 'real':
         return typeof value === 'number' && Number.isFinite(value) ? String(value) : bad()
       case 'booleano':
@@ -644,8 +671,8 @@ export class TablesEngine {
     }
   }
 
-  private bind(params: SqlParams | undefined): { positional: unknown[]; named: Record<string, unknown>[] } {
-    const convert = (value: unknown): unknown => {
+  private bind(params: SqlParams | undefined): { positional: SQLInputValue[]; named: Record<string, SQLInputValue>[] } {
+    const convert = (value: unknown): SQLInputValue => {
       if (value === null || value === undefined) return null
       if (typeof value === 'boolean') return value ? 1 : 0
       if (typeof value === 'number') return value
@@ -659,7 +686,7 @@ export class TablesEngine {
       return fail('argumento_invalido', `tipo de parâmetro sem suporte: ${typeof value}`)
     }
     if (params === undefined) return { positional: [], named: [] }
-    if (Array.isArray(params)) return { positional: params.map(convert), named: [] }
+    if (isList(params)) return { positional: params.map(convert), named: [] }
     return { positional: [], named: [Object.fromEntries(Object.entries(params).map(([key, value]) => [key, convert(value)]))] }
   }
 
@@ -682,9 +709,9 @@ export class TablesEngine {
     ])
     const writes = new Set<number>([constants.SQLITE_INSERT, constants.SQLITE_UPDATE, constants.SQLITE_DELETE])
     let writeAction: number | undefined
-    let selects = false
+    let selects = false as boolean
     this.db.setAuthorizer((action, table, _column, _database, inner) => {
-      const nested = inner !== null && inner !== undefined
+      const nested = typeof inner === 'string'
       const tableName = typeof table === 'string' ? table : ''
       const internal = RESERVED_PREFIXES.some(prefix => tableName.startsWith(prefix))
       if (!nested && internal && (action === constants.SQLITE_READ || writes.has(action))) return constants.SQLITE_DENY
@@ -721,7 +748,7 @@ export class TablesEngine {
 
   private mapError(error: unknown, mode?: 'query' | 'execute'): TablesError {
     if (error instanceof TablesError) return error
-    const message = `${(error as Error).message}`
+    const message = (error as Error).message
     const primary = Number((error as { errcode?: number }).errcode) & 0xff
     if (primary === 23) {
       const accepted = mode === 'execute' ? 'INSERT, UPDATE ou DELETE' : 'um único SELECT'

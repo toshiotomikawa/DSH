@@ -1,3 +1,4 @@
+/* oxlint-disable typescript/no-unsafe-argument -- JSON.parse returns any. */
 import { describe, expect, it } from 'vitest'
 import { TablesError, deserializeError, serializeError } from '../src/errors.ts'
 

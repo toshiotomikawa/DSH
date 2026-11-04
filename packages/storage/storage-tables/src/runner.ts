@@ -6,7 +6,7 @@
  */
 
 import { fork } from 'node:child_process'
-import type { ChildProcess } from 'node:child_process'
+import type { ChildProcess, ForkOptions } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import type { EngineOptions } from './engine.ts'
 import { TablesError, deserializeError } from './errors.ts'
@@ -18,11 +18,12 @@ import type { Method, WorkerReply, WorkerRequest } from './types.ts'
  */
 function spawnWorker(options: EngineOptions): ChildProcess {
   const args = [JSON.stringify(options)]
+  // windowsHide is honoured at runtime by fork() but missing from the bundled ForkOptions typing.
+  const hidden: ForkOptions & { windowsHide: boolean } = { windowsHide: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] }
   /* v8 ignore next -- built-artifact runs own the bundled path. */
-  if (!import.meta.url.endsWith('.ts')) return fork(fileURLToPath(new URL('./worker.cjs', import.meta.url)), args, { windowsHide: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'], execArgv: [] })
+  if (!import.meta.url.endsWith('.ts')) return fork(fileURLToPath(new URL('./worker.cjs', import.meta.url)), args, { ...hidden, execArgv: [] })
   return fork(fileURLToPath(new URL('./worker.ts', import.meta.url)), args, {
-    windowsHide: true,
-    stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+    ...hidden,
     execArgv: ['--import', import.meta.resolve('tsx')],
   })
 }

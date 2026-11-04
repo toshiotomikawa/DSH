@@ -10,7 +10,7 @@ process.on('message', (request: WorkerRequest) => {
   let reply: WorkerReply
   try {
     const run = engine[request.method] as (...args: unknown[]) => unknown
-    reply = { ok: true, value: run.apply(engine, request.args) }
+    reply = { ok: true, value: run.apply(engine, request.args as unknown[]) }
   } catch (error) {
     reply = { ok: false, error: serializeError(error) }
   }

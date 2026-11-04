@@ -402,6 +402,8 @@
     { "path": "./packages/storage/storage" },
     { "path": "./packages/storage/storage-json" },
     { "path": "./packages/storage/storage-sqlite" },
+    { "path": "./packages/storage/storage-tables" },
+    { "path": "./packages/storage/tool-tables" },
     { "path": "./packages/storage/storage-domain" },
     { "path": "./packages/feedback/message-feedback" },
     { "path": "./packages/workspace/workspace" },

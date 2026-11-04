@@ -1,3 +1,4 @@
+/* oxlint-disable typescript/no-unsafe-assignment -- asymmetric matchers return any. */
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,6 +18,7 @@ let path: string
 let services: StorageTables.TablesService[]
 
 function open(overrides: StorageTables.Config = {}): StorageTables.TablesService {
+  // oxlint-disable-next-line typescript/no-misused-spread -- Config is a plain options bag typed as a class.
   const service = new StorageTables.TablesService({ path, ...overrides })
   services.push(service)
   return service
