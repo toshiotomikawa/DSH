@@ -187,17 +187,18 @@ export class RoutineEngine {
         throw new RoutineError('rotina_consumida', 'a ocorrência única já foi consumida; crie outra rotina')
       }
       const trigger = patch.trigger ?? (patch.schedule !== undefined ? 'schedule' : current.trigger)
-      const merged = this.validated(withFields(current, {
+      const changes = Object.fromEntries(Object.entries({
         name: patch.name,
         instruction: patch.instruction,
-        trigger,
-        schedule: trigger === 'script' ? undefined : patch.schedule ?? current.schedule,
         timeZone: patch.timeZone,
         active: patch.active,
         limitPolicy: patch.limitPolicy,
         missedPolicy: patch.missedPolicy,
         scriptEnabled: patch.scriptEnabled,
-      }), true)
+      }).filter(([, value]) => value !== undefined))
+      const schedule = trigger === 'script' ? undefined : patch.schedule ?? current.schedule
+      const { schedule: _previous, ...rest } = { ...current, ...changes, trigger }
+      const merged = this.validated(schedule === undefined ? rest : { ...rest, schedule }, true)
       const now = this.options.now()
       const next: Routine = {
         ...merged,
@@ -455,6 +456,12 @@ export class RoutineEngine {
     })
   }
 
+  /** A calendar or webhook run waits while its routine is paused; a one-time routine pauses itself when it fires, and its run goes on. */
+  private blocked(run: Run, routine: Routine): boolean {
+    const automatic = run.source === 'agenda' || run.source === 'webhook'
+    return automatic && !routine.active && !routine.consumed
+  }
+
   private async stopSession(sessionId: string): Promise<void> {
     await this.options.runner.cancel(sessionId).catch((error: unknown) => { this.options.warn(`agent-routine: cancel failed: ${String(error)}`) })
   }
@@ -485,7 +492,7 @@ export class RoutineEngine {
       await this.finish(run, 'falha', { error: 'a rotina ou o agente não existe mais', reason: 'sem_rotina_ou_agente' })
       return
     }
-    if ((run.source === 'agenda' || run.source === 'webhook') && !routine.active) {
+    if (this.blocked(run, routine)) {
       await this.finish(run, 'pulada', { reason: 'rotina_pausada' })
       return
     }
@@ -581,7 +588,7 @@ export class RoutineEngine {
       return
     }
     const automatic = run.source === 'agenda' || run.source === 'webhook'
-    if (automatic && routine?.limitPolicy === 'skip' && routine.schedule?.kind !== 'once') {
+    if (automatic && routine?.limitPolicy === 'skip') {
       await this.finish(run, 'pulada', { reason: 'cota' })
       return
     }
@@ -647,8 +654,7 @@ export class RoutineEngine {
       for (const [, run] of [...this.runs.entries()]) {
         if (run.state !== 'espera_cota' || Date.parse(run.nextCheckAt as string) > now) continue
         const routine = this.routines.get(run.routineId)
-        const automatic = run.source === 'agenda' || run.source === 'webhook'
-        if (automatic && routine?.active !== true) continue
+        if (routine !== undefined && this.blocked(run, routine)) continue
         const agent = routine === undefined ? undefined : this.options.agents(routine.agentId)
         if (agent === undefined) {
           await this.finish(run, 'falha', { error: 'a rotina ou o agente não existe mais', reason: 'sem_rotina_ou_agente' })

@@ -29,6 +29,11 @@ function clock(time: string): { hour: number; minute: number } {
   return { hour, minute }
 }
 
+/** The scheduler reads HH:mm:ss; routines also accept HH:mm. */
+function seconds(time: string): string {
+  return /^\d{2}:\d{2}$/.test(time) ? `${time}:00` : time
+}
+
 /**
  * Convert a routine calendar into the scheduler's timing.
  * @param spec - calendar chosen by the user.
@@ -38,10 +43,10 @@ function clock(time: string): { hour: number; minute: number } {
  */
 export function toTiming(spec: ScheduleSpec, timeZone: string): ScheduleTiming {
   switch (spec.kind) {
-    case 'once': return { kind: 'at', at: { date: spec.date, time: spec.time, time_zone: timeZone } }
-    case 'daily': return { kind: 'daily', daily: { time: spec.time, time_zone: timeZone } }
-    case 'weekdays': return { kind: 'weekly', weekly: { time: spec.time, time_zone: timeZone, weekdays: [1, 2, 3, 4, 5] } }
-    case 'weekly': return { kind: 'weekly', weekly: { time: spec.time, time_zone: timeZone, weekdays: [...spec.weekdays] } }
+    case 'once': return { kind: 'at', at: { date: spec.date, time: seconds(spec.time), time_zone: timeZone } }
+    case 'daily': return { kind: 'daily', daily: { time: seconds(spec.time), time_zone: timeZone } }
+    case 'weekdays': return { kind: 'weekly', weekly: { time: seconds(spec.time), time_zone: timeZone, weekdays: [1, 2, 3, 4, 5] } }
+    case 'weekly': return { kind: 'weekly', weekly: { time: seconds(spec.time), time_zone: timeZone, weekdays: [...spec.weekdays] } }
     case 'monthly': {
       if (!Number.isInteger(spec.day) || spec.day < 1 || spec.day > 31) {
         throw new RoutineError('agenda_invalida', 'o dia do mês deve ficar entre 1 e 31')
