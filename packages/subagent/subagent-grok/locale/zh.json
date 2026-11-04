@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Grok 子代理",
+    "description": "将一项任务委派给 grok，带超时和取消。"
+  }
+}

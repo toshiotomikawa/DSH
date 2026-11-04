@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Antigravity サブエージェント",
+    "description": "タイムアウトとキャンセル付きで agy にタスクを委任します。"
+  }
+}

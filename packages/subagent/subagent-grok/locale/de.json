@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Grok-Subagent",
+    "description": "Delegieren Sie eine Aufgabe an grok mit Zeitlimit und Abbruch."
+  }
+}

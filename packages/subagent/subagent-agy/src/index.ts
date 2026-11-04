@@ -1,14 +1,20 @@
 /** One-shot Antigravity CLI provider using native authentication and NDJSON. */
 import type { Context } from '@deepseek-ai/cordis'
-import { configSchema, failure, isRecord, quotaAnswer, quotaExceeded, register, type HeadlessConfig, type Product } from '@deepseek-ai/dsh-subagent-grok'
+import { Config as SharedConfig, failure, isRecord, quotaAnswer, quotaExceeded, register, type Product } from '@deepseek-ai/dsh-subagent-grok'
 import type { SubagentResult } from '@deepseek-ai/dsh-subagent'
 
 export const name = 'subagent-agy'
 export const inject = ['subagents', 'subprocess']
-export type Config = HeadlessConfig
-export const Config = configSchema('agy')
+/** Loader configuration for one Antigravity provider instance, sharing the native adapter fields. */
+export type Config = SharedConfig
+/** Loader schema shared with the other native adapter. */
+export const Config = SharedConfig
 
-/** Require exactly one terminal result; intermediate tool output never reaches the parent. */
+/**
+ * Require exactly one terminal result; intermediate tool output never reaches the parent.
+ * @param stdout - complete process stdout in NDJSON.
+ * @returns the final result or a fixed failure.
+ */
 export function parse(stdout: string): SubagentResult {
   let terminal: Record<string, unknown> | undefined
   for (const line of stdout.split(/\r?\n/).filter(line => line.trim())) {
@@ -29,6 +35,7 @@ export function parse(stdout: string): SubagentResult {
   return { output: [{ type: 'text', text: terminal.response }], stopReason: 'completed' }
 }
 
+/** Antigravity protocol: NDJSON stream and an optional bypass flag only when explicitly allowed. */
 export const product: Product = {
   name: 'agy', parse,
   argv: (config, prompt) => [
@@ -38,5 +45,9 @@ export const product: Product = {
   ],
 }
 
-/** Register one independently configured native model instance. */
+/**
+ * Register one independently configured native model instance.
+ * @param ctx - context carrying the subagent and subprocess services.
+ * @param config - deployment configuration.
+ */
 export function apply(ctx: Context, config: Config): void { register(ctx, config, product) }

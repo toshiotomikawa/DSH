@@ -6,9 +6,10 @@ import { delimiter, extname, isAbsolute, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { assertUsableCwd, NO_START_CAPABILITIES, type ResolvedSubagentStartRequest, type SubagentResult, type SubagentProvider } from '@deepseek-ai/dsh-subagent'
+import { assertUsableCwd, NO_START_CAPABILITIES, type ResolvedSubagentStartRequest, type SubagentResult, type SubagentProvider, type SubagentRun } from '@deepseek-ai/dsh-subagent'
 import type { SubprocessHandle, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+import type { Config } from './index.ts'
 
 /** Ceiling for the per-stream retained output, independent of the timer limit. */
 export const MAX_OUTPUT_BYTES = 8 * 1024 * 1024
@@ -74,34 +75,6 @@ export interface Dependencies {
   resolve?: (command: string) => string
 }
 
-/** Deployment settings, never supplied by the model's tool arguments. */
-export interface Config {
-  /** Unique provider registry name. */
-  providerName?: string
-  /** Native executable; Windows deployments should use an exe, not a cmd shim. */
-  command?: string
-  /** Deployment-owned arguments inserted before the adapter arguments. */
-  args?: string[]
-  /** Native model fixed for this provider instance. */
-  model?: string
-  /** Non-interactive native permission policy. */
-  permission?: 'allow' | 'reject'
-  /** Explicit opt-ins layered over the credential-scrubbed parent environment. */
-  env?: Record<string, string>
-  /** Whole-run deadline in milliseconds. */
-  timeoutMs?: number
-  /** Managed process termination grace in milliseconds. */
-  disposeGraceMs?: number
-  /** Per-stream retained output and audit cap in bytes. */
-  maxOutputBytes?: number
-  /** Private absolute directory for per-run audit artifacts. */
-  logDirectory: string
-  /** Optional JSON status file containing remainingPercent. */
-  quotaFile?: string
-  /** Refuse before spawn when known remaining quota is below this floor. */
-  minimumRemainingPercent?: number
-}
-
 /** Settings after deployment defaults have been applied. */
 export type ResolvedConfig = Required<Omit<Config, 'model' | 'quotaFile'>> & Pick<Config, 'model' | 'quotaFile'>
 
@@ -113,34 +86,32 @@ export type ResolvedConfig = Required<Omit<Config, 'model' | 'quotaFile'>> & Pic
  */
 export function resolveConfig(config: Config, providerName: string): ResolvedConfig {
   return {
-    providerName, command: providerName, args: [], permission: 'reject', env: {},
+    args: [], permission: 'reject', env: {},
     timeoutMs: 120_000, disposeGraceMs: 3_000, maxOutputBytes: 4 * 1024 * 1024,
     minimumRemainingPercent: 10, ...config,
+    providerName: config.providerName ?? providerName,
+    command: config.command ?? providerName,
   }
 }
 
 /**
- * Build a schema for one native adapter.
- * @param providerName - default registry and executable name.
- * @returns the plugin configuration schema.
+ * Loader schema shared by the native adapters. Provider-specific defaults are
+ * applied by {@link resolveConfig}, so the schema stays statically walkable.
  */
-export function configSchema(providerName: string): z<Config> {
-  const defaults = resolveConfig({ logDirectory: '' }, providerName)
-  return z.object({
-    providerName: z.string().min(1).default(providerName),
-    command: z.string().min(1).default(providerName),
-    args: z.array(z.string()).default([]),
-    model: z.string().min(1),
-    permission: z.union(['reject', 'allow'] as const).default('reject'),
-    env: z.dict(z.string()).default({}),
-    timeoutMs: z.number().default(defaults.timeoutMs),
-    disposeGraceMs: z.number().default(defaults.disposeGraceMs),
-    maxOutputBytes: z.number().default(defaults.maxOutputBytes),
-    logDirectory: z.string().required(),
-    quotaFile: z.string(),
-    minimumRemainingPercent: z.number().default(defaults.minimumRemainingPercent),
-  })
-}
+export const sharedConfigSchema: z<Config> = z.object({
+  providerName: z.string().min(1),
+  command: z.string().min(1),
+  args: z.array(z.string()).default([]),
+  model: z.string().min(1),
+  permission: z.union(['reject', 'allow'] as const).default('reject'),
+  env: z.dict(z.string()).default({}),
+  timeoutMs: z.number().default(120_000),
+  disposeGraceMs: z.number().default(3_000),
+  maxOutputBytes: z.number().default(4 * 1024 * 1024),
+  logDirectory: z.string().required(),
+  quotaFile: z.string(),
+  minimumRemainingPercent: z.number().default(10),
+})
 
 /** Wire adapters return only the final assistant message and safe stop facts. */
 export interface Product {
@@ -149,7 +120,12 @@ export interface Product {
   parse(stdout: string): SubagentResult
 }
 
-/** File format: { remainingPercent: number }; unknown is allowed, corrupt is not. */
+/**
+ * Read the optional quota status file; the format is `{ remainingPercent }`, where an absent file is unknown and a corrupt one is an error.
+ * @param config - deployment settings naming the file.
+ * @returns remaining percent, or undefined when no file is configured.
+ * @throws when the file is unreadable or outside 0-100.
+ */
 export async function quotaStatus(config: Config): Promise<number | undefined> {
   if (config.quotaFile === undefined) return undefined
   const data: unknown = JSON.parse(await readFile(config.quotaFile, 'utf8'))
@@ -160,17 +136,29 @@ export async function quotaStatus(config: Config): Promise<number | undefined> {
   return data.remainingPercent
 }
 
-/** Narrow untrusted CLI JSON before reading protocol fields. */
+/**
+ * Narrow untrusted CLI JSON before reading protocol fields.
+ * @param value - parsed JSON value.
+ * @returns whether the value is a plain object record.
+ */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Fixed diagnostics deliberately exclude native stderr and environment values. */
+/**
+ * Build a fixed diagnostic without native stderr or environment values.
+ * @param reason - stable diagnostic identifier.
+ * @returns an error result carrying the diagnostic.
+ */
 export function failure(reason: string): SubagentResult {
   return { output: [], stopReason: 'error', diagnostic: `Headless subagent: ${reason}` }
 }
 
-/** Recognize provider-authored limit states; never retry a billable operation. */
+/**
+ * Recognize provider-authored limit states; never retry a billable operation.
+ * @param text - provider-authored text.
+ * @returns whether the text names a quota or limit state.
+ */
 export function quotaExceeded(text: string): boolean {
   return /quota[_ -]?(exceeded|exhausted)|rate[_ -]?limit|usage[_ -]?limit|insufficient[_ -]?(credits|quota)/i.test(text)
 }
@@ -185,7 +173,13 @@ export function quotaAnswer(text: string): boolean {
   return text.length <= 200 && quotaExceeded(text)
 }
 
-/** Register a native adapter without changing the subagent or subprocess core. */
+/**
+ * Register a native adapter without changing the subagent or subprocess core.
+ * @param ctx - context carrying the subagent and subprocess services.
+ * @param input - deployment configuration.
+ * @param product - provider-specific protocol and argv.
+ * @throws when a configured limit or path is invalid.
+ */
 export function register(ctx: Context, input: Config, product: Product): void {
   const config = resolveConfig(input, product.name)
   for (const field of ['timeoutMs', 'disposeGraceMs'] as const) {
@@ -212,7 +206,16 @@ export function register(ctx: Context, input: Config, product: Product): void {
   ctx.subagents.registerProvider(provider)
 }
 
-/** Start one managed process. Its streams remain private audit artifacts. */
+/**
+ * Start one managed process; its streams remain private audit artifacts.
+ * @param request - resolved subagent start request.
+ * @param config - complete lifecycle settings.
+ * @param product - provider-specific protocol and argv.
+ * @param spawn - subprocess factory.
+ * @param warn - deployment warning sink.
+ * @param dependencies - test seams for platform-dependent lookups.
+ * @returns the managed run handle.
+ */
 export async function start(
   request: ResolvedSubagentStartRequest,
   config: ResolvedConfig,
@@ -220,7 +223,7 @@ export async function start(
   spawn: (spec: SubprocessSpawnSpec) => SubprocessHandle,
   warn: (message: string) => void,
   dependencies: Dependencies = {},
-) {
+): Promise<SubagentRun> {
   const resolve = dependencies.resolve ?? ((command: string) => resolveCommand(command))
   if (isAborted(request.signal)) throw new Error('Headless subagent: cancelled before startup')
   const cwd = assertUsableCwd(product.name, 'cwd', request.cwd)
