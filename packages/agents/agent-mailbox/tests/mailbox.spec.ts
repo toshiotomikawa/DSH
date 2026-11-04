@@ -220,6 +220,19 @@ async function fixture(adapters: Record<string, MockAdapter> = {}) {
 }
 
 describe('agent mailbox', () => {
+  it('retains an accepted delivery when the recipient disappears from the directory before restart', async () => {
+    await mkdir('.dsh-test', { recursive: true })
+    const root = await mkdtemp(join(process.cwd(), '.dsh-test/mailbox-missing-owner-'))
+    const built = await harness(root, { 'mock-a': new TextAdapter() }, false)
+    onTestFinished(async () => { await built.ctx.fiber.dispose(); await rm(root, { recursive: true, force: true }) })
+    await seedMessage(root, { id: 'missing-recipient', recipientId: 'gone', sessionId: 'gone-main', state: 'queued' })
+    await built.ctx.plugin(Mailbox)
+    await built.ctx.agentMailbox.flush()
+    await built.ctx.agents.get(SessionId('gone-main'))!.whenIdle()
+    await built.ctx.agentMailbox.settled()
+    const stored = await storedMessages(root)
+    expect((stored[0] as { deliveries: { state: string }[] }).deliveries[0]?.state).toBe('completed')
+  })
   it('delivers a message to another root, returns the reply to the origin conversation, and reports the receipt (1)', async () => {
     const a = new TextAdapter('a-ok')
     const b = new TextAdapter('b-ok')

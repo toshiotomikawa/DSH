@@ -13,6 +13,8 @@ Connects persistent agent identities to mailbox and routine sessions.
 
 Mount globally after agent-registry, agent-memory, agents and system-prompt, before agent-mailbox and agent-routine. It provides `agentDirectory` and `agentRoutineBridge`. Mailbox conversations are durably bound before creation or resume; bound sessions receive the identity persona and essential memories. Each routine execution creates one fresh session and returns admission before its turn settles.
 
+The optional `@deepseek-ai/dsh-agent-runtime/owners` plugin mounts the account policy in `remote-access`. Apply `owners.patch.yml` to a Web composition that already mounts persistent storage and the Session Controller. It stores optional `ownerId` metadata in the per-record `session_owners` domain, leaving released Session headers and logs unchanged. Existing Sessions are adopted by `owner`; create, fork and persistent-agent binding save their trusted owner before returning. Account principals see only owned Session rows and FTS results, and foreign and unknown Session ids receive the same access denial. Sidecar damage blocks account-policy activation and preserves the damaged document. Disposing the plugin removes its service and policy.
+
 ## Model Experience
 
 ### Persistent conversations and routines
@@ -31,4 +33,4 @@ New sessions reuse the profile's persona content; session-specific messages and 
 
 ## Known Limitations and Deferred Work
 
-All registered profiles are visible in the single-user deployment. ownerId is retained without authorization logic until multi-user support. The plugin is opt-in and does not modify shipped profiles. Provider accounts and automatic fallback are not implemented. Host shutdown disposes sessions owned by the routine runner; mailbox owns its own delivery sessions.
+Discovery and interruption through the persistent-agent directory stay within the calling profile owner. Legacy ownerless profiles belong to `owner`. The plugins are opt-in and do not modify shipped profiles. The `owners` entry requires a trusted account principal supplied by a Host connection adapter; account provisioning, sign-in, sections and sharing are deferred. The legacy `owner` principal remains the trusted Host caller with its existing unrestricted access. No account-specific UI or event grants are introduced. Provider accounts and automatic fallback are not implemented. Host shutdown disposes sessions owned by the routine runner; mailbox owns its own delivery sessions.

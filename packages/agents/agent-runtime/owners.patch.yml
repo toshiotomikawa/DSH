@@ -1,0 +1,3 @@
+- insert:
+    - id: fork-owner-policy
+      name: '@deepseek-ai/dsh-agent-runtime/owners'

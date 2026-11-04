@@ -35,7 +35,8 @@
     "@deepseek-ai/dsh-storage-domain": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "zod": "^4.4.3",
-    "sharp": "0.35.5"
+    "sharp": "0.35.5",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

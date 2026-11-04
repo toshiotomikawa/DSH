@@ -5,6 +5,15 @@
 
 import type { Principal, RemoteInvocation } from './types.ts'
 
+/** Resolve the durable account id fixed by the connection.
+ * @param invocation - current trusted Remote invocation, absent for local work.
+ * @returns account id, or the single-account host id.
+ */
+export function ownerIdOf(invocation: RemoteInvocation | undefined): string {
+  const principal = invocation?.peer.principal
+  return principal?.kind === 'account' ? principal.ownerId : 'owner'
+}
+
 /**
  * The identity a Remote-call producer records on durable output.
  * @param invocation - `ctx.invocation`; `undefined` outside a Remote call.

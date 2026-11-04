@@ -15,6 +15,8 @@ Mount with storage-domain, schedule and host-webserver. For persistent agents, m
 
 The engine owns its scheduler tasks. Generic schedule edits, Remote edits and bulk cleanup cannot mutate or remove these tasks; use `routine_update`, which validates the three-minute recurrence floor and preserves the fresh-session target. A pre-write `schedule/validate-edit` hook enforces this policy in the routine plugin, without replacing scheduler methods or changing ordinary tasks.
 
+New routines inherit `ownerId` from the trusted agent resolver before considering a Host-supplied owner. Ownerless legacy agents use `owner` by default; each new execution copies its routine ownership. This metadata does not introduce account authentication or a new trigger credential.
+
 ## Model Experience
 
 ### Fresh routine executions

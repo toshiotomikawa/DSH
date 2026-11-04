@@ -392,7 +392,7 @@ export class AgentMailbox {
       ...(input.newThread === true ? { newThread: true } : {}),
       ...(input.title === undefined ? {} : { title: input.title }),
       ...(key === undefined ? {} : { key }),
-      ...(sender.ownerId === undefined ? {} : { ownerId: sender.ownerId }),
+      ownerId: sender.ownerId ?? 'owner',
       deliveries: targets.map((target) => {
         const sessionId = thread === undefined ? target.sessionId : thread
         return {
@@ -429,7 +429,7 @@ export class AgentMailbox {
       createdAt: Date.now(),
       replyToMessageId: original.id,
       ...(key === undefined ? {} : { key }),
-      ...(sender.ownerId === undefined ? {} : { ownerId: sender.ownerId }),
+      ownerId: sender.ownerId ?? 'owner',
       deliveries: [{
         recipientId: original.senderId,
         sessionId: original.senderSessionId,

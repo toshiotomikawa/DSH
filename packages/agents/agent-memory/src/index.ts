@@ -248,7 +248,7 @@ export class AgentMemory {
     const boundary = this.ctx.agents.turnBoundaryOf(agent.session)
     if (boundary.openTurnStartSeq === null) throw new Error('Memory changes require an active turn')
     const profile = this.ctx.persistentAgents.get(id)
-    const book = structuredClone(this.domain.table('books').get(id) ?? { agentId: id, ...(profile.ownerId === undefined ? {} : { ownerId: profile.ownerId }), revision: 0, entries: [] })
+    const book = structuredClone(this.domain.table('books').get(id) ?? { agentId: id, ownerId: profile.ownerId ?? 'owner', revision: 0, entries: [] })
     const pending: Pending = { turn: boundary.lastTurn, base: book.revision, book }
     this.pending.set(agent.id, pending)
     return pending

@@ -6,6 +6,17 @@ import { refusal, setup } from './harness.ts'
 const base = { agentId: 'a1', name: 'Resumo', instruction: 'Resuma.', schedule: { kind: 'daily', time: '09:00' }, timeZone: 'UTC' } as const
 
 describe('edges of the engine', () => {
+  it('inherits the trusted agent owner and retains legacy ownerless routines on execution', async () => {
+    const rig = setup()
+    rig.agents.set('a1', { id: 'a1', name: 'A', ownerId: 'a' })
+    const item = await rig.engine.createRoutine({ ...base, ownerId: 'spoofed' })
+    expect(item.ownerId).toBe('a')
+    const legacy = { ...item }
+    delete (legacy as { ownerId?: string }).ownerId
+    await rig.store.routines.put(item.id, legacy)
+    const run = await rig.engine.trigger(item.id, { source: 'manual' })
+    expect(run.run.ownerId).toBe('owner')
+  })
   it('refuses an edit when the agent of the routine is gone', async () => {
     const rig = setup()
     const item = await rig.engine.createRoutine(base)

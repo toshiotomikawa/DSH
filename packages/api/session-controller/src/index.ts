@@ -12,7 +12,7 @@ import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativ
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection-cache'
 import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
-import { Remote, RemoteError, TypertRemoteService, principalOf, type TypertResourceResolveInput } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, RemoteError, TypertRemoteService, principalOf, ownerIdOf, type TypertResourceResolveInput } from '@deepseek-ai/dsh-typert-protocol'
 import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
@@ -284,7 +284,7 @@ export class SessionController extends TypertRemoteService {
   /**
    * Search visible Session content without resuming an Agent. A non-owner
    * receives only the hits whose Session `allows()` admits; `hasMore`
-   * describes the bounded result before that filtering.
+   * counts only admitted Sessions before applying the result bound.
    * @param request - literal message-content query.
    * @param signal - cancellation for list and search reads.
    * @returns authorized bounded Session search results.
@@ -301,8 +301,10 @@ export class SessionController extends TypertRemoteService {
    * @returns the created or reused Session identity and its preset when configured.
    */
   @Remote('create')
-  create(request: SessionCreateRequest): Promise<SessionCreateValue> {
-    return this.commands.create(request)
+  async create(request: SessionCreateRequest): Promise<SessionCreateValue> {
+    const result = await this.commands.create(request)
+    await this.ctx.get('sessionOwners')?.assign(result.sessionId, ownerIdOf(this.ctx.invocation))
+    return result
   }
 
   /**
@@ -452,7 +454,9 @@ export class SessionController extends TypertRemoteService {
         })
       }
     }
-    return this.commands.fork(request)
+    const result = await this.commands.fork(request)
+    await this.ctx.get('sessionOwners')?.assign(result.sessionId, ownerIdOf(this.ctx.invocation))
+    return result
   }
 
   /**

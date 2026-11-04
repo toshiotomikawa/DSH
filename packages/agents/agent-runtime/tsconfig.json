@@ -33,6 +33,21 @@
     },
     {
       "path": "../tool-agent-memory"
+    },
+    {
+      "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../api/remote-access/tsconfig.host.json"
+    },
+    {
+      "path": "../../api/session-controller/tsconfig.host.json"
+    },
+    {
+      "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../session-query/session-query"
     }
   ],
   "extends": "../../../tsconfig.base.json"
