@@ -57,6 +57,7 @@ declare module '@deepseek-ai/cordis' {
   interface Events {
     /**
      * A routine produced a report for the user; consumers deliver it (inbox, mailbox, notification).
+     * @param report - the report to deliver.
      * @mode emit
      */
     'agent-routine/report'(report: RoutineReport): void
