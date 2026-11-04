@@ -1,12 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { externalTestParent } from '../../subagent/tests/external-activation-helpers.ts'
 import type { SubprocessHandle, SubprocessOutcome, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { Config, parse, product } from '../src/index.ts'
-import { failure, isRecord, quotaStatus, register, resolveConfig, start, type ResolvedConfig as Settings } from '../src/headless.ts'
+import { product as agyProduct } from '../../subagent-agy/src/index.ts'
+import {
+  childEnvironment, failure, isRecord, MAX_OUTPUT_BYTES, quotaAnswer, quotaStatus, register, resolveCommand, resolveConfig,
+  safePrompt, start,
+  type ResolvedConfig as Settings,
+} from '../src/headless.ts'
+
+const deps = { resolve: (command: string) => command }
 
 const contexts: Context[] = []
 const directories: string[] = []
@@ -41,7 +48,7 @@ async function setup() {
   const warn = vi.fn()
   return { cwd, ctx, config, request, signal, done, child, spawn, warn, terminate, waitForExit,
     output: (out: string, err = '', truncated = false) => { stdout = out; stderr = err; lossy = truncated },
-    run: () => start(request, config, product, spawn, warn),
+    run: () => start(request, config, product, spawn, warn, deps),
   }
 }
 
@@ -119,7 +126,7 @@ describe('managed headless lifecycle', () => {
     const run = await start(f.request,f.config,product,(spec) => {
       spec.signal!.addEventListener('abort',()=>{ f.done.resolve({ exitCode:null,signal:'SIGTERM' }) })
       return f.child
-    }, f.warn)
+    }, f.warn, deps)
     expect((await run.result).diagnostic).toContain('tempo_esgotado'); await run.dispose()
   })
   it('disposal cancels an in-flight child', async () => {
@@ -132,7 +139,7 @@ describe('managed headless lifecycle', () => {
   })
   it('refuses cancellation, non-text prompts and startup failures safely', async () => {
     const f = await setup()
-    await expect(start(f.request,f.config,product,()=>{throw new Error('secret')},f.warn)).rejects.toThrow('process startup failed')
+    await expect(start(f.request,f.config,product,()=>{throw new Error('secret')},f.warn,deps)).rejects.toThrow('process startup failed')
     f.signal.abort(); await expect(f.run()).rejects.toThrow('cancelled')
   })
   it('does not mix simultaneous runs', async () => {
@@ -145,14 +152,15 @@ describe('managed headless lifecycle', () => {
   })
   it('validates deployment bounds before registering', async () => {
     const f = await setup()
-    for (const patch of [{ timeoutMs:0 },{ disposeGraceMs:Infinity },{ maxOutputBytes:NaN },{ logDirectory:'relative' },{ minimumRemainingPercent:101 }]) {
+    for (const patch of [{ timeoutMs:0 },{ disposeGraceMs:Infinity },{ maxOutputBytes:NaN },{ maxOutputBytes:2_000_000_000 },{ maxOutputBytes:MAX_OUTPUT_BYTES + 1 },{ logDirectory:'relative' },{ minimumRemainingPercent:101 }]) {
       expect(()=>{ register(f.ctx,{ ...f.config,...patch },product) }).toThrow()
     }
     expect(failure('x').diagnostic).toContain('x')
+    expect(() => { register(f.ctx, { ...f.config, maxOutputBytes: MAX_OUTPUT_BYTES, providerName: 'cap-ok' }, product) }).toThrow('registerProvider')
   })
   it('rejects non-text input before spawning',async()=>{
     const f=await setup()
-    await expect(start({ ...f.request,prompt:[{ type:'reasoning',text:'internal' }] },f.config,product,f.spawn,f.warn)).rejects.toThrow('text prompt required')
+    await expect(start({ ...f.request,prompt:[{ type:'reasoning',text:'internal' }] },f.config,product,f.spawn,f.warn,deps)).rejects.toThrow('text prompt required')
     expect(f.spawn).not.toHaveBeenCalled()
   })
   it('rechecks cancellation after asynchronous preparation',async()=>{
@@ -173,7 +181,7 @@ describe('managed headless lifecycle', () => {
     const f=await setup(); f.config.timeoutMs=10
     const run=await start(f.request,f.config,product,(spec)=>{
       spec.signal!.addEventListener('abort',()=>{ f.done.reject(new Error('transport')) }); return f.child
-    },f.warn)
+    },f.warn,deps)
     expect((await run.result).diagnostic).toContain('tempo_esgotado'); await run.dispose()
   })
   it('preserves cancellation when the transport rejects',async()=>{
@@ -186,5 +194,97 @@ describe('managed headless lifecycle', () => {
     expect((await run.result).stopReason).toBe('error')
     expect(f.warn).toHaveBeenCalledWith(expect.stringContaining('status unknown'))
     await expect(run.dispose()).rejects.toThrow('cleanup')
+  })
+})
+
+describe('audit findings', () => {
+  const FLAGS = ['--dangerously-skip-permissions', '--permission-mode', '-p', '--print']
+
+  it.each([['grok', product], ['agy', agyProduct]])('never lets the task text become a %s flag (finding 2)', async (_name, which) => {
+    for (const task of FLAGS) {
+      const f = await setup()
+      const run = await start({ ...f.request, prompt: [{ type: 'text', text: task }] }, f.config, which, f.spawn, f.warn, deps)
+      const argv = (f.spawn.mock.calls[0]?.[0] as SubprocessSpawnSpec).argv
+      expect(argv, task).toContain(` ${task}`)
+      f.done.resolve({ exitCode: 0, signal: null }); await run.result; await run.dispose()
+    }
+    expect(safePrompt('plain')).toBe('plain')
+  })
+
+  it('keeps the child environment to a closed list plus explicit entries (finding 3)', async () => {
+    const f = await setup()
+    vi.stubEnv('M4_CUSTOM_AUTH', 'ambient'); vi.stubEnv('PATH', '/bin')
+    try {
+      const env = childEnvironment({ ...f.config, env: { EXPLICIT: '1' } })
+      expect(env).toMatchObject({ M4_CUSTOM_AUTH: undefined, EXPLICIT: '1' })
+      expect('M4_CUSTOM_AUTH' in env).toBe(true)
+      expect('PATH' in env).toBe(false)
+      expect(childEnvironment({ ...f.config, env: { M4_CUSTOM_AUTH: 'x' } }).M4_CUSTOM_AUTH).toBe('x')
+      const run = await f.run()
+      expect((f.spawn.mock.calls[0]?.[0] as SubprocessSpawnSpec).env).toHaveProperty('M4_CUSTOM_AUTH', undefined)
+      f.done.resolve({ exitCode: 0, signal: null }); await run.result; await run.dispose()
+    } finally { vi.unstubAllEnvs() }
+  })
+
+  it('treats a short limit notice as the answer as a limit, not a success (finding 4)', () => {
+    expect(parse('{"text":"usage limit exceeded","stopReason":"end_turn"}').diagnostic).toContain('cota_esgotada')
+    expect(parse('{"text":"usage limit exceeded","stopReason":"end_turn"}').output).toEqual([])
+    const wire = JSON.stringify({ event: 'result', result: { status: 'SUCCESS', response: 'Rate limit reached' } })
+    expect(agyProduct.parse(wire).diagnostic).toContain('cota_esgotada')
+    const essay = `Notes on the rate limit design. ${'x'.repeat(300)}`
+    expect(parse(JSON.stringify({ text: essay, stopReason: 'end_turn' })).stopReason).toBe('completed')
+    expect(quotaAnswer('fine')).toBe(false)
+  })
+
+  it('keeps a good answer when stderr merely mentions a rate limit (finding 5)', async () => {
+    const f = await setup(); f.output('{"text":"FINAL","stopReason":"end_turn"}', 'note: recovered from rate limit')
+    const run = await f.run(); f.done.resolve({ exitCode: 0, signal: null })
+    expect(await run.result).toEqual({ output: [{ type: 'text', text: 'FINAL' }], stopReason: 'completed' })
+    await run.dispose()
+  })
+
+  it('returns the real result when cancellation raced a finished answer (finding 6)', async () => {
+    const f = await setup(); f.output('{"text":"FINAL","stopReason":"end_turn"}')
+    const run = await f.run(); f.signal.abort(); f.done.resolve({ exitCode: 0, signal: null })
+    expect((await run.result).output).toEqual([{ type: 'text', text: 'FINAL' }])
+    await run.dispose()
+  })
+
+  it('still reports aborted when cancellation left no answer, including over the output cap (finding 6)', async () => {
+    const f = await setup(); f.output('', '', true)
+    const run = await f.run(); f.signal.abort(); f.done.resolve({ exitCode: 0, signal: null })
+    expect((await run.result).stopReason).toBe('aborted'); await run.dispose()
+    const g = await setup(); g.output('{"text":"FINAL","stopReason":"end_turn"}')
+    const second = await g.run(); g.signal.abort(); g.done.resolve({ exitCode: 1, signal: null })
+    expect((await second.result).stopReason).toBe('aborted'); await second.dispose()
+  })
+
+  it('resolves only real executables on Windows and refuses cmd shims (finding 7)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-m4-path-')); directories.push(dir)
+    const first = join(dir, 'first'); const second = join(dir, 'second')
+    await mkdir(first); await mkdir(second)
+    await writeFile(join(first, 'tool.cmd'), ''); await writeFile(join(second, 'tool.exe'), '')
+    await writeFile(join(first, 'shim.cmd'), ''); await writeFile(join(second, 'prog.com'), '')
+    const path = `${first};${second}`
+    expect(resolveCommand('tool', 'win32', path)).toBe(join(second, 'tool.exe'))
+    expect(resolveCommand('prog', 'win32', path)).toBe(join(second, 'prog.com'))
+    expect(resolveCommand(join(second, 'tool'), 'win32', '')).toBe(`${join(second, 'tool')}.exe`)
+    expect(resolveCommand('C:\\bin\\x.exe', 'win32', '')).toBe('C:\\bin\\x.exe')
+    expect(() => resolveCommand('shim', 'win32', path)).toThrow('.cmd shim')
+    expect(() => resolveCommand('nada', 'win32', '')).toThrow('executable not found')
+    expect(resolveCommand('grok', 'linux', '')).toBe('grok')
+    const f = await setup()
+    await expect(start(f.request, f.config, product, f.spawn, f.warn, { resolve: () => { throw new Error('nope') } })).rejects.toThrow('process startup failed')
+    if (process.platform === 'win32') {
+      expect(() => { register(f.ctx, { ...f.config, command: 'C:\\x\\grok.cmd' }, product) }).toThrow('.cmd or .bat')
+      expect(() => { register(f.ctx, { ...f.config, command: 'C:\\x\\grok.BAT' }, product) }).toThrow('.cmd or .bat')
+      await expect(start(f.request, { ...f.config, command: 'zz-missing-cli' }, product, f.spawn, f.warn)).rejects.toThrow('process startup failed')
+    }
+  })
+
+  it('does not ask agy for a blocking plan mode when rejecting (finding 8)', () => {
+    const config = resolveConfig(Config({ logDirectory: process.cwd() }), 'agy')
+    expect(agyProduct.argv(config, 'x')).not.toContain('--mode')
+    expect(agyProduct.argv(config, 'x')).not.toContain('plan')
   })
 })

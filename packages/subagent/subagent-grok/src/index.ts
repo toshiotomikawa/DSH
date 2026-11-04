@@ -1,8 +1,8 @@
 /** One-shot Grok Build provider using native authentication and JSON output. */
 import type { Context } from '@deepseek-ai/cordis'
-import { configSchema, failure, isRecord, quotaExceeded, register, type Config as HeadlessConfig, type Product } from './headless.ts'
+import { configSchema, failure, isRecord, quotaAnswer, quotaExceeded, register, type Config as HeadlessConfig, type Product } from './headless.ts'
 import type { SubagentResult } from '@deepseek-ai/dsh-subagent'
-export { configSchema, failure, isRecord, quotaExceeded, register } from './headless.ts'
+export { configSchema, failure, isRecord, quotaAnswer, quotaExceeded, register } from './headless.ts'
 export type { Config as HeadlessConfig, Product } from './headless.ts'
 
 export const name = 'subagent-grok'
@@ -17,6 +17,7 @@ export function parse(stdout: string): SubagentResult {
   const reason = data.stopReason
   if (typeof reason === 'string' && quotaExceeded(reason)) return failure('cota_esgotada')
   if (typeof data.error === 'string' && quotaExceeded(data.error)) return failure('cota_esgotada')
+  if (typeof data.text === 'string' && quotaAnswer(data.text)) return failure('cota_esgotada')
   if (reason === 'refusal') return { output: [], stopReason: 'refusal' }
   if (reason === 'max_tokens') return { output: [], stopReason: 'max-tokens' }
   if (reason !== 'end_turn' || typeof data.text !== 'string' || data.text.length === 0 || data.error) return failure('invalid Grok result')

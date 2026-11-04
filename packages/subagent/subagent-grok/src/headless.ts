@@ -1,13 +1,78 @@
 /** Managed one-shot CLI lifecycle shared by the Grok and agy plugins. */
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
+import { delimiter, extname, isAbsolute, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { assertUsableCwd, NO_START_CAPABILITIES, type ResolvedSubagentStartRequest, type SubagentResult, type SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import type { SubprocessHandle, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+
+/** Ceiling for the per-stream retained output, independent of the timer limit. */
+export const MAX_OUTPUT_BYTES = 8 * 1024 * 1024
+
+/** Ambient variables a native CLI needs to find itself and its own sign-in; everything else is removed. */
+const ALLOWED_ENV = new Set([
+  'PATH', 'PATHEXT', 'SYSTEMROOT', 'SYSTEMDRIVE', 'WINDIR', 'COMSPEC', 'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE',
+  'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA', 'PROGRAMFILES', 'PROGRAMFILES(X86)', 'USERNAME', 'USER',
+  'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'TERM', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME',
+])
+
+/**
+ * Child environment as a closed list: every ambient entry outside the allowlist is tombstoned (an `undefined`
+ * value removes it from the inherited base), then the deployment's explicit entries are layered on top.
+ * @param config - resolved deployment settings.
+ * @returns entries for the spawn spec's `env`.
+ */
+export function childEnvironment(config: ResolvedConfig): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {}
+  for (const key of Object.keys(process.env)) {
+    if (!ALLOWED_ENV.has(key.toUpperCase())) env[key] = undefined
+  }
+  return { ...env, ...config.env }
+}
+
+/**
+ * Keep the task text from ever being read as a command-line flag: a leading dash gets a leading space.
+ * @param prompt - task text.
+ * @returns the text to place in argv.
+ */
+export function safePrompt(prompt: string): string {
+  return prompt.startsWith('-') ? ` ${prompt}` : prompt
+}
+
+/**
+ * Resolve the executable. Windows runs only real `.exe`/`.com` files: a `.cmd` or `.bat` shim cannot be spawned
+ * without a shell and a shell would reopen argument injection, so shims are refused and bare names are searched
+ * for an executable on PATH.
+ * @param command - configured command.
+ * @param platform - host platform.
+ * @param path - PATH value used for the lookup.
+ * @returns the command to spawn.
+ * @throws when no real executable can be found on Windows.
+ */
+export function resolveCommand(command: string, platform: NodeJS.Platform = process.platform, path = String(process.env.PATH)): string {
+  if (platform !== 'win32') return command
+  const extension = extname(command).toLowerCase()
+  if (extension === '.exe' || extension === '.com') return command
+  const names = ['.exe', '.com'].map(suffix => `${command}${suffix}`)
+  const hasDirectory = /[\\/]/.test(command)
+  const directories = hasDirectory ? [''] : path.split(delimiter).filter(entry => entry !== '')
+  for (const directory of directories) {
+    for (const name of names) {
+      const candidate = directory === '' ? name : join(directory, name)
+      if (existsSync(candidate)) return candidate
+    }
+  }
+  throw new Error('Headless subagent: executable not found (Windows needs a .exe, not a .cmd shim)')
+}
+
+/** Test seam for the platform-dependent executable lookup. */
+export interface Dependencies {
+  resolve?: (command: string) => string
+}
 
 /** Deployment settings, never supplied by the model's tool arguments. */
 export interface Config {
@@ -110,13 +175,29 @@ export function quotaExceeded(text: string): boolean {
   return /quota[_ -]?(exceeded|exhausted)|rate[_ -]?limit|usage[_ -]?limit|insufficient[_ -]?(credits|quota)/i.test(text)
 }
 
+/**
+ * A limit notice delivered as the answer itself: short text that reads like a quota message.
+ * Long answers that merely discuss limits are real answers.
+ * @param text - final assistant text.
+ * @returns whether the text is a limit notice.
+ */
+export function quotaAnswer(text: string): boolean {
+  return text.length <= 200 && quotaExceeded(text)
+}
+
 /** Register a native adapter without changing the subagent or subprocess core. */
 export function register(ctx: Context, input: Config, product: Product): void {
   const config = resolveConfig(input, product.name)
-  for (const field of ['timeoutMs', 'disposeGraceMs', 'maxOutputBytes'] as const) {
+  for (const field of ['timeoutMs', 'disposeGraceMs'] as const) {
     if (!Number.isSafeInteger(config[field]) || config[field] <= 0 || config[field] > MAX_TIMER_DELAY_MS) {
       throw new Error(`${product.name}: invalid ${field}`)
     }
+  }
+  if (!Number.isSafeInteger(config.maxOutputBytes) || config.maxOutputBytes <= 0 || config.maxOutputBytes > MAX_OUTPUT_BYTES) {
+    throw new Error(`${product.name}: invalid maxOutputBytes`)
+  }
+  if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(config.command)) {
+    throw new Error(`${product.name}: command must be a real executable, not a .cmd or .bat shim`)
   }
   if (!isAbsolute(config.logDirectory)) throw new Error(`${product.name}: logDirectory must be absolute`)
   if (!Number.isFinite(config.minimumRemainingPercent) || config.minimumRemainingPercent < 0 || config.minimumRemainingPercent > 100) {
@@ -138,7 +219,9 @@ export async function start(
   product: Product,
   spawn: (spec: SubprocessSpawnSpec) => SubprocessHandle,
   warn: (message: string) => void,
+  dependencies: Dependencies = {},
 ) {
+  const resolve = dependencies.resolve ?? ((command: string) => resolveCommand(command))
   if (isAborted(request.signal)) throw new Error('Headless subagent: cancelled before startup')
   const cwd = assertUsableCwd(product.name, 'cwd', request.cwd)
   const parts: string[] = []
@@ -167,8 +250,8 @@ export async function start(
   let child: SubprocessHandle
   try {
     child = spawn({
-      argv: [config.command, ...config.args, ...product.argv(config, prompt)],
-      cwd, env: config.env, signal: signal.signal, graceMs: config.disposeGraceMs,
+      argv: [resolve(config.command), ...config.args, ...product.argv(config, safePrompt(prompt))],
+      cwd, env: childEnvironment(config), signal: signal.signal, graceMs: config.disposeGraceMs,
       stdio: { stdin: 'ignore', stdout: { maxBytes: config.maxOutputBytes }, stderr: { maxBytes: config.maxOutputBytes } },
     })
   } catch {
@@ -189,10 +272,14 @@ export async function start(
         product: product.name, outcome, stdout: stdout.text, stderr: stderr.text, truncated: stdout.lossy || stderr.lossy,
       }), { mode: 0o600 })
       if (flags.timedOut) return failure('tempo_esgotado')
+      if (stdout.lossy) return flags.cancelled ? { output: [], stopReason: 'aborted' } : failure('output limit exceeded')
+      let parsed: SubagentResult | undefined
+      try { parsed = product.parse(stdout.text) } catch { parsed = undefined }
+      // A complete final answer from a clean exit stands, whatever stderr mentions and even if cancel raced it.
+      if (parsed?.stopReason === 'completed' && outcome.exitCode === 0) return parsed
       if (flags.cancelled) return { output: [], stopReason: 'aborted' }
-      if (stdout.lossy) return failure('output limit exceeded')
       if (quotaExceeded(stderr.text)) return failure('cota_esgotada')
-      const parsed = product.parse(stdout.text)
+      if (parsed === undefined) throw new Error('unparseable result')
       if (outcome.exitCode !== 0) return { output: [], stopReason: 'error', diagnostic: parsed.diagnostic ?? 'Headless subagent: process failed' }
       return parsed
     } catch {

@@ -14,7 +14,10 @@ import * as agy from '../../subagent-agy/src/index.ts'
 
 let ctx:Context|undefined
 let cwd:string|undefined
-afterEach(async()=>{await ctx?.fiber.dispose(); if(cwd) await rm(cwd,{ recursive:true,force:true }); delete process.env.M4_SECRET_TOKEN})
+afterEach(async()=>{
+  await ctx?.fiber.dispose(); if(cwd) await rm(cwd,{ recursive:true,force:true })
+  delete process.env.M4_SECRET_TOKEN; delete process.env.M4_CUSTOM_AUTH
+})
 async function launch(env:Record<string,string>={}, timeoutMs=5000, plugin:typeof grok|typeof agy=grok){
   cwd=await mkdtemp(join(tmpdir(),'dsh-m4-native-')); ctx=new Context()
   await ctx.plugin(SessionProjectionRegistry); await mountWorkingDirectoryFixture(ctx)
@@ -44,4 +47,30 @@ it('kills a real hanging child on deadline, leaving no live PID',async()=>{
     const pid=Number(await readFile(marker,'utf8'))
     expect(()=>process.kill(pid,0)).toThrow()
   } finally {await rm(marker,{ force:true })}
+})
+it('does not forward a credential-like variable whose name the old pattern missed (finding 3)',async()=>{
+  process.env.M4_CUSTOM_AUTH='marker-custom-auth'
+  const { run }=await launch()
+  expect((await run.result).output).toEqual([{ type:'text',text:'SCRUBBED' }])
+  await run.dispose()
+})
+it('still forwards variables the deployment lists explicitly (finding 3)',async()=>{
+  process.env.M4_CUSTOM_AUTH='ambient'
+  const { run }=await launch({ M4_CUSTOM_AUTH:'explicit' })
+  expect((await run.result).output).toEqual([{ type:'text',text:'LEAK' }])
+  await run.dispose()
+})
+it('leaves no detached grandchild alive after the final answer (finding 1)',async()=>{
+  const marker=join(tmpdir(),`m4-orphan-${process.pid}-${Date.now()}`)
+  let pid=0
+  try {
+    const { run }=await launch({ M4_FIXTURE_MODE:'orphan',M4_PID_FILE:marker })
+    expect((await run.result).output).toEqual([{ type:'text',text:'SCRUBBED' }])
+    await run.dispose()
+    pid=Number(await readFile(marker,'utf8'))
+    expect(()=>process.kill(pid,0)).toThrow()
+  } finally {
+    if (pid>0) { try { process.kill(pid,'SIGKILL') } catch { /* already gone */ } }
+    await rm(marker,{ force:true })
+  }
 })

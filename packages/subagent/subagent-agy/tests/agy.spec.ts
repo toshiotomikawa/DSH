@@ -20,6 +20,7 @@ describe('Antigravity native wire output', () => {
   it('requires explicit allow and fixes the model per instance',()=>{
     const config = resolveConfig(Config({ logDirectory:process.cwd() }),'agy')
     expect(product.argv(config,'x')).not.toContain('--dangerously-skip-permissions')
+    expect(product.argv(config,'x')).not.toContain('--mode')
     expect(product.argv({ ...config,permission:'allow',model:'native-model' },'x')).toContain('--dangerously-skip-permissions')
     expect(product.argv({ ...config,model:'native-model' },'x').slice(-2)).toEqual(['--model','native-model'])
   })
