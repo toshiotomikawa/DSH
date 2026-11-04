@@ -40,7 +40,7 @@ export class TablesError extends Error {
   }
 }
 
-/** Plain-data form of a {@link TablesError}, safe to cross a Worker boundary. */
+/** Plain-data form of a {@link TablesError}, safe to cross a process boundary. */
 export interface SerializedTablesError {
   readonly code: TablesErrorCode
   readonly message: string

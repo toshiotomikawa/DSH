@@ -14,12 +14,12 @@ import type {
   AlterTableRequest, CreateTableRequest, DropTableRequest, EngineOptions, ExecuteRequest, ExecuteResult,
   QueryRequest, QueryResult, TableSchema, TableSummary,
 } from './engine.ts'
-import { TablesError } from './errors.ts'
+import type { TablesError } from './errors.ts'
+export { TablesError, type TablesErrorCode } from './errors.ts'
 import { SqlRunner } from './runner.ts'
-import type { Method } from './rpc.ts'
+import type { Method } from './types.ts'
 
 export * from './engine.ts'
-export { TablesError, type TablesErrorCode } from './errors.ts'
 
 /** Cordis plugin name. */
 export const name = 'storage-tables'
@@ -154,7 +154,7 @@ export class TablesService {
     return () => { this.listeners.delete(listener) }
   }
 
-  /** Stop the Worker. */
+  /** Stop the SQL child process. */
   close(): Promise<void> {
     return this.runner.close()
   }
@@ -179,14 +179,14 @@ export class TablesService {
       record(true)
       return value
     } catch (error) {
-      record(false, error instanceof TablesError ? error.code : 'interno')
+      record(false, (error as TablesError).code)
       throw error
     }
   }
 }
 
 /**
- * Provide `ctx.tables`; the disposer stops the Worker.
+ * Provide `ctx.tables`; the disposer stops the SQL child process.
  * @param ctx - plugin context.
  * @param config - validated plugin configuration.
  */

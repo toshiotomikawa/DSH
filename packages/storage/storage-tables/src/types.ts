@@ -1,15 +1,13 @@
 /**
- * Message contract between the service and its SQL Worker.
- * @module @deepseek-ai/dsh-storage-tables/rpc
+ * Message contract between the service and its SQL child process.
+ * @module @deepseek-ai/dsh-storage-tables/types
  */
 
 import type { EngineOptions } from './engine.ts'
 import type { SerializedTablesError } from './errors.ts'
 
 /** Engine methods reachable through the Worker. */
-export const METHODS = ['createTable', 'listTables', 'tableSchema', 'alterTable', 'dropTable', 'query', 'execute', 'batch'] as const
-/** One of {@link METHODS}. */
-export type Method = typeof METHODS[number]
+export type Method = 'createTable' | 'listTables' | 'tableSchema' | 'alterTable' | 'dropTable' | 'query' | 'execute' | 'batch'
 
 /** Worker start-up data. */
 export type WorkerStart = EngineOptions

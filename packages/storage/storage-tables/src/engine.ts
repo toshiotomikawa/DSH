@@ -1,7 +1,7 @@
 /**
  * Synchronous engine over one `node:sqlite` connection: table catalog,
  * single-statement SQL admission (SQLite authorizer plus tail check), atomic
- * writes, paging and size ceilings. It runs inside the SQL Worker (or directly
+ * writes, paging and size ceilings. It runs inside the SQL child process (or directly
  * in tests); the asynchronous service lives in `runner.ts` and `index.ts`.
  * @module @deepseek-ai/dsh-storage-tables/engine
  */
