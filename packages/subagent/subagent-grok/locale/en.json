@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Grok subagent",
+    "description": "Delegate one task to grok with a timeout and cancellation."
+  }
+}

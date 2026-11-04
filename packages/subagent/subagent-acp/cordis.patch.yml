@@ -1,0 +1,18 @@
+# One instance per native model; agentOptions/agentPreset are intentionally unsupported.
+- insert:
+    - id: subagent-opencode-go-flash
+      name: '@deepseek-ai/dsh-subagent-acp'
+      config:
+        providerName: opencode-go-flash
+        command: opencode
+        args: [acp]
+        permission: reject
+        env:
+          OPENCODE_CONFIG_CONTENT: '{"model":"opencode-go/deepseek-v4.1-flash","permission":"deny"}'
+          OPENCODE_DISABLE_AUTOUPDATE: '1'
+    - id: tool-subagent-opencode-go-flash
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: opencode-go-flash
+        toolName: subagent_opencode_go_flash
+        maxDepth: provider-managed

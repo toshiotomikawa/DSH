@@ -1,0 +1,4 @@
+{"event":"init","init":{"permission_mode":"request-review"}}
+{"event":"step_update","step_update":{"step_type":"tool","text_delta":"tool output must not reach parent"}}
+{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"M4_OK"}}
+{"event":"result","result":{"status":"SUCCESS","response":"M4_OK\n","num_turns":1}}

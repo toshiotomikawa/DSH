@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Antigravity subagent",
+    "description": "Delegate one task to agy with a timeout and cancellation."
+  }
+}

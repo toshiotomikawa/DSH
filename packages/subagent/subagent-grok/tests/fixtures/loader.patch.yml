@@ -1,0 +1,36 @@
+- id: headless-startup
+  disabled: true
+- id: headless-runner
+  disabled: true
+- id: agent-loop
+  config:
+    agents:
+      - id: main
+        provider: mock
+        model: mock-delegate
+        cwd: !!js process.cwd()
+- id: session-persistence-jsonl
+  config:
+    root: './.sessions'
+    compression: none
+- id: tool-subagent
+  config:
+    provider: grok
+    toolName: subagent
+    maxDepth: provider-managed
+- insert:
+    - id: mock-llm
+      name: '../../../subagent-acp/tests/fixtures/loader/mock-delegating-llm.ts'
+    - id: native-m4
+      name: '@deepseek-ai/dsh-subagent-grok'
+      config:
+        command: !!js process.execPath
+        args:
+          - !!js process.env.M4_TEST_CLI
+        logDirectory: !!js "process.env.DSH_HOME + '/audit'"
+        env: { M4_FIXTURE_MODE: grok }
+- id: sandbox-policy
+  inject: []
+  config:
+    mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
+    workspaceRoot: !!js process.cwd()
