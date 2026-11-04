@@ -1,9 +1,8 @@
 /** Translates a routine calendar into the host scheduler's timing and replays occurrences on a given clock. */
 import {
-  ScheduleId, isRecurringScheduleRecord, resolveRecurringOccurrence,
+  ScheduleId, createScheduleRecord, isRecurringScheduleRecord, resolveRecurringOccurrence,
 } from '@deepseek-ai/dsh-schedule'
 import type { ScheduleRecord, ScheduleTiming } from '@deepseek-ai/dsh-schedule'
-import { createScheduleRecord } from '@deepseek-ai/dsh-schedule/src/update.ts'
 import { RoutineError } from './errors.ts'
 import type { ScheduleSpec } from './types.ts'
 

@@ -31,4 +31,6 @@ Tool definitions remain prefix-stable while enabled. Tool calls and results appe
 
 ## Known Limitations and Deferred Work
 
-Pausing does not undo external effects of an already admitted run. Removing a routine explicitly deletes its execution history. Tools rely on the bridge and service for ownership and scheduling; they do not add user-level authorization or automatic provider fallback.
+- Pausing does not undo external effects of an already admitted run.
+- Removing a routine explicitly deletes its execution history.
+- Tools rely on the bridge and service for ownership and scheduling; they do not add user-level authorization or automatic provider fallback.
