@@ -873,7 +873,7 @@ resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>
 /**
  * Search visible Session content without resuming an Agent. A non-owner
  * receives only the hits whose Session `allows()` admits; `hasMore`
- * describes the bounded result before that filtering.
+ * counts only admitted Sessions before applying the result bound.
  * @param request - literal message-content query.
  * @param signal - cancellation for list and search reads.
  * @returns authorized bounded Session search results.
@@ -885,7 +885,7 @@ resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>
  * @param request - optional blank Session to reuse, location, and Agent preset.
  * @returns the created or reused Session identity and its preset when configured.
  */
-@Remote('create') create(request: SessionCreateRequest): Promise<SessionCreateValue>
+@Remote('create') async create(request: SessionCreateRequest): Promise<SessionCreateValue>
 
 /**
  * Select one Session-local model after explicitly resuming the Session; save the default in the background.
@@ -961,8 +961,8 @@ workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 
 @Remote('prompt') async prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>
 
 /**
- * Read one image from the attachment store after gateway authorization.
- * @param request - image reference and gateway permission scope; Session existence is not checked.
+ * Read one image the addressed Session logged, after gateway authorization.
+ * @param request - image reference and the Session whose permission scope the gateway checked.
  * @returns the durable attachment reference and base64-encoded bytes.
  */
 @Remote('attachment') attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue>

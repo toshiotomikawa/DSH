@@ -2940,12 +2940,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'search\') async search(request: SessionSearchRequest, signal: AbortSignal): Promise<SessionSearchValue>',
-        description: 'Search visible Session content without resuming an Agent. A non-owner receives only the hits whose Session `allows()` admits; `hasMore` describes the bounded result before that filtering.',
+        description: 'Search visible Session content without resuming an Agent. A non-owner receives only the hits whose Session `allows()` admits; `hasMore` counts only admitted Sessions before applying the result bound.',
         parameters: [{ name: 'request', description: 'literal message-content query.' }, { name: 'signal', description: 'cancellation for list and search reads.' }],
         returns: 'authorized bounded Session search results.',
       },
       {
-        signature: '@Remote(\'create\') create(request: SessionCreateRequest): Promise<SessionCreateValue>',
+        signature: '@Remote(\'create\') async create(request: SessionCreateRequest): Promise<SessionCreateValue>',
         description: 'Create one ordinary Session for a new conversation, reusing the named blank Session while it is reusable.',
         parameters: [{ name: 'request', description: 'optional blank Session to reuse, location, and Agent preset.' }],
         returns: 'the created or reused Session identity and its preset when configured.',
@@ -3014,8 +3014,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'attachment\') attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue>',
-        description: 'Read one image from the attachment store after gateway authorization.',
-        parameters: [{ name: 'request', description: 'image reference and gateway permission scope; Session existence is not checked.' }],
+        description: 'Read one image the addressed Session logged, after gateway authorization.',
+        parameters: [{ name: 'request', description: 'image reference and the Session whose permission scope the gateway checked.' }],
         returns: 'the durable attachment reference and base64-encoded bytes.',
       },
       {
@@ -5856,7 +5856,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AgentInfo',
-    declaration: 'export interface AgentInfo {\n    readonly id: string;\n    readonly name: string;\n    readonly preset?: string;\n    readonly cwd?: string;\n}',
+    declaration: 'export interface AgentInfo {\n    readonly ownerId?: string;\n    readonly id: string;\n    readonly name: string;\n    readonly preset?: string;\n    readonly cwd?: string;\n}',
   },
   {
     name: 'AgentOptions',
@@ -8100,7 +8100,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PrincipalMap',
-    declaration: 'export interface PrincipalMap {\n    owner: {\n        readonly kind: \'owner\';\n    };\n}',
+    declaration: 'export interface PrincipalMap {\n    owner: {\n        readonly kind: \'owner\';\n    };\n    account: {\n        readonly kind: \'account\';\n        readonly ownerId: string;\n    };\n}',
   },
   {
     name: 'ProductEvent',
