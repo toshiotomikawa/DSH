@@ -1,0 +1,10 @@
+- id: profiles
+  name: cordis:persistentAgents
+- id: memories
+  name: cordis:agentMemory
+  config:
+    maxMemories: 8
+    maxMemoryBytes: 1024
+    essentialBytes: 1024
+- id: tools
+  name: cordis:memoryTools

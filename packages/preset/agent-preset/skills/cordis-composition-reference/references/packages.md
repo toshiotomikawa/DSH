@@ -10,6 +10,14 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 |---|---|---|
 | `@deepseek-ai/dsh-acp` | yes | Automation-only Agent Client Protocol server for driving DeepSeek Harness agents over JSON-RPC stdio |
 
+## agents
+
+| Package | Config | Description |
+|---|---|---|
+| `@deepseek-ai/dsh-agent-memory` | yes | Stores isolated memories and commits changes after a successful turn. |
+| `@deepseek-ai/dsh-agent-registry` | no | Stores named profiles and binds sessions to stable agent identities. |
+| `@deepseek-ai/dsh-tool-agent-memory` | no | Remembers, forgets and searches data for the calling agent. |
+
 ## api
 
 | Package | Config | Description |

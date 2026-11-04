@@ -136,6 +136,27 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-loop -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-agent-memory -->
+<a id="deepseek-aidsh-agent-memory"></a>
+
+## `@deepseek-ai/dsh-agent-memory`
+
+- `inject`: `storageDomain` · `persistentAgents` · `sessions` · `agents`
+- `source`: [`packages/agents/agent-memory/src/index.ts:32`](../packages/agents/agent-memory/src/index.ts)
+
+```ts config-catalog
+/** Deployment limits; essentialBytes counts the complete serialized data block. */
+export interface Config {
+  /** Maximum number of saved memories per agent; existing records are never evicted. */
+  maxMemories: number
+  /** Maximum UTF-8 bytes in each memory text. */
+  maxMemoryBytes: number
+  /** Maximum bytes in the complete essential-memory context, including warning and ids. */
+  essentialBytes: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-memory -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-agent-preset -->
 <a id="deepseek-aidsh-agent-preset"></a>
 
@@ -4890,6 +4911,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | --- | --- | --- |
 | `@deepseek-ai/dsh-acp-app` | `cmdlineArgs` | [`packages/bundle/acp-app/src/index.ts`](../packages/bundle/acp-app/src/index.ts) |
 | `@deepseek-ai/dsh-agent` | `sessionProjections` | [`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts) |
+| `@deepseek-ai/dsh-agent-registry` | `storageDomain` · `llm` · `agents` | [`packages/agents/agent-registry/src/index.ts`](../packages/agents/agent-registry/src/index.ts) |
 | `@deepseek-ai/dsh-api-account-controller` | `deepseekAccount` · `agents` | [`packages/api/account-controller/src/index.ts`](../packages/api/account-controller/src/index.ts) |
 | `@deepseek-ai/dsh-api-remote-access` | — | [`packages/api/remote-access/src/index.ts`](../packages/api/remote-access/src/index.ts) |
 | `@deepseek-ai/dsh-api-remotes` | `typertGateway` | [`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts) |
@@ -4998,6 +5020,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-subprocess-local` | — | [`packages/subprocess/subprocess-local/src/index.ts`](../packages/subprocess/subprocess-local/src/index.ts) |
 | `@deepseek-ai/dsh-subprocess-ssh` | `ssh` | [`packages/ssh/subprocess-ssh/src/index.ts`](../packages/ssh/subprocess-ssh/src/index.ts) |
 | `@deepseek-ai/dsh-terminal` | — | [`packages/terminal/terminal/src/index.ts`](../packages/terminal/terminal/src/index.ts) |
+| `@deepseek-ai/dsh-tool-agent-memory` | `persistentAgents` · `agentMemory` · `tools` | [`packages/agents/tool-agent-memory/src/index.ts`](../packages/agents/tool-agent-memory/src/index.ts) |
 | `@deepseek-ai/dsh-tool-call-timeout-policy` | `tools` | [`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts) |
 | `@deepseek-ai/dsh-tool-cordis` | `tools` · `cordisInspect` | [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts) |
 | `@deepseek-ai/dsh-tool-executor-native` | `tools` | [`packages/core/tool-executor-native/src/index.ts`](../packages/core/tool-executor-native/src/index.ts) |

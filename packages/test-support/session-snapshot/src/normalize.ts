@@ -121,7 +121,9 @@ function cwdSpellings(ctx: NormalizeContext): string[] {
   const macAliases = spellings
     .filter(spelling => spelling.startsWith('/') && !spelling.startsWith('/private/'))
     .map(spelling => `/private${spelling}`)
-  return [...new Set([...spellings, ...macAliases])]
+  // Runtime-context text JSON-quotes native paths before the enclosing record is serialized.
+  const quotedPaths = spellings.map(spelling => JSON.stringify(spelling).slice(1, -1))
+  return [...new Set([...spellings, ...macAliases, ...quotedPaths])]
     .sort((left, right) => right.length - left.length)
 }
 
