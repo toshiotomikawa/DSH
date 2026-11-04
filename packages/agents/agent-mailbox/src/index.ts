@@ -66,6 +66,8 @@ export interface MailboxDirectory {
   mayInterrupt(caller: Agent, target: MailboxTarget): boolean
   /** A fresh conversation bound to the same agent, optionally titled. */
   thread(target: MailboxTarget, title?: string): SessionId
+  /** Bind an unopened conversation to its durable owner before factory setup. */
+  prepare?(target: MailboxTarget, sessionId: SessionId): Promise<void>
 }
 
 /** Per-recipient delivery state. */
@@ -585,6 +587,7 @@ export class AgentMailbox {
     const target = this.ctx.agentDirectory.find(delivery.recipientId)
     let agent = this.ctx.agents.get(delivery.sessionId)
     if (agent === undefined) {
+      if (target !== undefined) await this.ctx.agentDirectory.prepare?.(target, delivery.sessionId)
       const route = delivery.route ?? target?.model
       const options = route === undefined ? {} : { agentOptions: route }
       const stored = await this.ctx.sessionPersistence.stat(delivery.sessionId)

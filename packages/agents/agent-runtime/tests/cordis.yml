@@ -1,0 +1,28 @@
+- id: memory
+  name: cordis:memory
+  config:
+    maxMemories: 256
+    maxMemoryBytes: 8192
+    essentialBytes: 8192
+- id: memory-tools
+  name: cordis:memoryTools
+- id: runtime
+  name: cordis:runtime
+- id: mailbox
+  name: cordis:mailbox
+- id: mailbox-tools
+  name: cordis:mailboxTools
+- id: web
+  name: cordis:web
+  config:
+    host: 127.0.0.1
+    port: 0
+- id: schedule
+  name: cordis:schedule
+- id: routines
+  name: cordis:routines
+  config:
+    tokenFile: !!js tokenFile
+    tickSeconds: 3600
+- id: routine-tools
+  name: cordis:routineTools

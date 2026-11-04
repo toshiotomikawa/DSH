@@ -1,0 +1,39 @@
+{
+  "include": [
+    "src"
+  ],
+  "compilerOptions": {
+    "outDir": "lib/types",
+    "rootDir": "src"
+  },
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../agent-registry"
+    },
+    {
+      "path": "../agent-mailbox"
+    },
+    {
+      "path": "../agent-routine"
+    },
+    {
+      "path": "../../schedule/schedule"
+    },
+    {
+      "path": "../tool-agent-memory"
+    }
+  ],
+  "extends": "../../../tsconfig.base.json"
+}

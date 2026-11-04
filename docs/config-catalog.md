@@ -142,7 +142,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-agent-memory`
 
 - `inject`: `storageDomain` · `persistentAgents` · `sessions` · `agents`
-- `source`: [`packages/agents/agent-memory/src/index.ts:32`](../packages/agents/agent-memory/src/index.ts)
+- `source`: [`packages/agents/agent-memory/src/index.ts:34`](../packages/agents/agent-memory/src/index.ts)
 
 ```ts config-catalog
 /** Deployment limits; essentialBytes counts the complete serialized data block. */
@@ -191,6 +191,29 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-preset-registry -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-agent-routine -->
+<a id="deepseek-aidsh-agent-routine"></a>
+
+## `@deepseek-ai/dsh-agent-routine`
+
+- `inject`: `storageDomain` · `schedule` · `webServer`
+- `source`: [`packages/agents/agent-routine/src/index.ts:67`](../packages/agents/agent-routine/src/index.ts)
+
+```ts config-catalog
+/** Plugin settings. */
+export interface Config {
+  /** Token file; omitted follows `$DSH_HOME/agent-routines.token`, then `~/.dsh/agent-routines.token`. */
+  tokenFile?: string
+  /** Seconds between checks of waiting runs; default 60. */
+  tickSeconds?: number
+  /** Seconds a delivery may lag before it counts as a missed occurrence; default 120. */
+  graceSeconds?: number
+  /** Seconds between quota re-checks when the provider names no renewal time; default 300, 900, 3600. */
+  backoffSeconds?: number[]
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-routine -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-agent-team -->
 <a id="deepseek-aidsh-agent-team"></a>
@@ -3690,7 +3713,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-subagent-acp`
 
 - `inject`: `subagents` · `subprocess`
-- `source`: [`packages/subagent/subagent-acp/src/index.ts:25`](../packages/subagent/subagent-acp/src/index.ts)
+- `source`: [`packages/subagent/subagent-acp/src/index.ts:26`](../packages/subagent/subagent-acp/src/index.ts)
 
 ```ts config-catalog
 /** Config: how to spawn and drive the child ACP agent process. */
@@ -4991,7 +5014,9 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | --- | --- | --- |
 | `@deepseek-ai/dsh-acp-app` | `cmdlineArgs` | [`packages/bundle/acp-app/src/index.ts`](../packages/bundle/acp-app/src/index.ts) |
 | `@deepseek-ai/dsh-agent` | `sessionProjections` | [`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts) |
+| `@deepseek-ai/dsh-agent-mailbox` | `storageDomain` · `agents` · `sessionPersistence` · `agentDirectory` | [`packages/agents/agent-mailbox/src/index.ts`](../packages/agents/agent-mailbox/src/index.ts) |
 | `@deepseek-ai/dsh-agent-registry` | `storageDomain` · `llm` · `agents` | [`packages/agents/agent-registry/src/index.ts`](../packages/agents/agent-registry/src/index.ts) |
+| `@deepseek-ai/dsh-agent-runtime` | `persistentAgents` · `agents` · `agentMemory` · `systemPrompt` | [`packages/agents/agent-runtime/src/index.ts`](../packages/agents/agent-runtime/src/index.ts) |
 | `@deepseek-ai/dsh-api-account-controller` | `deepseekAccount` · `agents` | [`packages/api/account-controller/src/index.ts`](../packages/api/account-controller/src/index.ts) |
 | `@deepseek-ai/dsh-api-remote-access` | — | [`packages/api/remote-access/src/index.ts`](../packages/api/remote-access/src/index.ts) |
 | `@deepseek-ai/dsh-api-remotes` | `typertGateway` | [`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts) |
@@ -5100,7 +5125,9 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-subprocess-local` | — | [`packages/subprocess/subprocess-local/src/index.ts`](../packages/subprocess/subprocess-local/src/index.ts) |
 | `@deepseek-ai/dsh-subprocess-ssh` | `ssh` | [`packages/ssh/subprocess-ssh/src/index.ts`](../packages/ssh/subprocess-ssh/src/index.ts) |
 | `@deepseek-ai/dsh-terminal` | — | [`packages/terminal/terminal/src/index.ts`](../packages/terminal/terminal/src/index.ts) |
+| `@deepseek-ai/dsh-tool-agent-mailbox` | `tools` · `agentMailbox` | [`packages/agents/tool-agent-mailbox/src/index.ts`](../packages/agents/tool-agent-mailbox/src/index.ts) |
 | `@deepseek-ai/dsh-tool-agent-memory` | `persistentAgents` · `agentMemory` · `tools` | [`packages/agents/tool-agent-memory/src/index.ts`](../packages/agents/tool-agent-memory/src/index.ts) |
+| `@deepseek-ai/dsh-tool-agent-routine` | `tools` · `agentRoutines` | [`packages/agents/tool-agent-routine/src/index.ts`](../packages/agents/tool-agent-routine/src/index.ts) |
 | `@deepseek-ai/dsh-tool-call-timeout-policy` | `tools` | [`packages/guard/timeout-policy/src/index.ts`](../packages/guard/timeout-policy/src/index.ts) |
 | `@deepseek-ai/dsh-tool-cordis` | `tools` · `cordisInspect` | [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/tool-cordis/src/index.ts) |
 | `@deepseek-ai/dsh-tool-executor-native` | `tools` | [`packages/core/tool-executor-native/src/index.ts`](../packages/core/tool-executor-native/src/index.ts) |

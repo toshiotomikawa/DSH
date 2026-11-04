@@ -308,6 +308,7 @@
     "@deepseek-ai/dsh-action-cards": "workspace:*",
     "@deepseek-ai/dsh-agent-registry": "workspace:*",
     "@deepseek-ai/dsh-agent-memory": "workspace:*",
-    "@deepseek-ai/dsh-tool-agent-memory": "workspace:*"
+    "@deepseek-ai/dsh-tool-agent-memory": "workspace:*",
+    "@deepseek-ai/dsh-agent-runtime": "workspace:*"
   }
 }
