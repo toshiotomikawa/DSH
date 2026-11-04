@@ -1,6 +1,6 @@
 /** Authenticated local HTTP entry that lets a script ask for one execution of a routine. */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { RoutineError } from './errors.ts'
@@ -32,7 +32,6 @@ export async function loadToken(path: string): Promise<string> {
   const token = randomBytes(32).toString('hex')
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, `${token}\n`, { mode: 0o600 })
-  await chmod(path, 0o600).catch(() => undefined)
   return token
 }
 
@@ -55,7 +54,7 @@ async function readBody(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = []
   let size = 0
   for await (const raw of request) {
-    const chunk = Buffer.isBuffer(raw) ? raw : Buffer.from(raw as string)
+    const chunk = raw as Buffer
     size += chunk.byteLength
     if (size > MAX_BODY_BYTES) {
       request.resume()
