@@ -268,9 +268,11 @@ async function writeSessionFixtures(
     if (replacement.from === ctx.cwd) replacements.push({ from: ctx.cwd.split(sep).join('/'), to: replacement.to })
   }
   const fresh = actualLogs.map((log, index) => {
+    // Normalize quoted native paths before refresh replaces the header cwd with its fixture token.
+    const portable = tokenizeSessionFixtureCwd(log.content)
     const stable = tokenizeSessionFixtureCwd(mode === 'refresh'
-      ? stabilizeRefreshLog(log.content, prior[index] as string, replacements, ctx)
-      : log.content)
+      ? stabilizeRefreshLog(portable, prior[index] as string, replacements, ctx)
+      : portable)
     return scrubSessionSnapshot(prepareSessionSnapshotFixtureForComparison(stable))
   })
   const output = redactSessionSnapshotIds(stabilizeFixtureMessageIds(fresh, prior))

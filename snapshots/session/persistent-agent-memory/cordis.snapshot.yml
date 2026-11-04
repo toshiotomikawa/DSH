@@ -11,6 +11,10 @@
 - id: session-title-llm
   disabled: true
 
+# This scenario exercises persistent memory, independent of checkout ancestors.
+- id: agent-instructions
+  disabled: true
+
 - id: session-persistence-jsonl
   name: '@deepseek-ai/dsh-session-persistence-jsonl'
   config:
