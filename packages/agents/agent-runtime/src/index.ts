@@ -89,6 +89,7 @@ export function apply(ctx: Context): void {
     const routines = ctx.get('agentRoutines')
     if (!routines) return
     const lines = message.content.flatMap(block => block.type === 'text' ? block.text.split('\n') : [])
+    if (lines[0] !== '[SCHEDULE REMINDER]') return
     if (routines.engine.list().some(routine => routine.scheduleTaskId !== undefined
       && lines.includes(`schedule_id_json: ${JSON.stringify(routine.scheduleTaskId)}`))) {
       // The calendar only records delivery; the routine engine owns admission and the single model execution.

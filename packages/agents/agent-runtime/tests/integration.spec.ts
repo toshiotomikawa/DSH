@@ -84,6 +84,29 @@ async function fixture() {
 }
 
 describe('persistent agent host integration', () => {
+  it('keeps working when a routine calendar change notice is claimed', async () => {
+    const f = await fixture()
+    // Existing hosts can have involved sessions from edits made before routine ownership was enforced.
+    f.ctx.provide('sessionController', {} as Context['sessionController'])
+    const routine = await f.ctx.agentRoutines.engine.createRoutine({
+      agentId: f.a.id, name: 'Notice', instruction: 'Run', trigger: 'schedule',
+      schedule: { kind: 'interval', everySeconds: 180 }, timeZone: 'UTC',
+    })
+    const domain = await f.ctx.schedule['getDomain']()
+    const tasks = domain.table('tasks')
+    const id = ScheduleId(routine.scheduleTaskId!)
+    await tasks.put(id, { ...tasks.get(id)!, involvedSessionIds: [f.agent.id] })
+    await f.ctx.agentRoutines.engine.editRoutine(routine.id, { name: 'Changed' })
+    await vi.waitFor(() => {
+      expect([...f.agent.inbox.nextTurn, ...f.agent.inbox.nextStep].some(message =>
+        message.content.some(block => block.type === 'text' && block.text.startsWith('[SCHEDULE CHANGE]')))).toBe(true)
+    })
+    f.adapter.actions = [textResponse('Work survived the notice')]
+    f.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Continue working' }], source: { kind: 'user' } }))
+    await f.agent.whenIdle()
+    expect(f.adapter.requests).toHaveLength(1)
+    expect(f.agent.session.snapshotEvents().filter(event => event.type === 'turn/end').at(-1)?.data.reason.kind).toBe('completed')
+  })
   it('lets the calendar record delivery without a duplicate model execution', async () => {
     const f = await fixture()
     f.ctx.provide('sessionController', {
@@ -116,7 +139,7 @@ describe('persistent agent host integration', () => {
     // A normal reminder and a user's lookalike text retain their ordinary turns.
     f.adapter.actions = [textResponse('ordinary'), textResponse('user')]
     const carrier = [...f.created.values()].find(agent => agent.id !== f.agent.id && agent.id !== run.sessionId)!
-    carrier.followup(createUserMessage({ content: [{ type: 'text', text: 'ordinary reminder' }], source: { kind: 'schedule' } }))
+    carrier.followup(createUserMessage({ content: [{ type: 'text', text: '[SCHEDULE REMINDER]\nordinary reminder' }], source: { kind: 'schedule' } }))
     await carrier.whenIdle()
     carrier.followup(createUserMessage({ content: [{ type: 'text', text: `schedule_id_json: ${JSON.stringify(routine.scheduleTaskId)}` }], source: { kind: 'user' } }))
     await carrier.whenIdle()
