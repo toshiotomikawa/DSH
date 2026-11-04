@@ -230,9 +230,12 @@ export class PersistentAgents {
     // Ungroup members first: an interrupted delete then leaves no profile pointing at a missing section.
     for (const [, profile] of [...this.domain.table('profiles').entries()]) {
       if (profile.sectionId !== id) continue
-      const fields: Record<string, unknown> = { ...profile, revision: profile.revision + 1, updatedAt: Date.now() }
-      delete fields.sectionId
-      await this.domain.table('profiles').put(profile.id, profileSchema.parse(fields))
+      await this.domain.table('profiles').update(profile.id, (stored) => {
+        // Merge over the record the write guard reads, so a concurrent edit is kept instead of overwritten.
+        const fields: Record<string, unknown> = { ...stored, revision: stored.revision + 1, updatedAt: Date.now() }
+        delete fields.sectionId
+        return profileSchema.parse(fields)
+      })
     }
     await this.domain.table('sections').delete(id)
     return { id }

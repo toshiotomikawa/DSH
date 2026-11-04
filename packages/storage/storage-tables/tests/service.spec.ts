@@ -295,6 +295,20 @@ describe('one database file per account', () => {
     expect(await codeOf(tables.tableSchema('notas', { agent: 'agente-c', ownerId: 'Conta A/1' }))).toBe('ok')
   })
 
+  it('keeps an account named shared out of the shared file (audit 1)', async () => {
+    const tables = open()
+    const named = { agent: 'agente-s', ownerId: 'shared' } as const
+    expect((await tables.createTable(NOTES, named)).escopo).toBe('privada')
+    expect(existsSync(join(dir, 'data', 'privada-tables-shared.sqlite'))).toBe(true)
+    expect(existsSync(join(dir, 'data', 'tables-shared.sqlite'))).toBe(false)
+    // The table stays in that account's own file: no other account reads it from the shared file.
+    expect((await tables.listTables(named)).map(table => table.nome)).toEqual(['notas'])
+    expect((await tables.listTables(A)).map(table => table.nome)).toEqual([])
+    expect(await codeOf(tables.tableSchema('notas', A))).toBe('nao_existe')
+    expect((await tables.createTable(NOTES, A)).escopo).toBe('privada')
+    expect((await tables.listTables(A)).map(table => table.nome)).toEqual(['notas'])
+  })
+
   it('keeps one in-memory database per scope when no file is configured', async () => {
     const memory = new StorageTables.TablesService({ path: ':memory:' })
     services.push(memory)

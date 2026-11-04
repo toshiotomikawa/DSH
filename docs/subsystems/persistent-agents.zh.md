@@ -290,6 +290,37 @@ async update(id: PersistentAgentId, expectedRevision: number, input: AgentPatch)
  */
 async updateMany( edits: readonly { id: PersistentAgentId; revision: number; patch: AgentPatch }[], ): Promise<({ id: PersistentAgentId; profile: AgentProfile } | { id: PersistentAgentId; error: string })[]>
 
+/** Sidebar groups visible to the caller; membership never grants access.
+ * @returns detached sections, oldest first.
+ */
+listSections(): AgentSection[]
+
+/** Create one sidebar group for the authenticated account.
+ * @param name - display name, 1 to 40 characters.
+ * @returns the stored section.
+ */
+async createSection(name: string): Promise<AgentSection>
+
+/** Rename one visible section; agent membership and profile ids do not change.
+ * @param id - section id.
+ * @param name - new display name, 1 to 40 characters.
+ * @returns the stored section.
+ */
+async renameSection(id: string, name: string): Promise<AgentSection>
+
+/** Delete one visible section; its agents survive and become ungrouped.
+ * @param id - section id.
+ * @returns the deleted id.
+ */
+async deleteSection(id: string): Promise<{ id: string }>
+
+/** Move one visible agent into a section, or remove its grouping with null.
+ * @param agentId - profile id.
+ * @param sectionId - visible section id, or null to ungroup.
+ * @returns the saved profile.
+ */
+async assignSection(agentId: PersistentAgentId, sectionId: string | null): Promise<AgentProfile>
+
 /** Attach durable metadata without changing a Session header or its history.
  * @param sessionId - conversation id.
  * @param agentId - profile id.
