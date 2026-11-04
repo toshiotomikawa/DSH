@@ -63,6 +63,8 @@ import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
 import * as ToolGoal from '@deepseek-ai/dsh-tool-goal'
 import * as ToolSchedule from '@deepseek-ai/dsh-tool-schedule'
+import * as ToolAgentRoutine from '@deepseek-ai/dsh-tool-agent-routine'
+import type { AgentRoutines } from '@deepseek-ai/dsh-agent-routine'
 import ScheduleService from '@deepseek-ai/dsh-schedule'
 import Lsp from '@deepseek-ai/dsh-lsp'
 import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
@@ -499,6 +501,22 @@ const TOOL_PACKAGES: ToolPackage[] = [
       + 'Management reads and writes Host tasks by id across Sessions. '
       + 'Tasks store an RFC 5545 recurrence and an existing, first-created-and-reused, or per-run-new Session target. '
       + 'Delegated subagents cannot call these tools.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-agent-routine',
+    dir: 'tool-agent-routine',
+    source: 'packages/agents/tool-agent-routine/src/index.ts',
+    requires: ['ctx.tools', 'ctx.agentRoutines'],
+    writes: ['tool/call', 'Agent routine storage domain create, update, or delete', 'Schedule task for the calendar', 'tool/result'],
+    async mount(ctx) {
+      // Schema harvest never executes a tool, so the routine service is a stub.
+      ctx.provide('agentRoutines', {} as AgentRoutines)
+      await ctx.plugin(ToolAgentRoutine)
+    },
+    note:
+      'A preset or Agent scope decides which agents receive these tools. '
+      + 'Every execution starts a fresh session of the routine agent; the calendar lives in the Host Schedule. '
+      + 'routine_no_update is meant for the execution session only: the run stays in the history and no notification is sent.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-lsp',

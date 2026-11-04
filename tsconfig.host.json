@@ -404,6 +404,8 @@
     { "path": "./packages/storage/storage-sqlite" },
     { "path": "./packages/storage/storage-tables" },
     { "path": "./packages/storage/tool-tables" },
+    { "path": "./packages/agents/agent-routine" },
+    { "path": "./packages/agents/tool-agent-routine" },
     { "path": "./packages/storage/storage-domain" },
     { "path": "./packages/feedback/message-feedback" },
     { "path": "./packages/workspace/workspace" },
