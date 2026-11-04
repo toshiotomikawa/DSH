@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/agents/tool-agent-routine/README.md
+/:
+  en: bbe4d6a79a972c6f
+  zh: 9a492f8b7b9f5945
+/deepseek-ai-dsh-tool-agent-routine:
+  en: 2dbb7ad7e9faac7f
+  zh: f32ce81749b17ca2
+/deepseek-ai-dsh-tool-agent-routine/summary:
+  en: 2a6af5445ce3d68f
+  zh: fd0e46970f41adbc
+/deepseek-ai-dsh-tool-agent-routine/use-this-package:
+  en: dfa9b8dd3e2c11aa
+  zh: d7d49b130da7a9fe
+/deepseek-ai-dsh-tool-agent-routine/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-tool-agent-routine/model-experience/routine-management-and-outcomes:
+  en: 8ee89601de3769ce
+  zh: 0b927cf304a41566
+/deepseek-ai-dsh-tool-agent-routine/model-experience/routine-management-and-outcomes/what-the-model-sees:
+  en: 900ed650132cfd5e
+  zh: 7b26b230aa8ac033
+/deepseek-ai-dsh-tool-agent-routine/model-experience/routine-management-and-outcomes/token-effect:
+  en: 8e23b82604b8aba5
+  zh: 3fc6948294607811
+/deepseek-ai-dsh-tool-agent-routine/model-experience/routine-management-and-outcomes/kv-cache-effect:
+  en: f7cc4f90f35a7877
+  zh: 01a1b6cc4440245d
+/deepseek-ai-dsh-tool-agent-routine/known-limitations-and-deferred-work:
+  en: febdefc3e5dab4f8
+  zh: 23f09eabcf9a0ac2

@@ -5,6 +5,8 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-agent-mailbox
 
+English | [中文](README.zh.md)
+
 ## Summary
 
 Stores durable messages and per-recipient deliveries between persistent agents whose root sessions differ. The sender is always the authenticated live agent; the identity layer supplies visible targets, stable ids and interruption authority.

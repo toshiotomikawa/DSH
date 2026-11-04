@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/agents/tool-agent-mailbox/README.md
+/:
+  en: 271cca8e6bf1a7ad
+  zh: c7dceff4eb72736c
+/deepseek-ai-dsh-tool-agent-mailbox:
+  en: 806b2dc04c662638
+  zh: 4d1fd496add67494
+/deepseek-ai-dsh-tool-agent-mailbox/summary:
+  en: da159133fd0d8eba
+  zh: a6086f2c34df1919
+/deepseek-ai-dsh-tool-agent-mailbox/use-this-package:
+  en: d761af8ab4a46cba
+  zh: 9244a4813c2b728e
+/deepseek-ai-dsh-tool-agent-mailbox/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-tool-agent-mailbox/model-experience/mailbox-tool-schemas-and-results:
+  en: 8fda16b84927f72c
+  zh: 7754ea5504c31bb3
+/deepseek-ai-dsh-tool-agent-mailbox/model-experience/mailbox-tool-schemas-and-results/what-the-model-sees:
+  en: ff1af5254ad7bd4a
+  zh: ba8aad9c5b78ae35
+/deepseek-ai-dsh-tool-agent-mailbox/model-experience/mailbox-tool-schemas-and-results/token-effect:
+  en: 9867a17bab380b12
+  zh: adeb4cf51e93854d
+/deepseek-ai-dsh-tool-agent-mailbox/model-experience/mailbox-tool-schemas-and-results/kv-cache-effect:
+  en: dd492f94ab62ab22
+  zh: 03c4b74fd3996680
+/deepseek-ai-dsh-tool-agent-mailbox/known-limitations-and-deferred-work:
+  en: 4a8cea3e1a0d6a42
+  zh: e2e1d2e693aa0890

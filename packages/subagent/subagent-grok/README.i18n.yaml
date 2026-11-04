@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/subagent/subagent-grok/README.md
+/:
+  en: 0a905592dd974100
+  zh: 1745de2f9da6a9b2
+/deepseek-ai-dsh-subagent-grok:
+  en: fa11ffee63fd254e
+  zh: b5f8e7de4cd7136a
+/deepseek-ai-dsh-subagent-grok/summary:
+  en: 74c0b782ab5b800d
+  zh: 95be5c25131a04c9
+/deepseek-ai-dsh-subagent-grok/use-this-package:
+  en: f7ee43d95aace76d
+  zh: 55fd77d1f3626594
+/deepseek-ai-dsh-subagent-grok/understand-the-implementation:
+  en: 6a3e175d2e711830
+  zh: e96d693db1e92775
+/deepseek-ai-dsh-subagent-grok/dev-note:
+  en: dc49a5836981caca
+  zh: 78a19b9227f44efc
+/deepseek-ai-dsh-subagent-grok/model-experience:
+  en: 94df9d80ba82af2d
+  zh: 45ce858013616dbf
+/deepseek-ai-dsh-subagent-grok/model-experience/kv-cache-effect:
+  en: 3d17146862564222
+  zh: 0b6851d2b4b60e6b
+/deepseek-ai-dsh-subagent-grok/known-limitations-and-deferred-work:
+  en: 8d369981380ec6eb
+  zh: b2a4aa3191693166

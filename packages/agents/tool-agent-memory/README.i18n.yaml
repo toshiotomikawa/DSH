@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/agents/tool-agent-memory/README.md
+/:
+  en: d4cff2dce37dda1a
+  zh: b8be6ab93acf91ce
+/deepseek-ai-dsh-tool-agent-memory:
+  en: f8eb17698ab36e81
+  zh: f0f1eaa19cfbee64
+/deepseek-ai-dsh-tool-agent-memory/summary:
+  en: cf6f4877fa89d516
+  zh: 088f46f9776c195b
+/deepseek-ai-dsh-tool-agent-memory/use-this-package:
+  en: b928e26f84728d8e
+  zh: 86aab632671a70e2
+/deepseek-ai-dsh-tool-agent-memory/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-tool-agent-memory/model-experience/persistent-identity-and-memories:
+  en: 133b28bcc10fce73
+  zh: 0ec5c59dfdad0123
+/deepseek-ai-dsh-tool-agent-memory/model-experience/persistent-identity-and-memories/what-the-model-sees:
+  en: 164cca725ea88e45
+  zh: 916c10dc66f2389a
+/deepseek-ai-dsh-tool-agent-memory/model-experience/persistent-identity-and-memories/token-effect:
+  en: 7b993f60516cd7fa
+  zh: 42bd93e760e7f7b7
+/deepseek-ai-dsh-tool-agent-memory/model-experience/persistent-identity-and-memories/kv-cache-effect:
+  en: 7bf1b3d48ca6b3d8
+  zh: 80f093a40591d40b
+/deepseek-ai-dsh-tool-agent-memory/known-limitations-and-deferred-work:
+  en: f81734478bc08249
+  zh: 3ef963c7b7163be1

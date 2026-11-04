@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/subagent/subagent-agy/README.md
+/:
+  en: d73a39a76d5512ec
+  zh: cf1f9353a994c78e
+/deepseek-ai-dsh-subagent-agy:
+  en: 28e4673f6456e100
+  zh: 1aa973d5f8c31ce1
+/deepseek-ai-dsh-subagent-agy/summary:
+  en: b71db23263d33fa7
+  zh: c78cc32eeff730ad
+/deepseek-ai-dsh-subagent-agy/use-this-package:
+  en: b141adf85984ff81
+  zh: dc8a9f6a1fc69288
+/deepseek-ai-dsh-subagent-agy/understand-the-implementation:
+  en: 9ea3d793bf14aede
+  zh: 43d3021ad10009a1
+/deepseek-ai-dsh-subagent-agy/dev-note:
+  en: a3b701f4fb7168e6
+  zh: 71262f40f5e8ecab
+/deepseek-ai-dsh-subagent-agy/model-experience:
+  en: d75c10a667b8ebf5
+  zh: 82b14c46ab83391b
+/deepseek-ai-dsh-subagent-agy/model-experience/kv-cache-effect:
+  en: 3d17146862564222
+  zh: 0b6851d2b4b60e6b
+/deepseek-ai-dsh-subagent-agy/known-limitations-and-deferred-work:
+  en: b26e3c0cc2fd2187
+  zh: a4fb870500f30231

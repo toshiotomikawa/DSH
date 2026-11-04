@@ -207,6 +207,8 @@ interface RemoteStreamHandle<Out, In> extends AsyncIterable<Out> {
 interface PrincipalMap {
   /** The local user who owns this Host. */
   owner: { readonly kind: 'owner' }
+  /** Account identity supplied by a trusted connection adapter; carries no credential. */
+  account: { readonly kind: 'account'; readonly ownerId: string }
 }
 ```
 
