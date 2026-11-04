@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Exécution des agents persistants",
+    "description": "Relie les identités d’agents persistants aux sessions de la boîte aux lettres et des routines."
+  }
+}

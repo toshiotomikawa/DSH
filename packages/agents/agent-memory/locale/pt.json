@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Memória do agente",
+    "description": "Guarda memórias isoladas e confirma as alterações depois de um turno bem-sucedido."
+  }
+}

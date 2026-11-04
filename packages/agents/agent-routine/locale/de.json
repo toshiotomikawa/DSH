@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agenten-Routinen",
+    "description": "Routinen pro Agent auf dem Host-Planer mit Warteschlange, Kontingentwartezeit und authentifiziertem Skript-Eingang."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Routines des agents",
+    "description": "Routines par agent sur le planificateur de l’hôte, avec file d’attente, attente de quota et entrée de script authentifiée."
+  }
+}

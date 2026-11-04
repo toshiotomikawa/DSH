@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Rutinas de agentes",
+    "description": "Rutinas por agente sobre el planificador del host, con cola, espera de cuota y entrada autenticada para scripts."
+  }
+}

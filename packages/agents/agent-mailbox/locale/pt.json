@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Caixa de mensagens dos agentes",
+    "description": "Mensagens duráveis entre agentes persistentes de sessões diferentes."
+  }
+}
