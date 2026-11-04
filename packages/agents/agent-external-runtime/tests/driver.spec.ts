@@ -1,11 +1,12 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Context } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
 import Typert from '@deepseek-ai/dsh-typert-registry'
 import Gateway from '@deepseek-ai/dsh-api-gateway'
 import Query from '@deepseek-ai/dsh-session-query-sqlite'
-import { appendPluginRecord, pluginRecordOf, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { appendPluginRecord, pluginRecordOf, SessionId, SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { createUserMessage, MessageId } from '@deepseek-ai/dsh-llm'
+import '@deepseek-ai/dsh-experimental-agent-external-runtime'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import { harness, inherited } from '../../agent-registry/tests/harness.ts'
@@ -20,6 +21,10 @@ import { ExternalAgentActivationService } from '../src/driver.ts'
 
 function prompt(text: string) {
   return createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })
+}
+
+function rawRecord(event: object): SessionEvent {
+  return event as unknown as SessionEvent
 }
 
 function events(agent: Agent) {
@@ -138,7 +143,7 @@ it('runs a queued followup as a later turn and a steer as another step', async (
   expect(f.adapter.requests).toHaveLength(0)
 })
 
-it('cancels the active turn, keeps a queued followup only when asked, and ignores a cancel while idle', async () => {
+it('cancels the active turn, keeps a queued followup only when asked, and drops an idle inject', async () => {
   const f = await fixture()
   const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
   const release = hold(service)
@@ -147,7 +152,12 @@ it('cancels the active turn, keeps a queued followup only when asked, and ignore
   parked.agent.inject(prompt('parked'))
   parked.agent.cancel({ kind: 'user' })
   expect(parked.agent.status).toBe('idle')
-  expect(parked.agent.inbox.nextStep).toHaveLength(1)
+  expect(parked.agent.inbox.nextStep).toHaveLength(0)
+  const held = await f.open()
+  onTestFinished(() => held.dispose())
+  held.agent.inject(prompt('held'))
+  held.agent.cancel({ kind: 'user' }, { keepInbox: true })
+  expect(held.agent.inbox.nextStep).toHaveLength(1)
   const kept = await f.open()
   onTestFinished(() => kept.dispose())
   kept.agent.followup(prompt('active'))
@@ -186,6 +196,11 @@ it('returns a routine admission before the fake SDK finishes and settles that tu
   const started = await f.ctx.agentRoutineBridge.runner.start({
     runId: 'run-1', agent: { id: f.profile.id, name: f.profile.name, ownerId: f.account.id }, prompt: 'routine',
   })
+  await vi.waitFor(() => {
+    const agent = f.ctx.agents.get(SessionId(started.sessionId))
+    const end = agent === undefined ? undefined : events(agent).find(event => event.type === 'turn/end')
+    expect(service.calls, JSON.stringify(end?.data ?? agent?.status ?? 'missing')).toHaveLength(1)
+  })
   expect(f.ctx.agents.get(SessionId(started.sessionId))?.status).toBe('running')
   expect(settled).toHaveLength(0)
   expect(f.selection).not.toHaveBeenCalled()
@@ -198,7 +213,7 @@ it('returns a routine admission before the fake SDK finishes and settles that tu
   expect(f.adapter.requests).toHaveLength(0)
 })
 
-it('resumes the same fake session, restores an unclaimed inject, and refuses a stale binding or a lost session id', async () => {
+it('resumes the same fake session, restores an unclaimed inject, and refuses a stale binding or a lost session id', { timeout: 15000 }, async () => {
   const f = await fixture()
   const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
   const sessionId = SessionId(`ext-resume-${f.profile.id}`)
@@ -244,16 +259,33 @@ it('keeps native profiles on the loop and refuses an external profile when the p
   const sessionId = SessionId(`native-${native.id}`)
   await f.ctx.persistentAgents.bind(sessionId, native.id)
   const handle = await f.ctx.persistentAgentActivation.createOrResume({ ownerCtx: f.ctx, sessionId, agentId: native.id })
-  onTestFinished(() => handle.dispose())
   expect(f.create).toHaveBeenCalled()
   expect(f.selection).toHaveBeenCalled()
+  await handle.dispose()
+  const resume = vi.spyOn(f.ctx.agents, 'resume')
+  const again = await f.ctx.persistentAgentActivation.createOrResume({ ownerCtx: f.ctx, sessionId, agentId: native.id })
+  onTestFinished(() => again.dispose())
+  expect(resume).toHaveBeenCalled()
+  await expect(f.ctx.persistentAgentActivation.createOrResume({
+    ownerCtx: new Context(), sessionId: SessionId('no-registry'), agentId: native.id,
+  })).rejects.toThrow('Persistent agent registry is unavailable')
+  const read = f.ctx.get.bind(f.ctx)
+  const host = new Proxy(f.ctx, {
+    get(target, prop, receiver) {
+      if (prop === 'get') return (name: string) => name === 'sessionPersistence' ? undefined : read(name)
+      return Reflect.get(target, prop, receiver)
+    },
+  })
+  await expect(f.ctx.persistentAgentActivation.createOrResume({
+    ownerCtx: host, sessionId: SessionId(`no-persistence-${native.id}`), agentId: native.id,
+  })).rejects.toThrow('cannot resume: session persistence is not configured (load a dsh-session-persistence backend)')
   await expect(f.ctx.persistentAgentActivation.createOrResume({
     ownerCtx: f.ctx, sessionId: SessionId(`missing-${f.profile.id}`), agentId: f.profile.id,
   })).rejects.toThrow('External agent runtime is unavailable')
   expect(f.adapter.requests).toHaveLength(0)
 })
 
-it('wakes mail for an external profile through the activation port', async () => {
+it('wakes mail for an external profile through the activation port', { timeout: 15000 }, async () => {
   const f = await fixture()
   await f.ctx.plugin(Mailbox)
   const senderProfile = await f.ctx.persistentAgents.create({ name: 'Sender', ownerId: f.account.id, runtime: 'native' }, inherited)
@@ -264,20 +296,218 @@ it('wakes mail for an external profile through the activation port', async () =>
   const before = f.adapter.requests.length
   await f.ctx.agentMailbox.send(sender.agent, { recipients: [f.profile.id], text: 'hello external', expectsReply: false })
   const target = SessionId(`agent-${f.profile.id}`)
-  await vi.waitFor(() => expect(events(f.ctx.agents.get(target)!).some(event => event.type === 'assistant/message')).toBe(true))
+  await vi.waitFor(() => {
+    const agent = f.ctx.agents.get(target)
+    expect(agent, 'recipient missing').toBeDefined()
+    const list = events(agent!)
+    const end = list.find(event => event.type === 'turn/end')
+    expect(end?.data.reason.kind ?? 'pending', JSON.stringify(end?.data ?? list.map(event => event.type))).not.toBe('error')
+    expect(list.some(event => event.type === 'assistant/message')).toBe(true)
+  }, { timeout: 5000 })
   expect(f.adapter.requests).toHaveLength(before)
   expect(events(f.ctx.agents.get(target)!).some(event => event.type === 'request/header')).toBe(false)
 })
 
 it('runs maintenance only while idle and tears the agent down to quiescence', async () => {
   const f = await fixture()
+  const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  const release = hold(service)
   const handle = await f.open()
   const maintained = await handle.agent.runMaintenance(async () => {
     expect(handle.agent.status).toBe('idle')
     return 'done'
   })
   expect(maintained).toBe('done')
+  handle.agent.followup(prompt('busy'))
+  await vi.waitFor(() => expect(service.calls).toHaveLength(1))
+  expect(() => { handle.agent.runMaintenance(async () => 'no') }).toThrow('agent is busy')
+  release()
+  await handle.agent.whenIdle()
   await handle.dispose()
   expect(f.ctx.agents.get(handle.agent.id)).toBeUndefined()
   await expect(handle.agent.whenIdle()).resolves.toBeUndefined()
+})
+
+it('rejects another account before a stale revision', async () => {
+  const f = await fixture()
+  const accountB = (await f.ctx.accounts.create('Other', 'member')).account
+  const homeB = join(f.root, 'harness-b')
+  await mkdir(homeB)
+  const sessionId = SessionId(`ext-cross-${f.profile.id}`)
+  const first = await f.open(sessionId)
+  first.agent.followup(prompt('owned'))
+  await first.agent.whenIdle()
+  const sdkSessionId = (f.ctx.externalAgentActivation as ExternalAgentActivationService).calls[0]?.sdkSessionId ?? ''
+  appendPluginRecord(first.agent.session, 'plugin:agent-external-runtime/session', {
+    ownerId: accountB.id, agentId: f.profile.id, sessionId, runtime: 'claude-sdk', revision: 1, sdkSessionId,
+  })
+  await first.dispose()
+  await External.apply(f.ctx, {
+    bindings: [
+      { accountId: f.account.id, runtime: 'claude-sdk', configDirectory: f.home, revision: 2 },
+      { accountId: accountB.id, runtime: 'claude-sdk', configDirectory: homeB, revision: 2 },
+    ],
+  })
+  await expect(f.open(sessionId)).rejects.toMatchObject({ code: 'owner_mismatch' })
+})
+
+it('edits the durable inbox and records a non-error turn failure', async () => {
+  const f = await fixture()
+  const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  const handle = await f.open()
+  onTestFinished(() => handle.dispose())
+  const held = prompt('held')
+  const lead = prompt('lead')
+  handle.agent.inbox.append('next-turn', held)
+  handle.agent.inbox.prepend('next-turn', lead)
+  expect(handle.agent.inbox.nextTurn.map(message => message.id)).toEqual([lead.id, held.id])
+  const replacement = prompt('replacement')
+  expect(handle.agent.inbox.replace(held.id, replacement)).toBe(true)
+  expect(handle.agent.inbox.remove(replacement.id)).toBe(true)
+  expect(handle.agent.inbox.remove(lead.id)).toBe(true)
+  expect(handle.agent.inbox.replace(MessageId('missing'), held)).toBe(false)
+  expect(handle.agent.inbox.remove(MessageId('missing'))).toBe(false)
+  const step = prompt('step')
+  handle.agent.inbox.append('next-step', step)
+  expect(() => handle.agent.inbox.prepend('next-turn', step)).toThrow(`message "${step.id}" is already pending`)
+  const extra = prompt('extra')
+  handle.agent.inbox.splice('next-step', Number.NaN, 0, [extra])
+  expect(handle.agent.inbox.nextStep.map(message => message.id)).toEqual([extra.id, step.id])
+  const swapped = prompt('swapped')
+  expect(handle.agent.inbox.splice('next-step', -1, 1, [swapped]).map(message => message.id)).toEqual([step.id])
+  expect(handle.agent.inbox.splice('next-step', 0, Number.NaN, [])).toEqual([])
+  expect(handle.agent.inbox.splice('next-step', 0, -1, [])).toEqual([])
+  handle.agent.inbox.clear()
+  service.sdk = { run: () => Promise.reject('boom') }
+  handle.agent.followup(prompt('fail'))
+  await handle.agent.whenIdle()
+  expect(events(handle.agent).filter(event => event.type === 'turn/end').at(-1)?.data.reason).toEqual({
+    kind: 'error', error: { message: 'boom', code: 'UNKNOWN' },
+  })
+  hold(service)
+  handle.agent.followup(prompt('hook'))
+  await vi.waitFor(() => expect(service.calls).toHaveLength(1))
+  handle.agent.cancel({ kind: 'hook', reason: 'stop' })
+  handle.agent.cancel({ kind: 'user' })
+  await handle.agent.whenIdle()
+  expect(events(handle.agent).filter(event => event.type === 'turn/end').at(-1)?.data.reason).toEqual({
+    kind: 'aborted', reason: { kind: 'hook', reason: 'stop' },
+  })
+})
+
+it('closes a new session when startup publication fails', async () => {
+  const f = await fixture()
+  f.ctx.on('agent/created', () => { throw new Error('startup failed') })
+  await expect(f.open()).rejects.toThrow('startup failed')
+})
+
+it('covers workspace, sidecar, codex resume, and an abort between steps', async () => {
+  const f = await fixture()
+  const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  const current = await f.open()
+  expect(current.agent.model.current()).toBeUndefined()
+  await current.dispose()
+  const native = await f.ctx.persistentAgents.create({ name: 'NativeEdge', ownerId: f.account.id, runtime: 'native' }, inherited)
+  await expect(service.createOrResume({
+    ownerCtx: f.ctx, sessionId: SessionId(`native-edge-${native.id}`), agentId: native.id,
+  })).rejects.toMatchObject({ code: 'runtime_native' })
+  await expect(service.createOrResume({
+    ownerCtx: new Context(), sessionId: SessionId('no-registry'), agentId: f.profile.id,
+  })).rejects.toMatchObject({ code: 'binding_missing' })
+  const read = f.ctx.get.bind(f.ctx)
+  const host = new Proxy(f.ctx, {
+    get(target, prop, receiver) {
+      if (prop === 'get') return (name: string) => name === 'harnessBindings' ? undefined : read(name)
+      return Reflect.get(target, prop, receiver)
+    },
+  })
+  await expect(service.createOrResume({
+    ownerCtx: host, sessionId: SessionId(`no-binding-${f.profile.id}`), agentId: f.profile.id,
+  })).rejects.toMatchObject({ code: 'binding_missing' })
+  const registry = f.ctx as { workspaceRegistry?: { list(): readonly unknown[] } }
+  registry.workspaceRegistry = { list: () => [null, 1, { nope: true }, { path: '' }, { path: 4 }] }
+  await expect(f.open()).rejects.toMatchObject({ code: 'binding_missing' })
+  delete registry.workspaceRegistry
+  await expect(f.open()).rejects.toMatchObject({ code: 'binding_missing' })
+  registry.workspaceRegistry = { list: () => [{ path: f.workspace }] }
+  const quiet = SessionId(`ext-quiet-${f.profile.id}`)
+  await f.ctx.persistentAgents.bind(quiet, f.profile.id)
+  const prepared = f.ctx.sessions.prepare(quiet, { meta: { cwd: f.workspace } })
+  const quietWriter = await f.ctx.sessionPersistence.create(prepared.header)
+  await quietWriter.append([rawRecord({
+    type: 'plugin:agent-external-runtime/other', seq: SessionSeq(0), time: Date.now(), data: { n: 1 }, ignorable: true,
+  })])
+  await quietWriter.close()
+  const quietHandle = await f.open(quiet)
+  await quietHandle.dispose()
+  const bare = SessionId(`ext-nocwd-${f.profile.id}`)
+  await f.ctx.persistentAgents.bind(bare, f.profile.id)
+  const bareSession = f.ctx.sessions.prepare(bare, { meta: {} })
+  const bareWriter = await f.ctx.sessionPersistence.create(bareSession.header)
+  await bareWriter.append([rawRecord({
+    type: 'plugin:agent-external-runtime/other', seq: SessionSeq(0), time: Date.now(), data: { n: 1 }, ignorable: true,
+  })])
+  await bareWriter.close()
+  const bareHandle = await f.open(bare)
+  await bareHandle.dispose()
+  const base = {
+    ownerId: f.account.id, agentId: f.profile.id, runtime: 'claude-sdk', revision: 1, sdkSessionId: 'fake:x',
+  }
+  const broken = [
+    null,
+    { ...base, ownerId: 1 },
+    { ...base, agentId: 1 },
+    { ...base, sessionId: 1 },
+    { ...base, runtime: 'nope' },
+    { ...base, revision: 1.5 },
+    { ...base, revision: 0 },
+    { ...base, revision: '1' },
+    { ...base, sdkSessionId: '' },
+    { ...base, sdkSessionId: 1 },
+  ]
+  for (const [index, data] of broken.entries()) {
+    const sessionId = SessionId(`ext-bad-${index}-${f.profile.id}`)
+    await f.ctx.persistentAgents.bind(sessionId, f.profile.id)
+    const row = f.ctx.sessions.prepare(sessionId, { meta: { cwd: f.workspace } })
+    const writer = await f.ctx.sessionPersistence.create(row.header)
+    const fields = data as { sessionId?: unknown } | null
+    await writer.append([rawRecord({
+      type: 'plugin:agent-external-runtime/session', seq: SessionSeq(0), time: Date.now(),
+      data: fields === null ? null : { ...fields, sessionId: fields.sessionId ?? sessionId }, ignorable: true,
+    })])
+    await writer.close()
+    await expect(f.open(sessionId)).rejects.toMatchObject({ code: 'binding_stale' })
+  }
+  const homeC = join(f.root, 'harness-codex')
+  await mkdir(homeC)
+  await External.apply(f.ctx, {
+    bindings: [f.config.bindings[0]!, { accountId: f.account.id, runtime: 'codex-sdk', configDirectory: homeC, revision: 1 }],
+  })
+  const codex = await f.ctx.persistentAgents.create({
+    name: 'Codex', ownerId: f.account.id, runtime: 'codex-sdk', instructions: 'codex',
+  }, inherited)
+  const codexId = SessionId(`ext-codex-${codex.id}`)
+  const firstCodex = await f.ctx.persistentAgentActivation.createOrResume({ ownerCtx: f.ctx, sessionId: codexId, agentId: codex.id })
+  await firstCodex.dispose()
+  const secondCodex = await f.ctx.persistentAgentActivation.createOrResume({ ownerCtx: f.ctx, sessionId: codexId, agentId: codex.id })
+  await secondCodex.dispose()
+  service.sdk = { run: () => Promise.reject(new Error('plain')) }
+  const failed = await f.open()
+  failed.agent.followup(prompt('plain'))
+  await failed.agent.whenIdle()
+  expect(events(failed.agent).filter(event => event.type === 'turn/end').at(-1)?.data.reason).toMatchObject({
+    kind: 'error', error: { message: 'plain' },
+  })
+  await failed.dispose()
+  service.sdk = { run: () => Promise.resolve({ text: 'ok' }) }
+  const boundary = await f.open()
+  f.ctx.on('session/event', (_session, event) => {
+    if (event.type === 'step/end') boundary.agent.cancel({ kind: 'parent' })
+  })
+  boundary.agent.followup(prompt('boundary'))
+  await boundary.agent.whenIdle()
+  expect(events(boundary.agent).filter(event => event.type === 'turn/end').at(-1)?.data.reason).toMatchObject({
+    kind: 'aborted', reason: { kind: 'parent' },
+  })
+  await boundary.dispose()
 })

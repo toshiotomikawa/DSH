@@ -37,6 +37,9 @@
     },
     {
       "path": "../agent-runtime"
+    },
+    {
+      "path": "../../experimental/agent-external-runtime"
     }
   ]
 }

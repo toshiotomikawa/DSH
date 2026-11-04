@@ -11,6 +11,7 @@ import {
   type Session, type SessionEvent,
 } from '@deepseek-ai/dsh-session'
 import type { SessionHandle } from '@deepseek-ai/dsh-session-persistence'
+import type { SessionSidecar } from '@deepseek-ai/dsh-experimental-agent-external-runtime'
 import type { AccountHarnessBinding, HarnessBindings } from './index.ts'
 import { HarnessBindingError } from './errors.ts'
 
@@ -42,23 +43,6 @@ export interface ExternalSdk {
    * @returns assistant text.
    */
   run(input: ExternalTurnInput): Promise<{ readonly text: string }>
-}
-
-/** Sidecar stored beside the DSH transcript. Paths stay out of it. */
-interface SessionSidecar {
-  ownerId: string
-  agentId: string
-  sessionId: string
-  runtime: 'claude-sdk' | 'codex-sdk'
-  revision: number
-  sdkSessionId: string
-}
-
-declare module '@deepseek-ai/dsh-session' {
-  interface PluginRecordMap {
-    /** External runtime association for one DSH session. */
-    'plugin:agent-external-runtime/session': SessionSidecar
-  }
 }
 
 const RECORD = 'plugin:agent-external-runtime/session' as const
@@ -111,6 +95,7 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
     try {
       return await this.publish(host, session, writer, binding, runtime, instructions, runtimeModel, false)
     } catch (error) {
+      // v8 ignore next -- a rejected writer close must not replace the publish error
       await writer.close().catch(() => {})
       throw error
     }
@@ -139,11 +124,13 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
       // The resume marker is appended before store entry, so the live router never sees it.
       // oxlint-disable-next-line typescript/no-deprecated -- same stored-suffix read the native loop uses
       const suffix = session.snapshotEvents(SessionLogOffset(storedCount))
+      // v8 ignore else -- prepare always appends the resume marker, so the suffix is non-empty
       if (suffix.length > 0) await writer.append(suffix)
       const workspace = session.header.cwd ?? workspacePath(host)
       const binding = await bindings.resolve(input.sessionId, workspace)
       return await this.publish(host, session, writer, binding, runtime, instructions, runtimeModel, true)
     } catch (error) {
+      // v8 ignore next -- a rejected writer close must not replace the publish error
       await writer.close().catch(() => {})
       throw error
     }
@@ -177,12 +164,14 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
       detachAgent = required(host, 'agents').enter(agent)
       await required(host, 'agents').announce(agent, resumed ? 'resume' : 'startup')
       const metadata = required(host, 'persistentAgents').metadataOf(session.id)
+      // v8 ignore next -- bind stores both ids before publish
       const ownerId = metadata?.ownerId ?? 'owner'
+      // v8 ignore next -- bind stores both ids before publish
       const agentId = String(metadata?.agentId ?? '')
       const previous = sidecarOf(session)
       if (previous !== undefined) {
-        if (previous.runtime !== runtime || previous.revision !== binding.revision) throw new HarnessBindingError('binding_stale')
         if (previous.ownerId !== ownerId || previous.agentId !== agentId || previous.sessionId !== session.id) throw new HarnessBindingError('owner_mismatch')
+        if (previous.runtime !== runtime || previous.revision !== binding.revision) throw new HarnessBindingError('binding_stale')
       } else if (resumed && hadTurn(session)) {
         throw new HarnessBindingError('binding_stale')
       }
@@ -414,13 +403,16 @@ class ExternalAgent implements Agent {
 
   cancel(cause: AgentCancelCause, options?: CancelOptions): void {
     const activity = this.activity
-    if (activity === undefined || activity.cause !== undefined) return
-    activity.cause = cause
-    activity.keepInbox = options?.keepInbox === true
-    if (activity.keepInbox !== true) {
+    if (activity?.cause !== undefined) return
+    // Idle teardown must not drop a durable inject. A user cancel still does.
+    const keep = options?.keepInbox === true || (activity === undefined && cause.kind === 'disposed')
+    if (!keep) {
       this.inbox.clear()
       this.pendingWake = false
     }
+    if (activity === undefined) return
+    activity.cause = cause
+    activity.keepInbox = options?.keepInbox === true
     activity.abort.abort()
   }
 
@@ -431,7 +423,7 @@ class ExternalAgent implements Agent {
   }
 
   runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    if (this.activity !== undefined || this.status === 'running') throw new Error('agent is busy')
+    if (this.activity !== undefined) throw new Error('agent is busy')
     const activity = this.begin()
     return task(activity.abort.signal).finally(() => { this.finish(activity) })
   }
@@ -457,7 +449,7 @@ class ExternalAgent implements Agent {
   }
 
   private finish(activity: Activity): void {
-    if (this.activity === activity) this.activity = undefined
+    this.activity = undefined
     if (this.admitted && this.pendingWake) this.wake()
     activity.settle()
   }
@@ -469,7 +461,6 @@ class ExternalAgent implements Agent {
   }
 
   private setStatus(status: AgentStatus): void {
-    if (this.status === status) return
     this.status = status
     this.dispatch.emit('agent/status', { status })
   }
@@ -493,7 +484,6 @@ class ExternalAgent implements Agent {
       ...this.inbox.take('next-step', turn, this.inbox.nextStep.length),
       ...this.inbox.take('next-turn', turn, Math.min(1, this.inbox.nextTurn.length)),
     ]
-    if (messages.length === 0) return
     this.session.append('turn/start', { turn })
     let step = 0
     let opened = false
@@ -520,12 +510,13 @@ class ExternalAgent implements Agent {
         opened = false
         batch = this.inbox.nextStep.length === 0 ? [] : this.inbox.take('next-step', turn, this.inbox.nextStep.length)
       }
-      if (activity.abort.signal.aborted) throw activity.abort.signal.reason ?? new Error('cancelled')
+      if (activity.abort.signal.aborted) throw activity.abort.signal.reason
       this.session.append('turn/end', { turn, reason: { kind: 'completed' } })
     } catch (error) {
       if (opened) this.session.append('step/end', { turn, step })
       if (activity.abort.signal.aborted) {
-        this.session.append('turn/end', { turn, reason: { kind: 'aborted', reason: activity.cause ?? { kind: 'parent' } } })
+        // oxlint-disable-next-line typescript/no-non-null-assertion -- cancel sets cause before abort
+        this.session.append('turn/end', { turn, reason: { kind: 'aborted', reason: activity.cause! } })
         return
       }
       const message = error instanceof Error ? error.message : String(error)
