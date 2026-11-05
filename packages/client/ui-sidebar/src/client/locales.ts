@@ -1,3 +1,24 @@
+/** Portuguese copy for agent management; spread after the English fallback so the dictionary literal stays aligned. */
+const ptAgentCopy = {
+  'agents.title': 'Agentes',
+  'agents.access': 'Gerenciar acesso',
+  'agents.refresh': 'Atualizar',
+  'agents.create': 'Nova seção',
+  'agents.name': 'Nome da seção',
+  'agents.save': 'Salvar',
+  'agents.cancel': 'Cancelar',
+  'agents.loading': 'Carregando agentes…',
+  'agents.empty': 'Nenhum agente ainda',
+  'agents.ungrouped': 'Sem seção',
+  'agents.rename': 'Renomear {name}',
+  'agents.renameButton': 'Renomear',
+  'agents.delete': 'Apagar {name}',
+  'agents.deleteButton': 'Apagar',
+  'agents.deleteConfirm': 'Apagar esta seção? Os agentes ficarão sem seção.',
+  'agents.confirm': 'Apagar seção',
+  'agents.move': 'Mover {name} para seção',
+} as const
+
 /** English fallback for agent management in locales without dedicated copy. */
 const agentCopy = {
   'agents.title': 'Agents',
@@ -132,23 +153,7 @@ export const ru = {
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
   ...agentCopy,
-  'agents.title': 'Agentes',
-  'agents.access': 'Gerenciar acesso',
-  'agents.refresh': 'Atualizar',
-  'agents.create': 'Nova seção',
-  'agents.name': 'Nome da seção',
-  'agents.save': 'Salvar',
-  'agents.cancel': 'Cancelar',
-  'agents.loading': 'Carregando agentes…',
-  'agents.empty': 'Nenhum agente ainda',
-  'agents.ungrouped': 'Sem seção',
-  'agents.rename': 'Renomear {name}',
-  'agents.renameButton': 'Renomear',
-  'agents.delete': 'Apagar {name}',
-  'agents.deleteButton': 'Apagar',
-  'agents.deleteConfirm': 'Apagar esta seção? Os agentes ficarão sem seção.',
-  'agents.confirm': 'Apagar seção',
-  'agents.move': 'Mover {name} para seção',
+  ...ptAgentCopy,
   'panels.unpinTooltip': 'Soltar da barra lateral esquerda',
   'panels.unpin': 'Desafixar {name} da barra lateral',
   'session.new': 'Nova sessão',
