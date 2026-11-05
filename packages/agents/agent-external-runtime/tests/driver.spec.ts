@@ -368,6 +368,34 @@ it('publishes an external agent without selecting or calling the native model', 
   expect(() => handle.agent.model.select({ provider: 'mock', model: 'test' })).toThrow('External agent runtime refuses API model selection')
 })
 
+it('refuses an external profile when the Host installed no adapter and publishes nothing', async () => {
+  const f = await fixture()
+  const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  const sessionId = SessionId(`ext-unwired-${f.profile.id}`)
+  service.sdk = undefined
+  const create = vi.spyOn(f.ctx.sessionPersistence, 'create')
+  await expect(f.open(sessionId)).rejects.toBeInstanceOf(External.HarnessAdapterError)
+  await expect(f.open(sessionId)).rejects.toMatchObject({ code: 'sdk_unavailable' })
+  expect(create).not.toHaveBeenCalled()
+  expect(f.ctx.persistentAgents.metadataOf(sessionId)).toBeUndefined()
+  expect(f.ctx.agents.get(sessionId)).toBeUndefined()
+  expect(f.adapter.requests).toHaveLength(0)
+})
+
+it('ends a turn as an adapter error when the Host drops the adapter after admission', async () => {
+  const f = await fixture()
+  const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  const handle = await f.open()
+  onTestFinished(() => handle.dispose())
+  service.sdk = undefined
+  handle.agent.followup(prompt('no adapter'))
+  await handle.agent.whenIdle()
+  expect(events(handle.agent).filter(event => event.type === 'assistant/message')).toHaveLength(0)
+  expect(events(handle.agent).find(event => event.type === 'turn/end')).toMatchObject({
+    data: { reason: { kind: 'error', error: { message: 'External harness: sdk_unavailable' } } },
+  })
+})
+
 it('drains an SDK on unload and prevents another service instance from publishing the same identity', async () => {
   const f = await fixture()
   const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
@@ -376,6 +404,7 @@ it('drains an SDK on unload and prevents another service instance from publishin
   handle.agent.followup(prompt('cancel on unload'))
   await vi.waitFor(() => expect(service.calls).toHaveLength(1))
   const other = new ExternalAgentActivationService(service.quota, () => { throw new Error('unexpected teardown failure') })
+  other.sdk = service.sdk
   await expect(other.createOrResume({ ownerCtx: f.ctx, sessionId: SessionId('other'), agentId: f.profile.id })).rejects.toThrow('still live')
   await service.close()
   expect(f.ctx.agents.get(handle.agent.id)).toBeUndefined()

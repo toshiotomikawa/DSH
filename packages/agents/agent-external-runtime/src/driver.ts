@@ -16,7 +16,7 @@ import type { SessionSidecar } from '@deepseek-ai/dsh-experimental-agent-externa
 import type { AccountHarnessBinding, HarnessBindings } from './index.ts'
 import type {} from '@deepseek-ai/dsh-agent-runtime/accounts'
 import { openTurnBridge, type TurnToolBridge } from './bridge.ts'
-import { HarnessBindingError } from './errors.ts'
+import { HarnessAdapterError, HarnessBindingError } from './errors.ts'
 import { ExternalQuotaError, ExternalQuotaState } from './quota.ts'
 
 /** One fake-SDK turn. Tests replace {@link ExternalAgentActivationService.sdk}. */
@@ -82,8 +82,8 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
   }
   /** Turns the fake SDK accepted. A replaced `sdk` does not have to fill this. */
   readonly calls: ExternalTurnInput[] = []
-  /** Step function installed by the Host composition before admission. */
-  sdk!: ExternalSdk
+  /** Step function installed by the Host composition before admission. A service without one refuses every external profile. */
+  sdk: ExternalSdk | undefined
 
   /**
    * Publish the external agent for one bound session.
@@ -108,6 +108,9 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
     const registry = required(host, 'persistentAgents')
     const profile = registry.get(PersistentAgentId(input.agentId))
     if (profile.runtime === 'native') throw new HarnessBindingError('runtime_native')
+    // Composition, not a feature: a profile that asks for an external runtime must
+    // never be published by a Host that installed no adapter for it.
+    if (this.sdk === undefined) throw new HarnessAdapterError('sdk_unavailable')
     const runtime = profile.runtime
     const metadata = registry.metadataOf(input.sessionId)
     const ownerId = metadata?.agentId === profile.id ? metadata.ownerId : profile.ownerId
@@ -613,7 +616,9 @@ class ExternalAgent implements Agent {
           onEnded: () => { this.cancel({ kind: 'disposed' }) },
         })
         try {
-          const result = await this.activation.sdk.run({
+          const sdk = this.activation.sdk
+          if (sdk === undefined) throw new HarnessAdapterError('sdk_unavailable')
+          const result = await sdk.run({
             sessionId: this.session.id, turn, step, messages: batch, instructions: this.instructions,
             signal: activity.abort.signal, sdkSessionId: this.sdkSessionId, runtimeModel: this.runtimeModel,
             runtime: this.runtime, tools: bridge, cwd: this.session.header.cwd, configDirectory: this.configDirectory,
