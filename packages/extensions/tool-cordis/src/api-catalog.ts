@@ -1428,6 +1428,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'externalAgentActivation',
+    summary: 'External plugin entry.',
+    description: 'External plugin entry. The native loop must not implement this.',
+    methods: [
+      {
+        signature: 'createOrResume(input: PersistentAgentActivationInput): Promise<AgentHandle>',
+        description: 'Publish the external agent for one bound session.',
+        parameters: [{ name: 'input', description: 'owner, conversation and profile.' }],
+        returns: 'the live handle after the external driver is quiescent enough to accept work.',
+      },
+    ],
+  },
+  {
     key: 'fileReferences',
     summary: 'Host capability for cancellable file-reference discovery.',
     description: 'Host capability for cancellable file-reference discovery.',
@@ -2528,6 +2541,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'set(session: Session, name: string): void',
         description: 'Record a changed preset, then update each changed knob through its own setter. Selecting the effective preset again appends nothing.',
         parameters: [{ name: 'session', description: 'the session the switch belongs to.' }, { name: 'name', description: 'the preset to switch to; unknown names throw.' }],
+      },
+    ],
+  },
+  {
+    key: 'persistentAgentActivation',
+    summary: 'Persistent-agent entry used by mail and routines.',
+    description: 'Persistent-agent entry used by mail and routines. Native profiles keep the registered loop. External profiles never enter it.',
+    methods: [
+      {
+        signature: 'createOrResume(input: PersistentAgentActivationInput): Promise<AgentHandle>',
+        description: 'Publish an agent for a profile that is already bound to the session.',
+        parameters: [{ name: 'input', description: 'owner, conversation and profile.' }],
+        returns: 'the live handle after setup listeners finish.',
       },
     ],
   },
@@ -8121,6 +8147,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PermissionCatalog',
     declaration: 'export interface PermissionCatalog {\n    options: PresetOption[];\n    defaultOptions: PresetOption[];\n    defaultPreset: string;\n}',
+  },
+  {
+    name: 'PersistentAgentActivationInput',
+    declaration: 'export interface PersistentAgentActivationInput {\n    readonly ownerCtx: Context;\n    readonly sessionId: SessionId;\n    readonly agentId: string;\n}',
   },
   {
     name: 'PersistentAgentId',

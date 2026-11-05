@@ -5,6 +5,9 @@ import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage, ReasoningEffortId, QUOTA_EXCEEDED_CODE, ACCOUNT_QUOTA_EXCEEDED_CODE } from '@deepseek-ai/dsh-llm'
 import { PersistentAgentId } from '@deepseek-ai/dsh-agent-registry'
+import { PersistentAgentActivationService } from './activation.ts'
+
+export type { ExternalAgentActivation, PersistentAgentActivation, PersistentAgentActivationInput } from './activation.ts'
 import type { MailboxDirectory, MailboxTarget } from '@deepseek-ai/dsh-agent-mailbox'
 import type { Outcome, RoutineBridge } from '@deepseek-ai/dsh-agent-routine'
 import type {} from '@deepseek-ai/dsh-schedule'
@@ -80,10 +83,9 @@ export function apply(ctx: Context): void {
         const routines = ctx.get('agentRoutines')
         if (!routines) throw new Error('Routine service is unavailable')
         const id = PersistentAgentId(input.agent.id)
-        const selection = await ctx.persistentAgents.selection(id)
         const sessionId = SessionId(`agent-run-${randomUUID()}`)
         await ctx.persistentAgents.bind(sessionId, id)
-        const handle = await ctx.agents.create({ sessionId, agentOptions: selection })
+        const handle = await ctx.persistentAgentActivation.createOrResume({ ownerCtx: ctx, sessionId, agentId: id })
         owned.set(sessionId, handle)
         runs.set(sessionId, { handle, settle: outcome => routines.engine.settle(input.runId, outcome), text: [], effects: false })
         handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: input.prompt }], source: { kind: 'user' } }))
@@ -99,6 +101,7 @@ export function apply(ctx: Context): void {
   }
   ctx.provide('agentDirectory', directory)
   ctx.provide('agentRoutineBridge', bridge)
+  ctx.provide('persistentAgentActivation', new PersistentAgentActivationService())
   ctx.on('agent/inbox/claimed', ({ agent, message }) => {
     if (message.source.kind !== 'schedule') return
     const routines = ctx.get('agentRoutines')
@@ -115,6 +118,8 @@ export function apply(ctx: Context): void {
     const binding = ctx.persistentAgents.metadataOf(agent.id)
     if (!binding) return
     await agent.ctx.plugin(Persona, { agentId: binding.agentId })
+    const profile = ctx.persistentAgents.get(binding.agentId)
+    if (profile.runtime !== 'native') return
     agent.model.select(await ctx.persistentAgents.selection(binding.agentId))
   })
   ctx.on('session/event', (session, event) => {

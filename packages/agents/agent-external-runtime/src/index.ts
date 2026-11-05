@@ -5,7 +5,15 @@ import type { Context } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
 import { z } from 'zod'
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import { HarnessBindingError } from './errors.ts'
+import { ExternalAgentActivationService } from './driver.ts'
+
+export { HarnessAdapterError, HarnessBindingError } from './errors.ts'
+export { createClaudeSdk } from './claude.ts'
+export type { ClaudeQueryFactory, ClaudeQueryOptions, ClaudeSpawnOptions } from './claude.ts'
+export type { ExternalSdk, ExternalTurnInput } from './driver.ts'
 import type {} from '@deepseek-ai/dsh-agent-registry'
+import type {} from '@deepseek-ai/dsh-agent-runtime'
 import type {} from '@deepseek-ai/dsh-agent-runtime/accounts'
 import type {} from '@deepseek-ai/dsh-agent-runtime/owners'
 
@@ -34,15 +42,6 @@ const bindingSchema = z.object({
   accountId: z.string().min(1), runtime: z.enum(['claude-sdk', 'codex-sdk']),
   configDirectory: z.string().min(1), revision: z.number().int().positive(),
 }).strict()
-
-/** Sanitized failure codes; paths and underlying filesystem errors stay private. */
-export class HarnessBindingError extends Error {
-  /** @param code - sanitized failure identity, without filesystem details. */
-  constructor(readonly code: 'binding_invalid' | 'binding_conflict' | 'binding_missing' | 'binding_stale' | 'owner_mismatch' | 'account_inactive' | 'runtime_native') {
-    super(`External harness: ${code}`)
-    this.name = 'HarnessBindingError'
-  }
-}
 
 function contains(parent: string, child: string): boolean {
   const path = relative(parent, child)
@@ -108,5 +107,13 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     }
     bindings.push(entry)
   }
-  ctx.provide('harnessBindings', new HarnessBindings(ctx, bindings))
+  const resolved = new HarnessBindings(ctx, bindings)
+  if (ctx.get('harnessBindings') === undefined) {
+    ctx.provide('harnessBindings', resolved)
+    ctx.provide('externalAgentActivation', new ExternalAgentActivationService())
+    return
+  }
+  // A later apply on the same fiber replaces the deployment copy. The first
+  // provide owns the service slot, so a second provide is rejected.
+  ctx.harnessBindings = resolved
 }

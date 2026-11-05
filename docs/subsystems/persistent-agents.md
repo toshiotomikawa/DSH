@@ -388,6 +388,25 @@ Thin Remote adapter; the registry owns validation, isolation and persistence.
 
 Source: [`packages/client/ui-sidebar/src/index.ts`](../../packages/client/ui-sidebar/src/index.ts)
 
+<a id="ctxexternalagentactivation--externalagentactivation"></a>
+
+### `ctx.externalAgentActivation` — `ExternalAgentActivation`
+
+External plugin entry. The native loop must not implement this.
+
+```ts cordis-catalog
+/**
+ * Publish the external agent for one bound session.
+ * @param input - owner, conversation and profile.
+ * @returns the live handle after the external driver is quiescent enough to accept work.
+ */
+createOrResume(input: PersistentAgentActivationInput): Promise<AgentHandle>
+```
+
+Types: [AgentHandle](core.md)
+
+Source: [`packages/agents/agent-runtime/src/activation.ts`](../../packages/agents/agent-runtime/src/activation.ts)
+
 <a id="ctxharnessbindings--harnessbindings"></a>
 
 ### `ctx.harnessBindings` — `HarnessBindings`
@@ -406,6 +425,25 @@ async resolve(sessionId: SessionId, workspace: string): Promise<AccountHarnessBi
 Types: [SessionId](core.md)
 
 Source: [`packages/agents/agent-external-runtime/src/index.ts`](../../packages/agents/agent-external-runtime/src/index.ts)
+
+<a id="ctxpersistentagentactivation--persistentagentactivation"></a>
+
+### `ctx.persistentAgentActivation` — `PersistentAgentActivation`
+
+Persistent-agent entry used by mail and routines. Native profiles keep the registered loop. External profiles never enter it.
+
+```ts cordis-catalog
+/**
+ * Publish an agent for a profile that is already bound to the session.
+ * @param input - owner, conversation and profile.
+ * @returns the live handle after setup listeners finish.
+ */
+createOrResume(input: PersistentAgentActivationInput): Promise<AgentHandle>
+```
+
+Types: [AgentHandle](core.md)
+
+Source: [`packages/agents/agent-runtime/src/activation.ts`](../../packages/agents/agent-runtime/src/activation.ts)
 
 <a id="ctxpersistentagents--persistentagents"></a>
 

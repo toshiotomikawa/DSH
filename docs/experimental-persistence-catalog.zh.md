@@ -14,6 +14,7 @@
 | 记录 | 所属包 | 用途 | 载荷与源码 |
 |---|---|---|---|
 | `plugin:action-cards/decision` | `@deepseek-ai/dsh-action-cards` | Dismissals and kind-defined progress of action cards. | <code>ActionCardDecision</code> · [`packages/experimental/action-cards/src/types.ts`](../packages/experimental/action-cards/src/types.ts) |
+| `plugin:agent-external-runtime/session` | `@deepseek-ai/dsh-experimental-agent-external-runtime` | External runtime association for one DSH session. | <code>SessionSidecar</code> · [`packages/experimental/agent-external-runtime/src/index.ts`](../packages/experimental/agent-external-runtime/src/index.ts) |
 | `plugin:client-ui-forge/worktree` | `@deepseek-ai/dsh-experimental-client-ui-forge` | A request, withdrawal, or creation of the worktree a Session starts in. | <code>WorktreeRecord</code> · [`packages/experimental/client-ui-forge/src/types.ts`](../packages/experimental/client-ui-forge/src/types.ts) |
 | `plugin:forge-session/binding` | `@deepseek-ai/dsh-experimental-forge-session` | A caller or discovery action that binds, restores, or hides one change request. | <code>BindingRecord</code> · [`packages/experimental/forge-session/src/types.ts`](../packages/experimental/forge-session/src/types.ts) |
 | `plugin:translator/request` | `@deepseek-ai/dsh-experimental-translator` | Provider-independent translation input, retained before dispatch. | <code>TranslationRequestRecord</code> · [`packages/experimental/translator/src/types.ts`](../packages/experimental/translator/src/types.ts) |

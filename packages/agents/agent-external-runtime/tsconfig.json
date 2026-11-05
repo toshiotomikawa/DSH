@@ -18,13 +18,28 @@
       "path": "../../../vendor/schemastery"
     },
     {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../core/scope"
+    },
+    {
       "path": "../../core/session"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../session/session-persistence"
     },
     {
       "path": "../agent-registry"
     },
     {
       "path": "../agent-runtime"
+    },
+    {
+      "path": "../../experimental/agent-external-runtime"
     }
   ]
 }

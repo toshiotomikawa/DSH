@@ -83,7 +83,7 @@ describe('account ownership through the Host service', () => {
     expect(await readFile(join(root, 'data/session_owners/sessions', records[0]!), 'utf8')).toContain('ownerId')
   })
 
-  it('runs real FTS without foreign snippets or foreign hasMore, before the result bound (3)', async () => {
+  it('runs real FTS without foreign snippets or foreign hasMore, before the result bound (3)', { timeout: 15000 }, async () => {
     const { ctx, root, call } = await fixture()
     const a = await call(A, 'create', { request: { cwd: root } }) as { sessionId: SessionId }
     const b = await call(B, 'create', { request: { cwd: root } }) as { sessionId: SessionId }

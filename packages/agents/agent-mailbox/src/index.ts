@@ -647,17 +647,27 @@ export class AgentMailbox {
     let agent = this.ctx.agents.get(delivery.sessionId)
     if (agent === undefined) {
       if (target !== undefined) await this.ctx.agentDirectory.prepare?.(target, delivery.sessionId)
-      const route = delivery.route ?? target?.model
-      const options = route === undefined ? {} : { agentOptions: route }
-      const stored = await this.ctx.sessionPersistence.stat(delivery.sessionId)
-      if (stored === undefined) {
-        const handle = await this.ctx.agents.create({ sessionId: delivery.sessionId, ...options })
+      const activation = target === undefined ? undefined : this.ctx.get('persistentAgentActivation')
+      if (activation !== undefined && target !== undefined) {
+        const handle = await activation.createOrResume({
+          ownerCtx: this.ctx, sessionId: delivery.sessionId, agentId: target.id,
+        })
         this.owned.set(delivery.sessionId, handle)
         agent = handle.agent
       } else {
-        agent = (await this.ctx.agents.resume({ resumeSessionId: delivery.sessionId, ...options })).agent
+        const route = delivery.route ?? target?.model
+        const options = route === undefined ? {} : { agentOptions: route }
+        const stored = await this.ctx.sessionPersistence.stat(delivery.sessionId)
+        if (stored === undefined) {
+          const handle = await this.ctx.agents.create({ sessionId: delivery.sessionId, ...options })
+          this.owned.set(delivery.sessionId, handle)
+          agent = handle.agent
+        } else {
+          agent = (await this.ctx.agents.resume({ resumeSessionId: delivery.sessionId, ...options })).agent
+        }
       }
     }
+    if (agent === undefined) throw new Error('Mailbox could not publish the recipient')
     agent.followup(createUserMessage({
       content: [{
         type: 'text',
