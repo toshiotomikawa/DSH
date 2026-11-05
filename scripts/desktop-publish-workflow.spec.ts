@@ -71,7 +71,7 @@ it('rejects non-master dispatch before scheduling a self-hosted job', () => {
   expect(command.startsWith('node -e "')).toBe(true)
   const program = command.slice('node -e "'.length, -1)
   for (const ref of ['refs/heads/master', 'refs/heads/stale-feature']) {
-    const result = spawnSync(process.execPath, ['-e', program], { env: { ...process.env, GITHUB_REF: ref }, encoding: 'utf8' })
+    const result = spawnSync(process.execPath, ['-e', program], { windowsHide: true, env: { ...process.env, GITHUB_REF: ref }, encoding: 'utf8' })
     expect(result.signal).toBeNull()
     expect(result.error).toBeUndefined()
     expect(result.status).toBe(ref === 'refs/heads/master' ? 0 : 1)

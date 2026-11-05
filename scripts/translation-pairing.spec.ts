@@ -63,13 +63,13 @@ describe('translation pairing index reads', () => {
   it('reads staged bytes independently of the working tree', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-translation-pairing-index-'))
     try {
-      execFileSync('git', ['init', '--quiet', root], {
+      execFileSync('git', ['init', '--quiet', root], { windowsHide: true,
         env: { ...process.env, GIT_DEFAULT_HASH: 'sha1' },
       })
-      execFileSync('git', ['-C', root, 'config', 'user.email', 'pairing@example.test'])
-      execFileSync('git', ['-C', root, 'config', 'user.name', 'Pairing Test'])
+      execFileSync('git', ['-C', root, 'config', 'user.email', 'pairing@example.test'], { windowsHide: true })
+      execFileSync('git', ['-C', root, 'config', 'user.name', 'Pairing Test'], { windowsHide: true })
       writeFileSync(join(root, 'owner.md'), 'staged')
-      execFileSync('git', ['-C', root, 'add', 'owner.md'])
+      execFileSync('git', ['-C', root, 'add', 'owner.md'], { windowsHide: true })
       writeFileSync(join(root, 'owner.md'), 'unstaged')
 
       expect(readGitIndexBlob(root, 'owner.md')?.toString('utf8')).toBe('staged')
@@ -82,13 +82,13 @@ describe('translation pairing index reads', () => {
   it('lists exact index files without treating a directory prefix as one entry', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-translation-pairing-index-'))
     try {
-      execFileSync('git', ['init', '--quiet', root], {
+      execFileSync('git', ['init', '--quiet', root], { windowsHide: true,
         env: { ...process.env, GIT_DEFAULT_HASH: 'sha1' },
       })
       mkdirSync(join(root, 'docs'), { recursive: true })
       writeFileSync(join(root, 'docs/reference.md'), '# Reference\n')
       writeFileSync(join(root, 'docs/reference.zh.md'), '# 参考\n')
-      execFileSync('git', ['-C', root, 'add', 'docs'])
+      execFileSync('git', ['-C', root, 'add', 'docs'], { windowsHide: true })
 
       expect(gitIndexPaths(root)).toEqual(new Set([
         'docs/reference.md',
@@ -356,7 +356,7 @@ describe('translation pairing records', () => {
       writeFileSync(join(root, 'base'), renderTranslationPairingRecord(paths, record(en, zh)))
       writeFileSync(join(root, 'current'), edit('Intro.', 'New intro.', '新简介。'))
       writeFileSync(join(root, 'other'), edit('Event table.', 'New table.', '新表。'))
-      const merged = spawnSync('git', ['merge-file', '-p', 'current', 'base', 'other'], { cwd: root, encoding: 'utf8' })
+      const merged = spawnSync('git', ['merge-file', '-p', 'current', 'base', 'other'], { windowsHide: true, cwd: root, encoding: 'utf8' })
       expect(merged.status).toBe(0)
       expect(merged.stdout).toBe(renderTranslationPairingRecord(paths, record(
         en.replace('Intro.', 'New intro.').replace('Event table.', 'New table.'),

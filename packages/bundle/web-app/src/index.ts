@@ -136,7 +136,7 @@ function spawnBrowserLauncher(url: string): ChildProcess {
     '--input-type=module',
     '--eval', BROWSER_OPENER_PROGRAM,
     '--', url,
-  ], {
+  ], { windowsHide: true,
     env: scrubbedParentEnv(),
     stdio: ['ignore', 'inherit', 'pipe'],
   })

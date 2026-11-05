@@ -78,7 +78,7 @@ function quietSystemdEnvironment(): NodeJS.ProcessEnv {
 
 function querySystemctl(command: string, args: readonly string[]): Promise<SystemctlResult> {
   return new Promise((resolveResult) => {
-    execFile(command, [...args], {
+    execFile(command, [...args], { windowsHide: true,
       encoding: 'utf8',
       env: managerEnvironment(),
       timeout: SYSTEMCTL_TIMEOUT_MS,

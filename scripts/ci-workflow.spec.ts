@@ -1766,7 +1766,7 @@ describe('Policy workflow shells', () => {
         if (!isRecord(job) || !Array.isArray(job.steps)) continue
         for (const step of job.steps) {
           if (!isRecord(step) || typeof step.run !== 'string') continue
-          const parsed = spawnSync('bash', ['-n'], { input: step.run, encoding: 'utf8' })
+          const parsed = spawnSync('bash', ['-n'], { windowsHide: true, input: step.run, encoding: 'utf8' })
           expect(`${String(step.name ?? step.id)}: ${parsed.status}: ${parsed.stderr}`).toBe(`${String(step.name ?? step.id)}: 0: `)
         }
       }

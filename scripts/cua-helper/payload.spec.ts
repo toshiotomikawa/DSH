@@ -37,7 +37,7 @@ it.skipIf(process.platform === 'win32')('matches the native build receipt hash a
   const f = fixture()
   const before = readCuaApplication(f.directory)
   const script = resolve('packages/experimental/cua-macos/native/build_app.py')
-  const digest = execFileSync('python3', ['-c', 'import runpy,sys; from pathlib import Path; print(runpy.run_path(sys.argv[1])["bundle_digest"](Path(sys.argv[2])))', script, before.application], { encoding: 'utf8' }).trim()
+  const digest = execFileSync('python3', ['-c', 'import runpy,sys; from pathlib import Path; print(runpy.run_path(sys.argv[1])["bundle_digest"](Path(sys.argv[2])))', script, before.application], { windowsHide: true, encoding: 'utf8' }).trim()
   expect(cuaApplicationDigest(before.application)).toBe(digest)
   writeFileSync(join(before.application, 'Contents/ticket'), 'notarization ticket')
   expect(() => readCuaApplication(f.directory)).toThrow('digest')

@@ -48,7 +48,7 @@ fs.writeFileSync(process.env.CACHE_EVIDENCE, JSON.stringify({ consumer, files,
         version: '0.0.1',
         scripts: { postinstall: 'node probe.cjs' },
       }))
-      const archive = spawnSync('tar', ['-czf', join(packed, 'dsh.tgz'), '-C', directory, 'package'], { encoding: 'utf8', timeout: 30_000 })
+      const archive = spawnSync('tar', ['-czf', join(packed, 'dsh.tgz'), '-C', directory, 'package'], { windowsHide: true, encoding: 'utf8', timeout: 30_000 })
       expect(archive.error).toBeUndefined()
       expect(archive.signal).toBeNull()
       expect(archive.status, archive.stderr).toBe(0)
@@ -60,7 +60,7 @@ fs.writeFileSync(process.env.CACHE_EVIDENCE, JSON.stringify({ consumer, files,
         const packageDirectory = join(directory, name, 'package')
         mkdirSync(packageDirectory, { recursive: true })
         writeFileSync(join(packageDirectory, 'package.json'), JSON.stringify({ name, version: '0.0.1', ...platform }))
-        const packedPlatform = spawnSync('tar', ['-czf', join(packed, `${name}.tgz`), '-C', join(directory, name), 'package'], {
+        const packedPlatform = spawnSync('tar', ['-czf', join(packed, `${name}.tgz`), '-C', join(directory, name), 'package'], { windowsHide: true,
           encoding: 'utf8', timeout: 30_000,
         })
         expect(packedPlatform.error).toBeUndefined()
@@ -80,7 +80,7 @@ fs.writeFileSync(process.env.CACHE_EVIDENCE, JSON.stringify({ consumer, files,
       })
       const result = spawnSync(process.execPath, [
         '--import', 'tsx', 'scripts/release/verify-packed-install.ts', '--family', 'dsh', '--from', packed,
-      ], { cwd: root, env: environment, encoding: 'utf8', timeout: 120_000 })
+      ], { windowsHide: true, cwd: root, env: environment, encoding: 'utf8', timeout: 120_000 })
       expect(result.error).toBeUndefined()
       expect(result.signal).toBeNull()
       expect(result.status, result.stdout + result.stderr).toBe(outcome === 'success' ? 0 : 1)

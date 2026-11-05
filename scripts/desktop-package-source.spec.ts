@@ -18,7 +18,7 @@ it.each(['macos', 'windows'])('%s packaging accepts test branches but preserves 
     const env = { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '', GIT_CONFIG_PARAMETERS: '',
       GIT_CONFIG_COUNT: '0', GIT_DIR: undefined, GIT_WORK_TREE: undefined, GIT_INDEX_FILE: undefined }
     const git = (...args: string[]) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'tag.gpgSign=false', ...args],
-      { cwd: root, env, encoding: 'utf8', stdio: 'pipe' }).trim()
+      { windowsHide: true, cwd: root, env, encoding: 'utf8', stdio: 'pipe' }).trim()
     git('init', '--initial-branch=master')
     mkdirSync(join(root, 'apps/desktop/scripts'), { recursive: true })
     writeFileSync(join(root, 'package.json'), '{"version":"1.0.0"}')
@@ -29,7 +29,7 @@ it.each(['macos', 'windows'])('%s packaging accepts test branches but preserves 
     git('tag', 'dsh-v1.0.0')
     git('tag', 'dsh-v2.0.0')
     const run = (preset: string, ref: string) => {
-      const result = spawnSync(process.execPath, ['-e', script], {
+      const result = spawnSync(process.execPath, ['-e', script], { windowsHide: true,
         cwd: root, encoding: 'utf8', env: { ...env, DSH_PACKAGING_PRESET: preset, PACKAGE_SOURCE_REF: ref },
       })
       expect(result.error).toBeUndefined()

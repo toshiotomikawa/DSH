@@ -11,7 +11,7 @@ import { helloSchema } from '../../packages/ssh/ssh/src/schemas.ts'
  * @returns the validated handshake after the helper has exited.
  */
 export async function probeHelper(executable: string, workspace: string): Promise<z.infer<typeof helloSchema>> {
-  const child = spawn(executable, [], { cwd: workspace, env: { ...process.env, NODE_OPTIONS: '--disable-sigusr1' }, stdio: ['pipe', 'pipe', 'pipe'] })
+  const child = spawn(executable, [], { windowsHide: true, cwd: workspace, env: { ...process.env, NODE_OPTIONS: '--disable-sigusr1' }, stdio: ['pipe', 'pipe', 'pipe'] })
   let diagnostic = ''
   child.stderr.on('data', (chunk: Buffer) => { diagnostic = (diagnostic + chunk.toString()).slice(-8192) })
   const closed = new Promise<void>((resolve, reject) => {

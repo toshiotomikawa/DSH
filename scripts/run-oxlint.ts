@@ -73,7 +73,7 @@ function completeFrom(result: { readonly signal: NodeJS.Signals | null; readonly
 function main(): void {
   const invocation = resolveOxlintInvocation(process.argv.slice(2), process.env)
   if (!isFixInvocation(invocation.args)) {
-    const result = spawnSync(process.execPath, [oxlintCli, ...invocation.args], {
+    const result = spawnSync(process.execPath, [oxlintCli, ...invocation.args], { windowsHide: true,
       env: invocation.env,
       stdio: 'inherit',
     })
@@ -82,7 +82,7 @@ function main(): void {
     return
   }
 
-  const first = spawnSync(process.execPath, [oxlintCli, ...invocation.args], {
+  const first = spawnSync(process.execPath, [oxlintCli, ...invocation.args], { windowsHide: true,
     encoding: 'utf8',
     env: invocation.env,
     maxBuffer: MAX_CAPTURED_OUTPUT_BYTES,
@@ -100,7 +100,7 @@ function main(): void {
   }
 
   // Overlapping JS-plugin fixes can expose one more fixable diagnostic after the first pass.
-  const second = spawnSync(process.execPath, [oxlintCli, ...invocation.args], {
+  const second = spawnSync(process.execPath, [oxlintCli, ...invocation.args], { windowsHide: true,
     env: invocation.env,
     stdio: 'inherit',
   })

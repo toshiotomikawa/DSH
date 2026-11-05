@@ -147,7 +147,7 @@ try {
   // shim isn't spawnable on Windows (CVE-2024-27980) and the .cmd variant needs
   // shell:true, which space-joins args UNESCAPED (DEP0190) — a hazard for the
   // temp tsconfig path. The JS entry behaves identically on every platform.
-  execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '-p', resolve(tmp, 'tsconfig.json'), '--pretty', 'false'], {
+  execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '-p', resolve(tmp, 'tsconfig.json'), '--pretty', 'false'], { windowsHide: true,
     cwd: root,
     stdio: 'pipe',
   })

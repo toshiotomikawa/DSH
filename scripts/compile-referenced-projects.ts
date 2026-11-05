@@ -36,7 +36,7 @@ export interface LibraryStep {
  */
 export function runPnpmCommand(root: string, args: readonly string[]): void {
   const [command, ...prefix] = pnpmCommand()
-  const result = spawnSync(command, [...prefix, ...args], { cwd: root, stdio: 'inherit' })
+  const result = spawnSync(command, [...prefix, ...args], { windowsHide: true, cwd: root, stdio: 'inherit' })
   if (result.error !== undefined) throw result.error
   if (result.status !== 0) {
     throw new Error(`compile-referenced-projects: pnpm ${args.join(' ')} exited with ${String(result.status ?? result.signal)}`)
@@ -205,14 +205,14 @@ export function contractSteps(root: string, faces: 'host' | 'all'): LibraryStep[
 }
 
 function runStep(root: string, step: LibraryStep): void {
-  const result = spawnSync(step.command, step.args, { cwd: root, stdio: 'inherit' })
+  const result = spawnSync(step.command, step.args, { windowsHide: true, cwd: root, stdio: 'inherit' })
   if (result.error !== undefined) throw result.error
   if (result.status !== 0) throw stepFailure(step, result.status ?? result.signal)
 }
 
 function runStepAsync(root: string, step: LibraryStep): Promise<void> {
   return new Promise((settle, fail) => {
-    const child = spawn(step.command, step.args, { cwd: root, stdio: 'inherit' })
+    const child = spawn(step.command, step.args, { windowsHide: true, cwd: root, stdio: 'inherit' })
     child.once('error', fail)
     child.once('close', (code, signal) => {
       if (code === 0) settle()

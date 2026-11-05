@@ -59,7 +59,7 @@ function executeGit(cwd: string, args: string[], context: string): GitCommandRes
 }
 
 function executeGitBytes(cwd: string, args: string[]): GitBytesCommandResult {
-  const result = spawnSync('git', ['-C', cwd, '-c', 'core.fsmonitor=false', ...args], {
+  const result = spawnSync('git', ['-C', cwd, '-c', 'core.fsmonitor=false', ...args], { windowsHide: true,
     env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', LANG: 'C', LC_ALL: 'C' },
     maxBuffer: MAX_GIT_OUTPUT,
   })

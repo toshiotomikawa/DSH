@@ -89,7 +89,7 @@ export interface PreMergeOutcome {
  */
 function run(step: PreMergeStep, root: string): Promise<string | undefined> {
   return new Promise((settle) => {
-    const child = spawn(step.command, [...step.args], { cwd: root, stdio: 'inherit' })
+    const child = spawn(step.command, [...step.args], { windowsHide: true, cwd: root, stdio: 'inherit' })
     child.once('error', (error: Error) => {
       settle(`cannot run ${step.command}: ${error.message}`)
     })

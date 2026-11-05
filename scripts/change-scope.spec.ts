@@ -26,7 +26,7 @@ afterEach(() => {
 })
 
 function git(cwd: string, args: string[], input?: string | Buffer): string {
-  return execFileSync('git', ['-C', cwd, ...args], {
+  return execFileSync('git', ['-C', cwd, ...args], { windowsHide: true,
     encoding: 'utf8',
     env: { ...process.env, LANG: 'C', LC_ALL: 'C' },
     input,
@@ -35,7 +35,7 @@ function git(cwd: string, args: string[], input?: string | Buffer): string {
 }
 
 function gitBytes(cwd: string, args: string[], input?: Buffer): Buffer {
-  return execFileSync('git', ['-C', cwd, ...args], {
+  return execFileSync('git', ['-C', cwd, ...args], { windowsHide: true,
     env: { ...process.env, LANG: 'C', LC_ALL: 'C' },
     input,
     stdio: ['pipe', 'pipe', 'pipe'],

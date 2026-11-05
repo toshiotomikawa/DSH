@@ -32,7 +32,7 @@ if (serialStatus === 0) {
 
 function run(command: string, args: string[]): Promise<number> {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(command, args, { stdio: 'inherit' })
+    const child = spawn(command, args, { windowsHide: true, stdio: 'inherit' })
     child.once('error', reject)
     child.once('exit', (exitCode, signalCode) => {
       if (signalCode !== null) {

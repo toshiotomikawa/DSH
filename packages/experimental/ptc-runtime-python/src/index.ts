@@ -452,7 +452,7 @@ function validatePythonBin(bin: string): void {
       '-I',
       '-c',
       'import sys; print(sys.implementation.name, sys.version_info.major, sys.version_info.minor, sys.version_info.micro)',
-    ], {
+    ], { windowsHide: true,
       encoding: 'utf8',
       env: pythonEnvironment(),
       timeout: PYTHON_PROBE_TIMEOUT_MS,
@@ -1162,7 +1162,7 @@ export class PythonPtcRuntime extends PtcRuntime {
     let child: ChildProcessWithoutNullStreams
     let proto: Duplex | null
     try {
-      child = spawn(argv[0], argv.slice(1), {
+      child = spawn(argv[0], argv.slice(1), { windowsHide: true,
         cwd: request.cwd,
         env: pythonEnvironment(),
         detached: true, // Own the process group used by termination and exit observation.

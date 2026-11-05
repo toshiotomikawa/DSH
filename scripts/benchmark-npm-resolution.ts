@@ -136,14 +136,14 @@ function workspaceManifestPath(path: string): boolean {
 
 function workspaceManifestPaths(root: string, ref: string | undefined): string[] {
   if (ref === undefined) return globSync(WORKSPACE_MANIFEST_GLOBS, { cwd: root }).sort()
-  return execFileSync('git', ['ls-tree', '-r', '--name-only', ref, '--', 'apps', 'packages', 'vendor', 'native'], {
+  return execFileSync('git', ['ls-tree', '-r', '--name-only', ref, '--', 'apps', 'packages', 'vendor', 'native'], { windowsHide: true,
     cwd: root,
     encoding: 'utf8',
   }).split('\n').filter(workspaceManifestPath).sort()
 }
 
 function readGitFiles(root: string, ref: string, paths: readonly string[]): ReadonlyMap<string, string> {
-  const output = execFileSync('git', ['cat-file', '--batch'], {
+  const output = execFileSync('git', ['cat-file', '--batch'], { windowsHide: true,
     cwd: root,
     input: paths.map(path => `${ref}:${path}\n`).join(''),
     maxBuffer: 64 * 1024 * 1024,
@@ -317,7 +317,7 @@ export async function runCommandWithTimeout(
   },
 ): Promise<{ status: number | null; signal: NodeJS.Signals | null; durationMs: number; output: string; timedOut: boolean }> {
   const started = performance.now()
-  const child = spawn(command, [...args], {
+  const child = spawn(command, [...args], { windowsHide: true,
     cwd: options.cwd,
     detached: process.platform !== 'win32',
     env: options.env,
@@ -517,7 +517,7 @@ async function main(): Promise<void> {
   const targetVersions = index.get(TARGET_PACKAGE)
   if (targetVersions === undefined) throw new Error(`local registry contains no ${TARGET_PACKAGE}`)
   const targetVersion = latestVersion(targetVersions)
-  const npmVersion = execFileSync(npmExecutable(), ['--version'], { encoding: 'utf8' }).trim()
+  const npmVersion = execFileSync(npmExecutable(), ['--version'], { windowsHide: true, encoding: 'utf8' }).trim()
   console.log(
     `benchmark-npm-resolution: npm ${npmVersion}, ${options.ref === undefined ? 'working tree' : options.ref}, `
     + `${String(index.size)} package name(s), setup ${(performance.now() - started).toFixed(0)} ms.`,

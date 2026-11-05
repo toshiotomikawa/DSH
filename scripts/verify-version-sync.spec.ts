@@ -108,10 +108,10 @@ describe('verify-version-sync command', () => {
     const bad = repository({ 'package.json': '2.0.0', 'packages/core/session/package.json': '1.0.0', 'apps/web/package.json': '2.0.0' })
     try {
       expect(runVersionCheck(good).ok).toBe(true)
-      const passed = spawnSync(process.execPath, [script, good], { encoding: 'utf8' })
+      const passed = spawnSync(process.execPath, [script, good], { windowsHide: true, encoding: 'utf8' })
       expect(passed.status).toBe(0)
       expect(passed.stdout).toContain('2 released manifest(s) carry 1.0.0')
-      const failed = spawnSync(process.execPath, [script, bad], { encoding: 'utf8' })
+      const failed = spawnSync(process.execPath, [script, bad], { windowsHide: true, encoding: 'utf8' })
       expect(failed.status).toBe(1)
       expect(failed.stderr).toContain('packages/core/session/package.json: 1.0.0')
     } finally {
@@ -123,7 +123,7 @@ describe('verify-version-sync command', () => {
   it('exits 1 when the tree cannot be read', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-version-sync-empty-'))
     try {
-      const result = spawnSync(process.execPath, [script, root], { encoding: 'utf8' })
+      const result = spawnSync(process.execPath, [script, root], { windowsHide: true, encoding: 'utf8' })
       expect(result.status).toBe(1)
       expect(result.stderr).toContain('verify-version-sync:')
     } finally {

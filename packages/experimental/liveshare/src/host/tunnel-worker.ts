@@ -81,7 +81,7 @@ export class TunnelWorker {
     }
     const logDir = mkdtempSync(join(tmpdir(), 'liveshare-worker-'))
     this.out = createWriteStream(join(logDir, 'tunnel.log'), { flags: 'a', mode: 0o600 })
-    const child = spawn(this.options.command.executable, [...this.options.command.args], {
+    const child = spawn(this.options.command.executable, [...this.options.command.args], { windowsHide: true,
       env: {
         NODE_ENV: process.env.NODE_ENV,
         LIVESHARE_TUNNEL_MODE: 'gateway',

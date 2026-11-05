@@ -89,7 +89,7 @@ describe('internal artifact build order', () => {
     const result = spawnSync(process.execPath, [
       '--import', import.meta.resolve('tsx/esm'),
       '--input-type=module', '-e', code,
-    ], { cwd: root, env: environment, encoding: 'utf8' })
+    ], { windowsHide: true, cwd: root, env: environment, encoding: 'utf8' })
 
     expect(result.status, result.stdout + result.stderr).toBe(0)
     expect(readFileSync(marker, 'utf8')).toBe('Direct CLI Title')
@@ -231,7 +231,7 @@ describe('package project compilation', () => {
 
   it.each(['host', 'client'] as const)('preserves every %s package artifact byte', (face) => {
     const { root, leaf } = fixture()
-    const complete = spawnSync(process.execPath, [compiler, '-b', `tsconfig.${face}.json`], {
+    const complete = spawnSync(process.execPath, [compiler, '-b', `tsconfig.${face}.json`], { windowsHide: true,
       cwd: root,
       encoding: 'utf8',
     })
@@ -276,7 +276,7 @@ describe('package project compilation', () => {
     const result = spawnSync(process.execPath, [
       '--input-type=module', '-e',
       `import { describe } from ${JSON.stringify(entrypoint)}; console.log(describe({ label: 'answer' }))`,
-    ], { cwd: root, encoding: 'utf8' })
+    ], { windowsHide: true, cwd: root, encoding: 'utf8' })
     expect(result.error).toBeUndefined()
     expect(result.signal).toBeNull()
     expect(result.status, result.stderr).toBe(0)
@@ -290,7 +290,7 @@ describe('package project compilation', () => {
     compileReferencedProjects(root, face, 'benchmark-emit')
 
     expect(Object.keys(artifacts(leaf)).some(path => path.endsWith('.tsbuildinfo'))).toBe(true)
-    const complete = spawnSync(process.execPath, [compiler, '-b', `tsconfig.${face}.json`], {
+    const complete = spawnSync(process.execPath, [compiler, '-b', `tsconfig.${face}.json`], { windowsHide: true,
       cwd: root,
       encoding: 'utf8',
     })
@@ -313,7 +313,7 @@ describe('package project compilation', () => {
     writeFileSync(join(root, 'aggregate.ts'), 'export const aggregate: number = "invalid"\n')
 
     expect(() => { compileReferencedProjects(root, 'host') }).not.toThrow()
-    const complete = spawnSync(process.execPath, [compiler, '-b', 'tsconfig.host.json'], {
+    const complete = spawnSync(process.execPath, [compiler, '-b', 'tsconfig.host.json'], { windowsHide: true,
       cwd: root,
       encoding: 'utf8',
     })
@@ -324,11 +324,11 @@ describe('package project compilation', () => {
   it('checks only the aggregate program in project mode', () => {
     const { root, leaf } = fixture()
     compileReferencedProjects(root, 'host')
-    const check = () => spawnSync(process.execPath, aggregateCheckArgs('host'), { cwd: root, encoding: 'utf8' })
+    const check = () => spawnSync(process.execPath, aggregateCheckArgs('host'), { windowsHide: true, cwd: root, encoding: 'utf8' })
 
     const clean = check()
     expect(clean.status, clean.stdout + clean.stderr).toBe(0)
-    const dry = spawnSync(process.execPath, [compiler, '-b', '--dry', 'tsconfig.host.json'], { cwd: root, encoding: 'utf8' })
+    const dry = spawnSync(process.execPath, [compiler, '-b', '--dry', 'tsconfig.host.json'], { windowsHide: true, cwd: root, encoding: 'utf8' })
     expect(dry.status, dry.stdout + dry.stderr).toBe(0)
     expect(dry.stdout).not.toContain('A non-dry build would')
 
@@ -342,7 +342,7 @@ describe('package project compilation', () => {
   it('reports missing package declarations without compiling references', () => {
     const { root, leaf } = fixture()
 
-    const result = spawnSync(process.execPath, aggregateCheckArgs('client'), { cwd: root, encoding: 'utf8' })
+    const result = spawnSync(process.execPath, aggregateCheckArgs('client'), { windowsHide: true, cwd: root, encoding: 'utf8' })
 
     expect(result.status).not.toBe(0)
     expect(result.stdout).toContain('error TS6305')
@@ -411,7 +411,7 @@ describe('package project compilation', () => {
       '--import', 'tsx/esm',
       resolve(repository, 'scripts/compile-referenced-projects.ts'),
       'unsupported',
-    ], { cwd: repository, encoding: 'utf8' })
+    ], { windowsHide: true, cwd: repository, encoding: 'utf8' })
 
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain('expected exactly one mode: host, client, host-contracts, or host-libraries')

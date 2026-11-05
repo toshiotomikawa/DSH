@@ -14,7 +14,7 @@ describe('Python runtime executable assets', () => {
       '--skip-build',
       '--dry-run',
       '--targets=node24-macos-arm64',
-    ], {
+    ], { windowsHide: true,
       cwd: root,
       encoding: 'utf8',
       env: { ...process.env, npm_execpath: 'C:\\tools\\pnpm.cjs' },

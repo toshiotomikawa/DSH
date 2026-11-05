@@ -14,7 +14,7 @@ function repository(test: TestContext) {
     rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
   })
   function git(args: string[], input?: string): string {
-    return execFileSync('git', args, {
+    return execFileSync('git', args, { windowsHide: true,
       cwd: root,
       encoding: 'utf8',
       env: {
@@ -187,7 +187,7 @@ describe('maintained repository reference policy', () => {
     remote.write('partial-clone/new.md', missing)
 
     expect(scanRepositoryReferences(clone)).toEqual([])
-    expect(execFileSync('git', ['cat-file', '--batch-check'], {
+    expect(execFileSync('git', ['cat-file', '--batch-check'], { windowsHide: true,
       cwd: clone,
       encoding: 'utf8',
       env: { ...process.env, GIT_NO_LAZY_FETCH: '1' },

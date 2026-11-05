@@ -9,6 +9,6 @@ const { values } = parseArgs({ options: { from: { type: 'string' } }, allowPosit
 if (!values.from) throw new Error('Usage: stage.ts --from <extracted-helper-artifact>')
 const root = resolve(import.meta.dirname, '../..')
 const { version } = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { version: string }
-const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+const commit = execFileSync('git', ['rev-parse', 'HEAD'], { windowsHide: true, cwd: root, encoding: 'utf8' }).trim()
 stageCuaHelperPayload(resolve(values.from), resolve(root, 'packages/experimental/cua-macos'), { version, commit })
 console.log(`CUA helper staged for ${version} (${commit})`)

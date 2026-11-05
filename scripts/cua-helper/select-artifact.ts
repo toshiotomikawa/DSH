@@ -68,7 +68,7 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === import.meta.fi
   const event = z.object({ inputs: inputsSchema }).parse(JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8')))
   const selection = selectCuaHelperArtifact(env.GITHUB_REPOSITORY, event.inputs, (path, paginate) =>
     JSON.parse(execFileSync('gh', ['api', ...(paginate ? ['--paginate', '--slurp'] : []), path],
-      { encoding: 'utf8', timeout: 60_000, maxBuffer: 8 * 1024 * 1024 })))
+      { windowsHide: true, encoding: 'utf8', timeout: 60_000, maxBuffer: 8 * 1024 * 1024 })))
   appendFileSync(env.GITHUB_OUTPUT, `artifact-id=${selection.artifactId}\nattempt=${selection.attempt}\n`)
   console.log(`CUA helper: run ${selection.runId}, attempt ${selection.attempt}, artifact ${selection.artifactId}`)
 }

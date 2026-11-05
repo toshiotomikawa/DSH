@@ -155,7 +155,7 @@ class CommandRunner {
     cwd: string,
     environment: NodeJS.ProcessEnv = process.env,
   ): void {
-    const result = spawnSync(command, args, { cwd, env: environment, stdio: 'inherit' })
+    const result = spawnSync(command, args, { windowsHide: true, cwd, env: environment, stdio: 'inherit' })
     if (result.error !== undefined) throw result.error
     if (result.status !== 0) {
       throw new Error(`${formatCommand(command, args)} exited with status ${String(result.status)}`)
@@ -179,7 +179,7 @@ class CommandRunner {
     cwd: string,
     environment: NodeJS.ProcessEnv = process.env,
   ): CommandResult {
-    const result: SpawnSyncReturns<string> = spawnSync(command, args, {
+    const result: SpawnSyncReturns<string> = spawnSync(command, args, { windowsHide: true,
       cwd,
       encoding: 'utf8',
       env: environment,

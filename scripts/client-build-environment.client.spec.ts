@@ -59,7 +59,7 @@ function buildFixture(environment: Record<string, string>): string {
 }
 
 function git(root: string, args: readonly string[]): string {
-  return execFileSync('git', [...args], {
+  return execFileSync('git', [...args], { windowsHide: true,
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

@@ -180,7 +180,7 @@ function compileBlocksStandalone(blocks: Block[]): string | undefined {
     }
     try {
       // Invoke tsc's JS entry through Node instead of a platform-specific shell shim.
-      execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '-b', join(tmp, 'tsconfig.json')], {
+      execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '-b', join(tmp, 'tsconfig.json')], { windowsHide: true,
         cwd: root,
         stdio: 'pipe',
       })

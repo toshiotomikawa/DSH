@@ -160,7 +160,7 @@ describe.skipIf(!windowsNative)('Windows Job native containment', () => {
       const { spawn } = require('node:child_process')
       const { writeFileSync } = require('node:fs')
       const { dirname } = require('node:path')
-      const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { cwd: dirname(process.execPath), stdio: 'ignore', detached: true })
+      const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { cwd: dirname(process.execPath), stdio: 'ignore', detached: true, windowsHide: true })
       writeFileSync(${JSON.stringify(pidFile)}, String(child.pid))
       writeFileSync(${JSON.stringify(factsFile)}, JSON.stringify({ cwd: process.cwd(), value: process.env.TARGET_VALUE, arg: process.argv[1] }))
       child.unref()

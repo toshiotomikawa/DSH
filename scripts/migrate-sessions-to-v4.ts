@@ -196,7 +196,7 @@ async function migrate(root: string, jobs: number): Promise<number> {
     write(`Root: ${root}`)
     write(`Session jobs: ${jobs}`)
     write(`Node: ${process.version}; platform: ${process.platform}/${process.arch}`)
-    checkoutCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: resolve(import.meta.dirname, '..'), encoding: 'utf8' }).trim()
+    checkoutCommit = execFileSync('git', ['rev-parse', 'HEAD'], { windowsHide: true, cwd: resolve(import.meta.dirname, '..'), encoding: 'utf8' }).trim()
     write(`Git HEAD: ${checkoutCommit}`)
     write(`Full log: ${logPath}`)
     assert.equal(SESSION_FORMAT_VERSION, 4, 'this one-time command requires a V4 Session writer')

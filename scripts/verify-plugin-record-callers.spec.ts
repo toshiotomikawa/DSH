@@ -24,7 +24,7 @@ afterEach(() => {
 function repository(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'dsh-plugin-record-callers-'))
   roots.push(root)
-  execFileSync('git', ['init', '--quiet'], { cwd: root, stdio: 'pipe' })
+  execFileSync('git', ['init', '--quiet'], { windowsHide: true, cwd: root, stdio: 'pipe' })
   for (const [file, contents] of Object.entries(files)) {
     mkdirSync(dirname(join(root, file)), { recursive: true })
     writeFileSync(join(root, file), contents)
@@ -183,7 +183,7 @@ describe('verify-plugin-record-callers', () => {
       'docs/page.md': '# Page\n',
       'packages/core/gone/src/index.ts': 'export {}\n',
     })
-    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'pipe' })
+    execFileSync('git', ['add', '.'], { windowsHide: true, cwd: root, stdio: 'pipe' })
     rmSync(join(root, 'packages/core/gone/src/index.ts'))
     mkdirSync(join(root, 'packages/core/agent/src'), { recursive: true })
     writeFileSync(join(root, 'packages/core/agent/src/new.ts'), 'export {}\n')

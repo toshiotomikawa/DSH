@@ -136,7 +136,7 @@ export function launchAcpTestAgent(options: AcpTestLaunchOptions): LaunchedAcpTe
   const child = spawn(
     launch.command,
     launch.args,
-    {
+    { windowsHide: true,
       cwd,
       env: { ...process.env, ...launch.env },
       stdio: ['pipe', 'pipe', 'pipe'],

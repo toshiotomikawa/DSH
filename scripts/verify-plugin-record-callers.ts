@@ -253,7 +253,7 @@ export function checkDeclaredPluginRecordWrites(
  * @returns repository-relative path, in POSIX separators, to contents.
  */
 export function readRepositorySources(repoRoot: string = root): Map<string, string> {
-  const listing = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
+  const listing = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { windowsHide: true,
     cwd: repoRoot,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,

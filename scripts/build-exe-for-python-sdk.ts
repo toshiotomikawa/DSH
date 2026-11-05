@@ -579,7 +579,7 @@ class SingleExeBuild {
     }
     console.log(`build-exe-for-python-sdk: ${label}: ${printable}`)
     await new Promise<void>((resolvePromise, reject) => {
-      const child = spawn(command, args, {
+      const child = spawn(command, args, { windowsHide: true,
         cwd: root,
         stdio: 'inherit',
         // Artifact builds must not mutate or validate a developer's Git hooks.

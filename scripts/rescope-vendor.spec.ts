@@ -22,13 +22,13 @@ it('lists the complete eligible corpus when tracked paths exceed one MiB', () =>
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
     !['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'].includes(key.toUpperCase())))
   try {
-    execFileSync('git', ['init', '--quiet'], { cwd: root, env })
-    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: root, env, input: '', encoding: 'utf8' }).trim()
+    execFileSync('git', ['init', '--quiet'], { windowsHide: true, cwd: root, env })
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], { windowsHide: true, cwd: root, env, input: '', encoding: 'utf8' }).trim()
     const paths = Array.from({ length: 12_000 }, (_, i) => `packages/example/src/${String(i).padStart(5, '0')}-${'x'.repeat(80)}.ts`)
     expect(Buffer.byteLength(paths.join('\0'))).toBeGreaterThan(1024 * 1024)
     // Index-only entries exercise Git's complete output without creating thousands of source files.
     const entries = [...paths, 'scripts/dependency-catalog/package-lock.json']
-    execFileSync('git', ['update-index', '--index-info'], {
+    execFileSync('git', ['update-index', '--index-info'], { windowsHide: true,
       cwd: root, env, input: entries.map(path => `100644 ${blob}\t${path}\n`).join(''),
     })
     expect(listRescopeFiles(root, env)).toEqual(paths)

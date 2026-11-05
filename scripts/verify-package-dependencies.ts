@@ -1053,7 +1053,7 @@ function refreshPnpmLockfile(root: string): void {
   const result = spawnSync(
     'pnpm',
     ['install', '--lockfile-only', '--ignore-scripts', '--no-frozen-lockfile'],
-    { cwd: root, shell: process.platform === 'win32', stdio: 'inherit' },
+    { windowsHide: true, cwd: root, shell: process.platform === 'win32', stdio: 'inherit' },
   )
   if (result.error !== undefined) throw new Error(`could not refresh pnpm-lock.yaml: ${result.error.message}`)
   if (result.status !== 0) throw new Error(`pnpm lockfile refresh exited with status ${String(result.status)}`)

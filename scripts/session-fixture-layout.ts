@@ -272,7 +272,7 @@ function discoverJsonlFiles(root: string): string[] {
   return execFileSync(
     'git',
     ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.jsonl'],
-    { cwd: root, encoding: 'utf8' },
+    { windowsHide: true, cwd: root, encoding: 'utf8' },
   ).split('\0')
     .filter(path => path.length > 0 && existsSync(resolve(root, path)))
     .sort()
