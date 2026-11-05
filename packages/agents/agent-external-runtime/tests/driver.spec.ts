@@ -644,3 +644,83 @@ it('stores a captured claude session and ignores a placeholder or an empty id', 
   expect(records.map(record => (record as SessionSidecar).sdkSessionId)).toEqual([`fake:${sessionId}`, captured])
   expect(JSON.stringify(events(again.agent))).not.toContain(f.home)
 })
+
+interface SessionTable {
+  entries(): IterableIterator<[string, { agentId: string; ownerId?: string | undefined }]>
+  put(key: string, value: { agentId: string }): Promise<void>
+}
+
+function sessionRows(registry: object): SessionTable {
+  const domain = (registry as unknown as { domain: { table(name: 'sessions'): SessionTable } }).domain
+  return domain.table('sessions')
+}
+
+it('denies a bound session with no owner before a stale revision', async () => {
+  const f = await fixture()
+  const sessionId = SessionId(`ext-no-owner-${f.profile.id}`)
+  const table = sessionRows(f.ctx.persistentAgents)
+  const before = new Set([...table.entries()].map(([key]) => key))
+  const first = await f.open(sessionId)
+  first.agent.followup(prompt('owned'))
+  await first.agent.whenIdle()
+  await first.dispose()
+  const added = [...table.entries()].find(([key]) => !before.has(key))
+  if (added === undefined) throw new Error('missing session row')
+  await table.put(added[0], { agentId: added[1].agentId })
+  const binding = f.config.bindings[0]
+  if (binding === undefined) throw new Error('missing binding')
+  await External.apply(f.ctx, { bindings: [{ ...binding, revision: 2 }] })
+  await expect(f.open(sessionId)).rejects.toMatchObject({ code: 'owner_mismatch' })
+  expect(f.ctx.agents.get(sessionId)).toBeUndefined()
+})
+
+it('resumes a log that already ends at end-seed', async () => {
+  const f = await fixture()
+  const sessionId = SessionId(`ext-end-seed-${f.profile.id}`)
+  await f.ctx.persistentAgents.bind(sessionId, f.profile.id)
+  const prepared = f.ctx.sessions.prepare(sessionId, { meta: { cwd: f.workspace } })
+  const writer = await f.ctx.sessionPersistence.create(prepared.header)
+  await writer.append([{ type: 'session/end-seed', seq: SessionSeq(0), time: Date.now(), data: {} }])
+  await writer.close()
+  const handle = await f.open(sessionId)
+  onTestFinished(() => handle.dispose())
+  expect(events(handle.agent).filter(event => event.type === 'session/end-seed')).toHaveLength(1)
+})
+
+it('keeps the publication error when the writer close is rejected', async () => {
+  const f = await fixture()
+  const stored = SessionId(`ext-close-stored-${f.profile.id}`)
+  const first = await f.open(stored)
+  first.agent.followup(prompt('stored'))
+  await first.agent.whenIdle()
+  await first.dispose()
+  const persistence = f.ctx.sessionPersistence as unknown as {
+    persistBatch: (
+      header: { id: string },
+      events: readonly unknown[],
+      materialized: boolean,
+      inherited: number,
+    ) => Promise<void>
+  }
+  const drainRefusal = new Error('storage refused the drain')
+  let armed = false
+  let drains = 0
+  const original = persistence.persistBatch.bind(persistence)
+  const spy = vi.spyOn(persistence, 'persistBatch').mockImplementation((header, events, materialized, inherited) => {
+    if (!armed) return original(header, events, materialized, inherited)
+    drains += 1
+    return Promise.reject(drainRefusal)
+  })
+  f.ctx.on('agent/created', ({ agent }) => {
+    agent.session.append('turn/start', { turn: 1 })
+    armed = true
+    throw new Error('startup failed')
+  })
+  try {
+    await expect(f.open(stored)).rejects.toThrow('startup failed')
+    await expect(f.open()).rejects.toThrow('startup failed')
+    expect(drains).toBe(2)
+  } finally {
+    spy.mockRestore()
+  }
+})

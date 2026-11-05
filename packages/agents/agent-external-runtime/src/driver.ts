@@ -82,12 +82,16 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
     if (profile.runtime === 'native') throw new HarnessBindingError('runtime_native')
     const runtime = profile.runtime
     const metadata = registry.metadataOf(input.sessionId)
+    const ownerId = metadata?.agentId === profile.id ? metadata.ownerId : profile.ownerId
+    if (ownerId === undefined) throw new HarnessBindingError('owner_mismatch')
     if (metadata?.agentId !== profile.id) await registry.bind(input.sessionId, profile.id)
+    const agentId = metadata?.agentId === profile.id ? metadata.agentId : profile.id
     const bindings = host.get('harnessBindings')
     if (bindings === undefined) throw new HarnessBindingError('binding_missing')
     const stored = await required(host, 'sessionPersistence').stat(input.sessionId)
-    if (stored === undefined) return this.openNew(host, input, bindings, runtime, profile.instructions, profile.runtimeModel)
-    return this.openStored(host, input, bindings, runtime, profile.instructions, profile.runtimeModel)
+    const identity = { ownerId, agentId }
+    if (stored === undefined) return this.openNew(host, input, bindings, runtime, profile.instructions, profile.runtimeModel, identity)
+    return this.openStored(host, input, bindings, runtime, profile.instructions, profile.runtimeModel, identity)
   }
 
   private async openNew(
@@ -97,15 +101,15 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
     runtime: 'claude-sdk' | 'codex-sdk',
     instructions: string,
     runtimeModel: string | undefined,
+    identity: { ownerId: string; agentId: string },
   ): Promise<AgentHandle> {
     const workspace = workspacePath(host)
     const binding = await bindings.resolve(input.sessionId, workspace)
     const session = required(host, 'sessions').prepare(input.sessionId, { meta: { cwd: workspace } })
     const writer = await required(host, 'sessionPersistence').create(session.header)
     try {
-      return await this.publish(host, session, writer, binding, runtime, instructions, runtimeModel, false)
+      return await this.publish(host, session, writer, binding, runtime, instructions, runtimeModel, false, identity)
     } catch (error) {
-      // v8 ignore next -- a rejected writer close must not replace the publish error
       await writer.close().catch(() => {})
       throw error
     }
@@ -118,6 +122,7 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
     runtime: 'claude-sdk' | 'codex-sdk',
     instructions: string,
     runtimeModel: string | undefined,
+    identity: { ownerId: string; agentId: string },
   ): Promise<AgentHandle> {
     const writer = await required(host, 'sessionPersistence').open(input.sessionId, 'write')
     try {
@@ -134,13 +139,11 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
       // The resume marker is appended before store entry, so the live router never sees it.
       // oxlint-disable-next-line typescript/no-deprecated -- same stored-suffix read the native loop uses
       const suffix = session.snapshotEvents(SessionLogOffset(storedCount))
-      // v8 ignore else -- prepare always appends the resume marker, so the suffix is non-empty
       if (suffix.length > 0) await writer.append(suffix)
       const workspace = session.header.cwd ?? workspacePath(host)
       const binding = await bindings.resolve(input.sessionId, workspace)
-      return await this.publish(host, session, writer, binding, runtime, instructions, runtimeModel, true)
+      return await this.publish(host, session, writer, binding, runtime, instructions, runtimeModel, true, identity)
     } catch (error) {
-      // v8 ignore next -- a rejected writer close must not replace the publish error
       await writer.close().catch(() => {})
       throw error
     }
@@ -155,6 +158,7 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
     instructions: string,
     runtimeModel: string | undefined,
     resumed: boolean,
+    identity: { ownerId: string; agentId: string },
   ): Promise<AgentHandle> {
     const agent = new ExternalAgent(host, session, this, runtime, instructions, runtimeModel)
     let detachSession: (() => void) | undefined
@@ -173,11 +177,7 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
       sessions.announce(session)
       detachAgent = required(host, 'agents').enter(agent)
       await required(host, 'agents').announce(agent, resumed ? 'resume' : 'startup')
-      const metadata = required(host, 'persistentAgents').metadataOf(session.id)
-      // v8 ignore next -- bind stores both ids before publish
-      const ownerId = metadata?.ownerId ?? 'owner'
-      // v8 ignore next -- bind stores both ids before publish
-      const agentId = String(metadata?.agentId ?? '')
+      const { ownerId, agentId } = identity
       const previous = sidecarOf(session)
       if (previous !== undefined) {
         if (previous.ownerId !== ownerId || previous.agentId !== agentId || previous.sessionId !== session.id) throw new HarnessBindingError('owner_mismatch')
