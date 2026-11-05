@@ -4,7 +4,7 @@ import { agentEvents, type Agent, type AgentEventDispatch, type AgentHandle, typ
 import type { AgentCancelCause, InboxTarget } from '@deepseek-ai/dsh-agent'
 import { PersistentAgentId } from '@deepseek-ai/dsh-agent-registry'
 import type { ExternalAgentActivation, PersistentAgentActivationInput } from '@deepseek-ai/dsh-agent-runtime'
-import { createAssistantMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
+import { createAssistantMessage, ReasoningEffortId, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import {
   appendPluginRecord, interruptedTurnClosers, pluginRecordOf, SessionId, SessionLogOffset,
@@ -16,6 +16,7 @@ import type { AccountHarnessBinding, HarnessBindings } from './index.ts'
 import type {} from '@deepseek-ai/dsh-agent-runtime/accounts'
 import { openTurnBridge, type TurnToolBridge } from './bridge.ts'
 import { HarnessBindingError } from './errors.ts'
+import { ExternalQuotaError, ExternalQuotaState } from './quota.ts'
 
 /** One fake-SDK turn. Tests replace {@link ExternalAgentActivationService.sdk}. */
 export interface ExternalTurnInput {
@@ -59,6 +60,25 @@ const RECORD = 'plugin:agent-external-runtime/session' as const
 
 /** Host service that publishes external agents. */
 export class ExternalAgentActivationService implements ExternalAgentActivation {
+  private closed = false
+  private readonly pending = new Set<Promise<AgentHandle>>()
+  private readonly owned = new Set<AgentHandle>()
+  /** @param quota - persistent failure state and identity lease owner. @param teardownFailure - sanitized unload diagnostic. */
+  constructor(readonly quota: ExternalQuotaState, private readonly teardownFailure: () => void) {}
+
+  /** Drain pending admissions, cancel owned handles, and retain durable refusal on failed teardown. */
+  async close(): Promise<void> {
+    this.closed = true
+    await Promise.allSettled(this.pending)
+    await Promise.all([...this.owned].map(handle => handle.dispose().catch(() => { this.teardownFailure() })))
+  }
+  /** Explicit Host recovery; a consumer must authorize the profile before calling.
+   * @param input - owning context and persistent profile.
+   */
+  async clearQuota(input: Pick<PersistentAgentActivationInput, 'ownerCtx' | 'agentId'>): Promise<void> {
+    const profile = required(input.ownerCtx, 'persistentAgents').get(PersistentAgentId(input.agentId))
+    await this.quota.clear(this.quota.key(profile.ownerId ?? 'owner', profile.id))
+  }
   /** Turns the fake SDK accepted. A replaced `sdk` does not have to fill this. */
   readonly calls: ExternalTurnInput[] = []
   /** Step function. The default never imports or calls a provider SDK. */
@@ -76,6 +96,19 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
    * @returns the live handle after setup listeners finish.
    */
   async createOrResume(input: PersistentAgentActivationInput): Promise<AgentHandle> {
+    if (this.closed) throw new Error('External runtime is closed')
+    const operation = this.activate(input)
+    this.pending.add(operation)
+    void operation.then(() => this.pending.delete(operation), () => this.pending.delete(operation))
+    const handle = await operation
+    if (this.closed) {
+      await handle.dispose()
+      throw new Error('External runtime is closed')
+    }
+    return handle
+  }
+
+  private async activate(input: PersistentAgentActivationInput): Promise<AgentHandle> {
     const host = input.ownerCtx
     const registry = required(host, 'persistentAgents')
     const profile = registry.get(PersistentAgentId(input.agentId))
@@ -88,10 +121,63 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
     const agentId = metadata?.agentId === profile.id ? metadata.agentId : profile.id
     const bindings = host.get('harnessBindings')
     if (bindings === undefined) throw new HarnessBindingError('binding_missing')
-    const stored = await required(host, 'sessionPersistence').stat(input.sessionId)
     const identity = { ownerId, agentId }
-    if (stored === undefined) return this.openNew(host, input, bindings, runtime, profile.instructions, profile.runtimeModel, identity)
-    return this.openStored(host, input, bindings, runtime, profile.instructions, profile.runtimeModel, identity)
+    const key = this.quota.key(ownerId, agentId)
+    let release: () => void
+    try {
+      if (host.agents.list().some(agent => registry.metadataOf(agent.id)?.agentId === agentId)) throw new Error('External agent identity is still live')
+      release = this.quota.acquire(key)
+    }
+    catch (error) {
+      const refusal = await this.quota.get(key)
+      if (refusal !== undefined) throw new ExternalQuotaError(refusal.resetAt, refusal.afterEffects, refusal.cause === 'teardown_failed')
+      throw error
+    }
+    let published = false
+    try {
+      const refusal = await this.quota.get(key)
+      let handle: AgentHandle
+      if (refusal !== undefined) {
+        if (refusal.cause !== 'quota_exhausted' || refusal.afterEffects || !profile.automaticFallback) {
+          throw new ExternalQuotaError(refusal.resetAt, refusal.afterEffects, refusal.cause === 'teardown_failed')
+        }
+        // Revalidate identity, binding and route before invoking any native factory.
+        await bindings.resolve(input.sessionId, workspacePath(host))
+        const route = profile.reserves[0]
+        if (route === undefined) throw new ExternalQuotaError(refusal.resetAt)
+        const info = await host.llm.resolveModelInfo(route.provider, route.model)
+        if (route.reasoningEffort !== undefined && !info.reasoning?.efforts.some(value => value.id === route.reasoningEffort)) throw new Error('Unsupported reserve reasoning effort')
+        const agentOptions = { provider: route.provider, model: route.model,
+          ...(route.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(route.reasoningEffort) }) }
+        const stored = await required(host, 'sessionPersistence').stat(input.sessionId)
+        handle = stored === undefined
+          ? await host.agents.create({ sessionId: input.sessionId, agentOptions })
+          : await host.agents.resume({ resumeSessionId: input.sessionId, agentOptions })
+      } else {
+        const stored = await required(host, 'sessionPersistence').stat(input.sessionId)
+        handle = stored === undefined
+          ? await this.openNew(host, input, bindings, runtime, profile.instructions, profile.runtimeModel, identity)
+          : await this.openStored(host, input, bindings, runtime, profile.instructions, profile.runtimeModel, identity)
+      }
+      published = true
+      let disposed: Promise<void> | undefined
+      const owned: AgentHandle = { agent: handle.agent, dispose: () => disposed ??= (async () => {
+        try {
+          await handle.dispose()
+          if ((await this.quota.get(key))?.cause === 'teardown_failed') throw new ExternalQuotaError(undefined, true, true)
+        }
+        catch (error) {
+          await this.quota.refuse(key, { cause: 'teardown_failed', afterEffects: true })
+          throw error
+        }
+        release()
+        this.owned.delete(owned)
+      })() }
+      this.owned.add(owned)
+      return owned
+    } finally {
+      if (!published) release()
+    }
   }
 
   private async openNew(
@@ -554,13 +640,27 @@ class ExternalAgent implements Agent {
       this.session.append('turn/end', { turn, reason: { kind: 'completed' } })
     } catch (error) {
       if (opened) this.session.append('step/end', { turn, step })
+      if (error instanceof ExternalQuotaError) {
+        this.closeAdmission()
+        // Persist before publishing turn/end: consumers may immediately settle and dispose.
+        const key = this.activation.quota.key(this.ownerId, this.sessionRecord.agentId)
+        // oxlint-disable-next-line typescript/no-deprecated -- includes this turn's tool events
+        const effects = error.afterEffects || this.session.snapshotEvents().some(event => event.type === 'tool/call' && event.data.turn === turn)
+        await this.activation.quota.refuse(key, {
+          cause: error.teardownFailed ? 'teardown_failed' : activity.abort.signal.aborted ? 'aborted' : 'quota_exhausted', afterEffects: effects,
+          ...(error.resetAt === undefined ? {} : { resetAt: error.resetAt }),
+        })
+        if (activity.abort.signal.aborted && !error.teardownFailed) {
+          await this.activation.quota.refuse(key, { cause: 'aborted', afterEffects: effects })
+        }
+      }
       if (activity.abort.signal.aborted) {
         // oxlint-disable-next-line typescript/no-non-null-assertion -- cancel sets cause before abort
         this.session.append('turn/end', { turn, reason: { kind: 'aborted', reason: activity.cause! } })
         return
       }
       const message = error instanceof Error ? error.message : String(error)
-      this.session.append('turn/end', { turn, reason: { kind: 'error', error: { message, code: 'UNKNOWN' } } })
+      this.session.append('turn/end', { turn, reason: { kind: 'error', error: { message, code: error instanceof ExternalQuotaError ? error.code : 'UNKNOWN' } } })
     }
   }
 

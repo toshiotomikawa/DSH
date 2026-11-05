@@ -1433,6 +1433,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'External plugin entry. The native loop must not implement this.',
     methods: [
       {
+        signature: 'clearQuota(input: Pick<PersistentAgentActivationInput, \'ownerCtx\' | \'agentId\'>): Promise<void>',
+        description: 'Explicit trusted Host recovery, after the caller authorizes the profile owner.',
+        parameters: [{ name: 'input', description: 'owning context and profile; a live handle forbids recovery.' }],
+      },
+      {
         signature: 'createOrResume(input: PersistentAgentActivationInput): Promise<AgentHandle>',
         description: 'Publish the external agent for one bound session.',
         parameters: [{ name: 'input', description: 'owner, conversation and profile.' }],

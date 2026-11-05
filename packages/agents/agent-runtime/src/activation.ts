@@ -29,6 +29,10 @@ export interface PersistentAgentActivation {
 
 /** External plugin entry. The native loop must not implement this. */
 export interface ExternalAgentActivation {
+  /** Explicit trusted Host recovery, after the caller authorizes the profile owner.
+   * @param input - owning context and profile; a live handle forbids recovery.
+   */
+  clearQuota(input: Pick<PersistentAgentActivationInput, 'ownerCtx' | 'agentId'>): Promise<void>
   /**
    * Publish the external agent for one bound session.
    * @param input - owner, conversation and profile.

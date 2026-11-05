@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events'
 import type { Readable, Writable } from 'node:stream'
 import type { ExternalSdk, ExternalTurnInput } from './driver.ts'
 import { HarnessAdapterError, HarnessBindingError } from './errors.ts'
+import { ExternalQuotaError } from './quota.ts'
 
 /** Official package name. Passed to import as a variable so this package declares no dependency. */
 const CLAUDE_SDK = '@anthropic-ai/claude-agent-sdk'
@@ -23,6 +24,8 @@ export interface ClaudeSdkMessage {
   is_error?: boolean
   /** Official session id captured for the sidecar. */
   session_id?: string
+  /** Structured subscription limit notification; informational statuses never fail a turn. */
+  rate_limit_info?: { status?: string; rateLimitType?: string; resetsAt?: number }
 }
 
 /** Async result of one official query, plus the SDK close hook when the module provides it. */
@@ -317,15 +320,30 @@ async function execute(
   const abort = (): void => { abortController.abort() }
   input.signal.addEventListener('abort', abort, { once: true })
   let cursor: ClaudeQuery | undefined
+  let quota: ExternalQuotaError | undefined
+  let partial = false
+  const children: ClaudeSpawnedProcess[] = []
   try {
     cursor = factory.query({
       prompt: userPrompt(input),
-      options: await queryOptions(factory, input, cwd, configDirectory, abortController, spawnProcess),
+      options: await queryOptions(factory, input, cwd, configDirectory, abortController, (options) => {
+        const child = spawnProcess(options)
+        children.push(child)
+        return child
+      }),
     })
     let text = ''
     let sdkSessionId = ''
     let succeeded = false
     for await (const message of cursor) {
+      if (message.type === 'assistant' || message.type === 'stream_event') partial = true
+      const limit = message.rate_limit_info
+      if (message.type === 'rate_limit_event' && limit?.status === 'rejected'
+        && (limit.rateLimitType === 'five_hour' || limit.rateLimitType === 'seven_day')) {
+        const reset = limit.resetsAt
+        quota = new ExternalQuotaError(typeof reset === 'number' && Number.isFinite(reset) && reset > 0 && reset <= 8.64e12 ? reset * 1000 : undefined, partial)
+        throw quota
+      }
       if (typeof message.session_id === 'string' && message.session_id.length > 0 && !message.session_id.startsWith('fake:')) sdkSessionId = message.session_id
       if (message.type !== 'result') continue
       if (message.subtype !== 'success' || message.is_error === true || typeof message.result !== 'string') throw new HarnessAdapterError('result_invalid')
@@ -335,13 +353,32 @@ async function execute(
     if (!succeeded || sdkSessionId.length === 0) throw new HarnessAdapterError('session_unavailable')
     return { text, sdkSessionId }
   } catch (error) {
+    if (error instanceof ExternalQuotaError) throw error
     if (input.signal.aborted) throw new HarnessAdapterError('session_unavailable')
     if (error instanceof HarnessAdapterError || error instanceof HarnessBindingError) throw error
     throw new HarnessAdapterError('sdk_unavailable')
   } finally {
-    cursor?.close?.()
-    input.signal.removeEventListener('abort', abort)
+    try {
+      cursor?.close?.()
+      await Promise.all(children.map(stopProcess))
+    }
+    catch { throw new ExternalQuotaError(quota?.resetAt, true, true) }
+    finally { input.signal.removeEventListener('abort', abort) }
   }
+}
+
+async function stopProcess(child: ClaudeSpawnedProcess): Promise<void> {
+  if (typeof child.exitCode === 'number' || typeof child.signalCode === 'string') return
+  await new Promise<void>((resolve, reject) => {
+    const finish = (): void => { clearTimeout(timer); child.off('exit', finish); resolve() }
+    const timer = setTimeout(() => {
+      child.off('exit', finish)
+      reject(new HarnessAdapterError('process_failed'))
+    }, 2000)
+    child.once('exit', finish)
+    try { child.kill('SIGTERM') }
+    catch (error) { clearTimeout(timer); child.off('exit', finish); reject(error) }
+  })
 }
 
 async function queryOptions(

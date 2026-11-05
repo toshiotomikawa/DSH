@@ -12,9 +12,73 @@ import {
 } from '../src/claude.ts'
 import type { ExternalTurnInput } from '../src/driver.ts'
 import type { TurnToolBridge } from '../src/bridge.ts'
+import { ExternalQuotaError } from '../src/quota.ts'
 
 const SESSION = '11111111-1111-4111-8111-111111111111'
 const SECRET = 'C:\\harness-secret\\auth.json'
+
+function quotaFactory(messages: ClaudeSdkMessage[], close?: () => void): ClaudeQueryFactory {
+  return {
+    query: () => textQuery(messages, close),
+    tool: name => ({ name }),
+    createSdkMcpServer: server => ({ type: 'sdk', name: server.name, instance: {} }),
+  }
+}
+
+it.each([
+  { rateLimitType: 'five_hour', resetsAt: 2000000000, partial: false },
+  { rateLimitType: 'seven_day', resetsAt: undefined, partial: true },
+  { rateLimitType: 'five_hour', resetsAt: Number.NaN, partial: true },
+  { rateLimitType: 'five_hour', resetsAt: 0, partial: false },
+  { rateLimitType: 'five_hour', resetsAt: 9e12, partial: false },
+])('classifies only a rejected subscription bucket, preserving partial-output refusal: %j', async (value) => {
+  const factory = quotaFactory([
+    ...(value.partial ? [{ type: 'assistant' }, { type: 'stream_event' }] : []),
+    { type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: value.rateLimitType,
+      ...(value.resetsAt === undefined ? {} : { resetsAt: value.resetsAt }) } },
+  ])
+  const error = await createClaudeSdk({ factory }).run(turn()).catch((error: unknown) => error)
+  expect(error).toBeInstanceOf(ExternalQuotaError)
+  expect(error).toMatchObject({ afterEffects: value.partial, code: 'EXTERNAL_QUOTA_EXHAUSTED' })
+  expect((error as ExternalQuotaError).resetAt).toBe(value.resetsAt === 2000000000 ? 2000000000000 : undefined)
+})
+
+it.each([
+  {}, { status: 'allowed', rateLimitType: 'five_hour' }, { status: 'allowed_warning', rateLimitType: 'seven_day' },
+  { status: 'rejected', rateLimitType: 'unknown' }, { status: 'rejected' },
+])('does not treat informational or unknown limits as exhausted subscription: %j', async (info) => {
+  const factory = quotaFactory([{ type: 'rate_limit_event', rate_limit_info: info }, success()])
+  await expect(createClaudeSdk({ factory }).run(turn())).resolves.toMatchObject({ text: 'answer' })
+})
+
+it.each([false, true])('refuses activation if SDK close fails (quota=%s)', async (limited) => {
+  const factory = quotaFactory(limited
+    ? [{ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: 2000000000 } }]
+    : [success()], () => { throw new Error(SECRET) })
+  await expect(createClaudeSdk({ factory }).run(turn())).rejects.toMatchObject({ code: 'EXTERNAL_TEARDOWN_FAILED', teardownFailed: true })
+})
+
+it.each(['exited', 'exit-after-kill', 'timeout', 'kill-throws'] as const)('waits for a spawned SDK child before settling: %s', async (mode) => {
+  let closed: (() => void) | undefined
+  const child: ClaudeSpawnedProcess = { ...fakeProcess(),
+    exitCode: mode === 'exited' ? 0 : null,
+    once: (_event, listener) => { closed = () => { (listener as (code: number, signal: null) => void)(0, null) } },
+    kill: () => {
+      if (mode === 'kill-throws') throw new Error(SECRET)
+      if (mode === 'exit-after-kill') closed!()
+      return true
+    },
+  }
+  const factory = quotaFactory([success()])
+  const query = factory.query
+  factory.query = (params) => {
+    params.options.spawnClaudeCodeProcess({ command: 'fake', args: [], env: {}, signal: params.options.abortController.signal })
+    return query(params)
+  }
+  const result = createClaudeSdk({ factory, spawn: () => child }).run(turn())
+  if (mode === 'timeout' || mode === 'kill-throws') await expect(result).rejects.toMatchObject({ teardownFailed: true })
+  else await expect(result).resolves.toMatchObject({ text: 'answer' })
+})
 
 function textQuery(messages: readonly ClaudeSdkMessage[], close?: () => void): ClaudeQuery {
   return {

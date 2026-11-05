@@ -23,6 +23,10 @@ See [persistent agents](../../../docs/subsystems/persistent-agents.md) for ident
 
 ## Model Experience
 
+Subscription quota is recognized only from a rejected `five_hour` or `seven_day` SDK notification. Informational limits, authentication errors and unknown failures do not select an API route. `EXTERNAL_QUOTA_EXHAUSTED` closes the external turn as failed, with no automatic retry or transfer of its input, mailbox receipt or routine settlement.
+
+The per-record `agent_external_quota` domain keeps a refusal by owner and persistent agent. Only a later activation may use the first saved reserve, after explicit `automaticFallback` consent, route revalidation and successful disposal of the previous handle. A tool call or partial output prohibits that reserve. Abortion and unconfirmed teardown keep the refusal. A clean provider-reported deadline expires on the next activation; an absent deadline requires explicit Host recovery through the activation service's quota state, after the live handle is closed. Native execution starts a new turn; it never adopts the failed turn.
+
 ### Account harness configuration
 
 #### What the model sees
@@ -31,7 +35,7 @@ The external turn publishes admitted memory, mailbox, routine, and table schemas
 
 #### Token effect
 
-No model requests or token consumption.
+The bundled fake SDK consumes no inference tokens. A separately activated reserve uses the ordinary native API route and its normal token costs; saving a reserve alone does not enable it.
 
 #### KV Cache effect
 
@@ -39,9 +43,9 @@ No change to model input or prefix reuse.
 
 ## Known Limitations and Deferred Work
 
-- This plugin publishes an external Agent through the persistent activation port. The bundled driver is a fake SDK that records Session turns and never calls the native API model.
+- This plugin publishes an external Agent through the persistent activation port. Its bundled SDK is a recording fake; only explicit reserve consent can select a native API on a later activation.
 - Directory separation does not provide operating-system isolation or establish the provider's authenticated identity. Harness login belongs to the official harness, outside this plugin.
 - Step tools are the already admitted memory, mailbox, routine, and table calls. Native file, shell, network, computer use, and other MCP servers are refused. A call with no DSH approval flow ends as `permission_required` and opens no window.
 - Codex reaches the same bridge on `127.0.0.1`. The ephemeral credential stays in memory and the child environment, never in the URL, history, or harness config. The bridge closes when the step or the account ends.
-- Fallback and profile UI remain later stages. A missing plugin fails activation instead of falling back to the native API.
+- A missing plugin fails activation instead of selecting a native API. Profile UI remains a separate consumer of the saved configuration.
 - `createClaudeSdk` is the Claude adapter and is not the bundled driver. Tests inject a fake factory. Without one, a lazy import fails closed before any network call. Codex stays unavailable and partial because official hidden spawn is still open. The adapter does not read harness credentials.
