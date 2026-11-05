@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-04-fork-account-mailbox-attribution.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-04-fork-account-mailbox-attribution.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-04-fork-account-mailbox-attribution:
+  en: 8a6c162ffc3bb9f3
+  zh: b1aac6219e7a9e9b
+/2026-11-04-fork-account-mailbox-attribution/summary:
+  en: 583fb45931ba9285
+  zh: 2880796c51de37fa
+/2026-11-04-fork-account-mailbox-attribution/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-04-fork-account-mailbox-attribution/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-04-fork-account-mailbox-attribution/compatibility:
+  en: 8712e3a07edb4edf
+  zh: 7a6fa0f64caa401b
+/2026-11-04-fork-account-mailbox-attribution/verification:
+  en: 2cb9c1fd67649d04
+  zh: 49ba9c2083454e90
+/2026-11-04-fork-account-mailbox-attribution/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269
