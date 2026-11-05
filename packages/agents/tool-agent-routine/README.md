@@ -11,10 +11,19 @@ English | [中文](README.zh.md)
 
 Registers routine_create, routine_update, routine_list, routine_test and routine_no_update over agent-routine.
 
+## Table of Contents
+- [Dev Note](#dev-note)
+
+- [Use this package](#use-this-package)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+<a id="use-this-package"></a>
 ## Use this package
 
 Mount beside tools and agentRoutines with agentRoutineBridge available. The bridge resolves exec.agent.id, a live session id, into the persistent agent that owns its routines. Model arguments cannot select another agent's routines. A manual test works while paused and does not arm the calendar or move its next occurrence.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### Routine management and outcomes
@@ -31,8 +40,19 @@ Fixed tool-schema cost and one result per call. routine_test admits a separate e
 
 Tool definitions remain prefix-stable while enabled. Tool calls and results append to the caller's history; admitted routine work uses a new session with its own prefix.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 - Pausing does not undo external effects of an already admitted run.
 - Removing a routine explicitly deletes its execution history.
 - Tools rely on the bridge and service for ownership and scheduling; they do not add user-level authorization or automatic provider fallback.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

@@ -11,6 +11,14 @@ English | [中文](README.zh.md)
 
 Stores durable messages and per-recipient deliveries between persistent agents whose root sessions differ. The sender is always the authenticated live agent; the identity layer supplies visible targets, stable ids and interruption authority.
 
+## Table of Contents
+- [Dev Note](#dev-note)
+
+- [Use this package](#use-this-package)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+<a id="use-this-package"></a>
 ## Use this package
 
 Mount beside `storage-domain`, `agents` and `session-persistence`, and provide an `agentDirectory` implementation from the persistent-agent integration. The directory resolves stable ids to conversations, decides visibility and interruption authority, and creates a fresh conversation for `newThread`. Delivery opens or resumes the target conversation through `ctx.agents` and queues one turn through `followup`; a busy target keeps the message for its next turn, and the end of that turn resumes the queue. An optional `reaches(fromId, toId)` on the directory is asked again when a pending delivery is attempted and when a reply is written; a withdrawn permission ends the delivery as `refused` with a neutral reason that names no account, and replies keep the permission of the agent that opened the conversation. A turn that already received a message keeps it. The companion `@deepseek-ai/dsh-tool-agent-mailbox` exposes `agent_send_message`, `agent_list` and `agent_interrupt`.
@@ -19,6 +27,7 @@ Messages, delivery state and the hashed `idempotencyKey` live in one message rec
 
 New messages and replies record the authenticated sending profile owner, defaulting to `owner` for legacy profiles. The persistent-agent directory restricts discovery and interruption to the caller owner before recipient validation.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### Delivered mailbox messages
@@ -35,6 +44,7 @@ One appended user message per delivery, at most one per recipient per send. The 
 
 The delivery appends after the target conversation's existing history and does not replace earlier tokens. Sending a message does not change the sender's own request prefix.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 - Delivery is process-local and serialized through one pump; a restart retries queued deliveries, and a delivery whose turn was open at the crash is marked `uncertain` instead of being re-sent, so external work is never repeated blindly.
@@ -42,3 +52,13 @@ The delivery appends after the target conversation's existing history and does n
 - Interruption asks the target's agent loop to cancel its current turn; it cannot undo external effects that already ran.
 - A new conversation uses the route supplied by the identity layer; a target without a route can only be woken when its session already records a selection.
 - No email, chat or other external channel delivery: this package carries agent-to-agent messages only.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

@@ -13,6 +13,14 @@ Host 插件惰性安装官方 Claude 适配器。加载插件不会导入 SDK、
 
 解析持久智能体的显式账户配置目录。
 
+## 目录
+
+- [使用方式](#use-this-package)
+- [模型体验](#model-experience)
+- [已知限制和后续工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
+<a id="use-this-package"></a>
 ## 使用方式
 
 在持久智能体注册表、账户和会话所有者策略之后挂载此可选 Host 插件。`bindings` 配置包含 `accountId`、`runtime`（`claude-sdk` 或 `codex-sdk`）、绝对目录 `configDirectory` 和正整数 `revision`。空配置不授予任何工具运行时访问权限，包括旧版 `owner`。绑定属于部署配置，不能由模型工具指定。修改绑定或工具登录后，应提高版本号并重新加载。
@@ -23,6 +31,7 @@ Host 插件惰性安装官方 Claude 适配器。加载插件不会导入 SDK、
 
 身份与所有权语义见[持久智能体](../../../docs/subsystems/persistent-agents.zh.md)。
 
+<a id="model-experience"></a>
 ## 模型体验
 
 订阅配额仅由 SDK 中状态为 rejected 的 `five_hour` 或 `seven_day` 通知识别。提示性限额、身份验证错误和未知故障不会选择 API 路由。`EXTERNAL_QUOTA_EXHAUSTED` 将外部回合结算为失败，不会自动重试或转移输入、信箱回执或例程结算。
@@ -43,6 +52,7 @@ Host 插件惰性安装官方 Claude 适配器。加载插件不会导入 SDK、
 
 不改变模型输入或前缀复用。
 
+<a id="known-limitations-and-deferred-work"></a>
 ## 已知限制和后续工作
 
 - 此插件通过持久激活端口发布外部 Agent。随附 SDK 只做模拟记录；只有明确同意使用备用模型后，后续激活才能选择原生 API。
@@ -51,3 +61,13 @@ Host 插件惰性安装官方 Claude 适配器。加载插件不会导入 SDK、
 - Codex 通过 `127.0.0.1` 访问同一座桥。一次性凭据只留在内存和子进程环境中，不进入 URL、历史或工具配置。步骤或账户结束时桥关闭。
 - 缺少此插件时激活失败，不会选择原生 API。档案界面是已保存配置的独立消费者。
 - `createClaudeSdk` 是 Claude 适配器，不是随附驱动。测试注入假工厂。没有工厂时，懒加载在任何网络调用之前失败关闭。Codex 因官方隐藏进程仍未解决而保持不可用，并声明为部分实现。适配器不读取工具凭据。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文——点击展开</summary>
+
+无。
+
+</details>

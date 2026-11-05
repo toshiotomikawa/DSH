@@ -1,6 +1,8 @@
 /** Keyless production-profile proof for both optional CLI plugins. */
 import { expect, it } from 'vitest'
 import { readFile, readdir } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runLoaderSmoke, LOADER_SMOKE_TEST_TIMEOUT_MS } from '@deepseek-ai/dsh-loader-smoke'
@@ -21,7 +23,7 @@ it.each(['grok','agy'])('boots %s through Loader, delegates and persists the fin
     configPath:fileURLToPath(new URL(`../../subagent-${provider}/tests/fixtures/loader.patch.yml`,import.meta.url)),
     tsconfigPath:resolve('tsconfig.json'),
     env:{
-      DSH_HOME:resolve(`.dsh-test/loader-${provider}`),
+      DSH_HOME:join(tmpdir(),`dsh-loader-${provider}-${randomUUID()}`),
       M4_NATIVE_PROVIDER:provider,
       M4_TEST_CLI:fileURLToPath(new URL('./fixtures/cli.mjs',import.meta.url)),
       M4_TEST_MOCK_LLM:fileURLToPath(new URL('../../subagent-acp/tests/fixtures/loader/mock-delegating-llm.ts',import.meta.url)),

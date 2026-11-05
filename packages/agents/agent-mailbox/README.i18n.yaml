@@ -11,9 +11,12 @@
 /deepseek-ai-dsh-agent-mailbox/summary:
   en: a8f1d75ef3b32aca
   zh: 1c98d9afc9a2760e
+/deepseek-ai-dsh-agent-mailbox/table-of-contents:
+  en: 5f60dc51934ef9aa
+  zh: 2c7e38f41b286c6b
 /deepseek-ai-dsh-agent-mailbox/use-this-package:
-  en: d78833bd5a4e5dbd
-  zh: 7f0e7d65c339f66a
+  en: 0af9b41a02b5e7c4
+  zh: d536d779716a8749
 /deepseek-ai-dsh-agent-mailbox/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -27,8 +30,11 @@
   en: 8f3e52c8ca4a6981
   zh: d65a6e5f1c99b4c3
 /deepseek-ai-dsh-agent-mailbox/model-experience/delivered-mailbox-messages/kv-cache-effect:
-  en: 4bf9f09132391676
-  zh: 03d987caff26152f
+  en: e493e4dbd1fd71fd
+  zh: e4619f389083b1d8
 /deepseek-ai-dsh-agent-mailbox/known-limitations-and-deferred-work:
-  en: 4b8e116e790d0e5e
-  zh: 6fbf65b9d1ae0378
+  en: 2d2e2a9949554206
+  zh: b021006ec5eb77a7
+/deepseek-ai-dsh-agent-mailbox/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

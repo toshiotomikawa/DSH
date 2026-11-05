@@ -11,9 +11,12 @@
 /deepseek-ai-dsh-tool-tables/summary:
   en: a9ef060f6fbd18bf
   zh: e518eba1953a223f
+/deepseek-ai-dsh-tool-tables/table-of-contents:
+  en: 5f60dc51934ef9aa
+  zh: 2c7e38f41b286c6b
 /deepseek-ai-dsh-tool-tables/use-this-package:
-  en: 841de1dc7ac2fb1c
-  zh: f653b178db805298
+  en: 4fba7bf6bcd09f6b
+  zh: 7f74ff5b4f51f10d
 /deepseek-ai-dsh-tool-tables/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -27,8 +30,11 @@
   en: 0d734162660ba477
   zh: 5efc308b27f36d04
 /deepseek-ai-dsh-tool-tables/model-experience/table-tool-schemas-and-results/kv-cache-effect:
-  en: e6c3bb68dec8f98b
-  zh: a0c2c78665c03461
+  en: 7c07c71e1c36b839
+  zh: ec8042f7c06681b0
 /deepseek-ai-dsh-tool-tables/known-limitations-and-deferred-work:
-  en: 65c3c2a387350347
-  zh: 2aad1fa268dbb830
+  en: c22f20ad576ece7c
+  zh: 452c8d38e40a77ac
+/deepseek-ai-dsh-tool-tables/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

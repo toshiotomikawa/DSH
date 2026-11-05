@@ -11,6 +11,14 @@ English | [中文](README.zh.md)
 
 Persists routine definitions and execution history, serializes admission, and handles calendar delivery, quota waits and authenticated local script triggers.
 
+## Table of Contents
+- [Dev Note](#dev-note)
+
+- [Use this package](#use-this-package)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+<a id="use-this-package"></a>
 ## Use this package
 
 Mount with storage-domain, schedule and host-webserver. For persistent agents, mount agent-runtime first to supply agentRoutineBridge. Each admitted execution receives a fresh bound session; the runner returns admission immediately and reports the turn outcome through engine.settle. The local trigger uses a token file under DSH_HOME unless configured otherwise. Scripts may explicitly run a paused routine when scriptEnabled is true; calendar and webhook deliveries respect pause.
@@ -19,6 +27,7 @@ The engine owns its scheduler tasks. Generic schedule edits, Remote edits and bu
 
 New routines inherit `ownerId` from the trusted agent resolver before considering a Host-supplied owner. Ownerless legacy agents use `owner` by default; each new execution copies its routine ownership. This metadata does not introduce account authentication or a new trigger credential.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### Fresh routine executions
@@ -35,9 +44,20 @@ Each admitted execution uses its own ordinary model turn. Calendar delivery itse
 
 The identity prefix can remain stable across executions; the run instruction and optional payload are separate session content. This package does not promise provider-side cache reuse.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 - Execution is process-local and requires the host to remain running.
 - A run with possible external effects fails with uncertainty instead of automatically repeating those effects.
 - A stopped host cannot promise exact-time execution; missed-occurrence policies determine later admission.
 - Provider account selection and automatic model fallback are outside this package.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

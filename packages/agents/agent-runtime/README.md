@@ -11,6 +11,15 @@ English | [中文](README.zh.md)
 
 Connects persistent agent identities to mailbox and routine sessions.
 
+## Table of Contents
+- [Dev Note](#dev-note)
+
+- [Use this package](#use-this-package)
+- [Browser account entry](#browser-account-entry)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+<a id="use-this-package"></a>
 ## Use this package
 
 Mount globally after agent-registry, agent-memory, agents and system-prompt, before agent-mailbox and agent-routine. It provides `agentDirectory` and `agentRoutineBridge`. Mailbox conversations are durably bound before creation or resume; bound sessions receive the identity persona and essential memories. Each routine execution creates one fresh session and returns admission before its turn settles.
@@ -21,12 +30,14 @@ The same plugin provides `accountGrants`, an explicit directional grant between 
 
 The `@deepseek-ai/dsh-agent-runtime/accounts` plugin opens the per-record `accounts` domain and provides `accounts`: `create(name, role)` returns the new account and the path of its one-time token file, `list`, `get`, `disable`, `reactivate` and `archive`, plus `authenticate(token)` and `isAdministrator(id)`. The token text is written once to a `0o600` file under `$DSH_HOME/accounts/tokens`, outside the Session workspace, and only its SHA-256 hash is stored; the returned value never carries the secret. Archived accounts stay readable and lose their credential; disabling an account keeps its data and token. `@deepseek-ai/dsh-agent-runtime/account-auth` registers a Connection principal source that maps `Authorization: Bearer <token>` to `{ kind: 'account', ownerId }`, and `accounts/ended` ends that account's open peers. `@deepseek-ai/dsh-agent-runtime/account-tools` exposes `account_list`, `account_create`, `account_disable`, `account_reactivate` and `account_archive` to an active administrator account only; account ids are never accepted as caller identity, and `account_create` returns the token file path rather than the token. Requests without an account credential retain the legacy owner authentication flow.
 
+<a id="browser-account-entry"></a>
 ## Browser account entry
 
 `@deepseek-ai/dsh-agent-runtime/account-web` serves `/account/login`, `/account/access` and POST-only `/account/logout`. Login accepts the entry token only in a bounded, same-origin form POST and exchanges it for an opaque, HttpOnly, SameSite=Strict session cookie (Secure on TLS); the entry token is neither returned nor retained. The server stores only a hash of the session credential in memory, bound to the listener origin and account. `sessionMinutes` defaults to 720 (1–10080), and `maxSessions` to 1000 (1–100000). Expiry, logout, account disable/archive and plugin unload end the applicable account Peers; because Connection shares a Peer per account, other browser sessions of that account reconnect. Restart requires another login. A global fixed window allows `loginMaxFailures` failed authentications (default 20, range 1–100000) per `loginWindowSeconds` (default 60, range 1–3600). At the limit, anonymous logins return a static 429 before authentication, regardless of token validity; valid sessions retain access. Successful logins do not reset the counter. The plugin retains two numbers, without IP tracking; unrelated new logins share the temporary block. Login clears the previous owner cookie; signing out never restores owner authority automatically.
 
 The access page calls the same `accountGrants.grant`, `revoke` and `list` service used by `agent_grant_access`, `agent_revoke_access` and `agent_list_grants`. The caller is the authenticated account, never an owner id in a form. Targets are entered by id; no account directory is exposed. The page lists only outgoing grants and confirms revocation before its POST. English and Portuguese are selected from the browser language; other languages use English. No model, agent turn or persistent browser storage participates in either page.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### Persistent conversations and routines
@@ -43,6 +54,7 @@ No extra model calls. Mail delivery and routine execution each use their own nor
 
 New sessions reuse the profile's persona content; session-specific messages and payloads are separate history.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 - Discovery and interruption through the persistent-agent directory stay within the calling profile owner, or another account after an explicit stored grant.
@@ -59,3 +71,13 @@ New sessions reuse the profile's persona content; session-specific messages and 
 - Grants admit messages between agents, never shared conversations, memories or tables.
 - Provider accounts and automatic fallback are not implemented.
 - Host shutdown disposes sessions owned by the routine runner; mailbox owns its own delivery sessions.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

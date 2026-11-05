@@ -60,6 +60,8 @@ it('still forwards variables the deployment lists explicitly (finding 3)',async(
   expect((await run.result).output).toEqual([{ type:'text',text:'LEAK' }])
   await run.dispose()
 })
+// On Windows the managed tree kill (Job Object, else taskkill /T) reaps this
+// detached grandchild too; a POSIX-only setsid escape would need its own case.
 it('leaves no detached grandchild alive after the final answer (finding 1)',async()=>{
   const marker=join(tmpdir(),`m4-orphan-${process.pid}-${Date.now()}`)
   let pid=0

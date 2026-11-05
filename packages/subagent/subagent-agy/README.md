@@ -11,20 +11,32 @@ English | [中文](README.zh.md)
 
 Delegate one text task to the installed Antigravity CLI. The optional bundle registers `subagent_agy`, starts a fresh native CLI process and exposes only its terminal response. Native authentication stays with agy.
 
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+<a id="use-this-package"></a>
 ## Use this package
 
 Load `cordis.patch.yml` as an optional profile layer with `DSH_HOME` set explicitly. On Windows set `command` to the native `agy.exe`, avoiding `.cmd` wrappers. Each model is a separate provider instance configured by `model` and `providerName`.
 
 Configuration and lifecycle settings are shared with [subagent-grok](../subagent-grok/README.md#use-this-package): command, prefix args, environment, deadline, process-release grace, output cap, private audit directory and optional quota status file. Permissions default to `reject`: the adapter selects native plan mode and never passes `--dangerously-skip-permissions`. Only explicit `allow` passes that flag. Slash-command/skill expansion is disabled in print mode.
 
+<a id="understand-the-implementation"></a>
 ## Understand the implementation
 
 `index.ts` reads NDJSON and requires exactly one terminal `result` event. Intermediate step/tool events never become parent output. Malformed JSON, duplicate or missing terminal results fail safely. `SUCCESS` returns `response`; known refusal and length states map to the existing subagent stop reasons. Other native failures and quota limits return fixed diagnostics. The managed lifecycle, bounded audit, deadlines and whole-process-range cleanup are reused from Grok's internal implementation.
 
+<a id="dev-note"></a>
 ## Dev Note
 
 Run the Grok and agy test directories together to cover both parsers and the shared lifecycle. The recorded agy fixture was reduced to its event shape and contains no account, session or workspace identifiers.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 Indirectly, through `dsh-tool-subagent`, which owns the `subagent_agy` schema and result rendering; this provider adds no conversation inheritance, continuation, per-call model override or structured output, only final assistant text or a safe failure.
@@ -33,6 +45,7 @@ Indirectly, through `dsh-tool-subagent`, which owns the `subagent_agy` schema an
 
 No direct invalidation; the provider contributes no request content of its own, so its lifecycle does not change the reusable prefix beyond the subagent tool's documented schema and result append.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 - Native plan mode constrains work and is not a replacement for a host sandbox.

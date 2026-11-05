@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -11,12 +12,16 @@ import { HostConnectionService } from '../../../client/connection/src/rpc-host.t
 import type { BrowserAuth } from '../../../client/connection/src/browser-auth.ts'
 import * as Sidebar from '../../../client/ui-sidebar/src/index.ts'
 import type { AgentSidebarSnapshot } from '../../../client/ui-sidebar/src/types.ts'
-import { TYPERT } from '../../../client/ui-sidebar/lib/typert.host.js'
 import * as Owners from '../src/owners.ts'
 import * as Accounts from '../src/accounts.ts'
 import * as AccountAuth from '../src/account-auth.ts'
 
-it('admits only the seven account sidebar actions through Gateway and keeps two authenticated accounts isolated', async () => {
+// The generated typert artifact exists only after a build. Read it lazily so a clean checkout can
+// load this file and skip the gateway test instead of failing to import a missing module.
+const typertHostPath = new URL('../../../client/ui-sidebar/lib/typert.host.js', import.meta.url)
+const typertHost = existsSync(typertHostPath) ? await import(typertHostPath.href) : null
+
+it.skipIf(typertHost === null)('admits only the seven account sidebar actions through Gateway and keeps two authenticated accounts isolated', async () => {
   await mkdir('.dsh-test', { recursive: true })
   const root = await mkdtemp(join(process.cwd(), '.dsh-test/sidebar-gateway-'))
   onTestFinished(() => rm(root, { recursive: true, force: true }))
@@ -36,7 +41,8 @@ it('admits only the seven account sidebar actions through Gateway and keeps two 
   await ctx.plugin(AccountAuth)
   await ctx.plugin(Owners)
   await ctx.plugin(Sidebar)
-  ctx.typert.register(TYPERT as TypertContribution)
+  if (typertHost === null) throw new Error('the gateway test needs the generated typert artifact')
+  ctx.typert.register(typertHost.TYPERT as TypertContribution)
 
   const account = async (name: string) => {
     const entry = await ctx.accounts.create(name)

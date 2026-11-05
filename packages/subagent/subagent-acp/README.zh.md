@@ -1,6 +1,6 @@
 ---
 description: "面向用户与维护者的进程外 ACP（Agent Client Protocol）subagent 后端，用于选择委派提供方、配置子 ACP agent（智能体）命令或排查远程子 agent 运行问题。"
-kind: "package-reference"
+kind: "package-bundle"
 ---
 
 # @deepseek-ai/dsh-subagent-acp

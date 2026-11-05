@@ -11,10 +11,19 @@ English | [中文](README.zh.md)
 
 Registers `agent_send_message`, `agent_list` and `agent_interrupt` over the durable `agent-mailbox` service, plus `agent_grant_access`, `agent_revoke_access`, `agent_list_grants`, `agent_list_sections` and `agent_move_section` for sharing agents between accounts and grouping them. Tool names carry the `agent_` prefix so they never collide with the subagent-tree controls.
 
+## Table of Contents
+- [Dev Note](#dev-note)
+
+- [Use this package](#use-this-package)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+<a id="use-this-package"></a>
 ## Use this package
 
 Mount where the calling persistent agent should see the mailbox tools, beside `tools` and `agentMailbox`. The [`agent-mailbox`](../agent-mailbox/README.md) package owns persistence, delivery, visibility and authority; these tools add no authority of their own. The account of the caller always comes from its persistent agent, never from an argument: only that account can grant or revoke access to its agents, and a foreign agent, section or grant answers exactly like a missing one. A grant is one-way and works only where the `accountGrants` service of the owner policy is mounted; a revoke cuts access on the next call and also refuses, with a neutral reason, any undelivered message or reply that would cross the account; a turn that already received a message keeps it. Replies name the original message with `reply_to_message_id`; a new thread accepts exactly one recipient.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### Mailbox tool schemas and results
@@ -31,9 +40,20 @@ Fixed schema cost plus one compact JSON result per call. A send adds one appende
 
 Schemas are prefix-stable while their definitions and visibility are unchanged. Calls and results append after the reusable request prefix; deliveries append after the target conversation's prefix.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 - Interruption is cooperative and cannot undo external effects already performed by the target.
 - `agent_list` is a snapshot, not a reservation; another sender may fill the target queue immediately after the read.
 - Delivery failures appear as a queued state with a reason; a crash with an open turn appears as `uncertain` and is not retried automatically. There is no separate retry tool.
 - Threads are only available when the identity layer implements `thread`; the tool itself does not create conversations.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

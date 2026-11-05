@@ -11,10 +11,19 @@ English | [中文](README.zh.md)
 
 Remembers, forgets and searches data for the calling agent.
 
+## Table of Contents
+- [Dev Note](#dev-note)
+
+- [Use this package](#use-this-package)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+<a id="use-this-package"></a>
 ## Use this package
 
 Mount the registry and memory services globally beside `storage-domain`, `llm`, `sessions` and `agents`. Mount the tool plugin where memory tools should be available. Bind a session to a persistent profile before using its memory tools. The optional `@deepseek-ai/dsh-tool-agent-memory/preset` row takes `agentId` and belongs inside an agent preset; its persona shadows the deployment prefix. See [persistent agents](../../../docs/subsystems/persistent-agents.md) for configuration and transaction semantics.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### Persistent identity and memories
@@ -31,6 +40,7 @@ No extra model requests. Essential memory context is bounded by `essentialBytes`
 
 The prompt prefix stays stable while the profile and essential selection are unchanged. A changed profile or essential memory changes subsequent prompt assembly and may invalidate prefix reuse.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 - No automatic model fallback, provider-account switching, permission elevation, mailbox or routine execution.
@@ -39,3 +49,13 @@ The prompt prefix stays stable while the profile and essential selection are unc
 - Session agentId metadata lives in the agents domain rather than changing upstream session headers.
 - Memory commits are observed after completed turn/end; tools report staging, and the next agent prompt waits for admitted commits.
 - Failed commits are logged and surfaced once to the affected session before retry.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

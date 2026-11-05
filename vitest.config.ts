@@ -194,7 +194,13 @@ const liveshareRemoteBuild = fileURLToPath(new URL('./packages/experimental/live
 const generatedRemoteAliases = existsSync(liveshareRemoteBuild) ? {} : {
   '@deepseek-ai/dsh-experimental-liveshare/remote': fileURLToPath(new URL('./packages/experimental/liveshare/tests/generated-remote-stub.ts', import.meta.url)),
 }
-const testingAliases = { ...claudeCodeTestingAliases, ...generatedRemoteAliases }
+// The same stand-in for the sidebar's generated `./remote` contribution: on a clean checkout the
+// client entry imports it while Vite transforms the entry, before any `vi.mock` can answer.
+const sidebarRemoteBuild = fileURLToPath(new URL('./packages/client/ui-sidebar/lib/typert.remote-client.js', import.meta.url))
+const sidebarRemoteAliases = existsSync(sidebarRemoteBuild) ? {} : {
+  '@deepseek-ai/dsh-client-ui-sidebar/remote': fileURLToPath(new URL('./packages/client/ui-sidebar/tests/generated-remote-stub.ts', import.meta.url)),
+}
+const testingAliases = { ...claudeCodeTestingAliases, ...generatedRemoteAliases, ...sidebarRemoteAliases }
 
 export default defineConfig({
   plugins: [pathsPlugin(), standardDecoratorPlugin()],

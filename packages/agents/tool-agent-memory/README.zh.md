@@ -11,10 +11,19 @@ kind: "package-reference"
 
 为调用方智能体记住、忘记和搜索数据。
 
+## 目录
+- [开发备注](#dev-note)
+
+- [使用本包](#use-this-package)
+- [模型体验](#model-experience)
+- [已知限制与延期工作](#known-limitations-and-deferred-work)
+
+<a id="use-this-package"></a>
 ## 使用本包
 
 在全局范围内加载注册表和记忆服务，与 `storage-domain`、`llm`、`sessions` 和 `agents` 并列。在需要提供记忆工具的位置加载工具插件。使用记忆工具之前，先把会话绑定到持久配置。可选的 `@deepseek-ai/dsh-tool-agent-memory/preset` 行接受 `agentId`，应放在 agent（智能体）预设内；其 persona 会覆盖部署前缀。配置与事务语义见[持久智能体](../../../docs/subsystems/persistent-agents.zh.md)。
 
+<a id="model-experience"></a>
 ## 模型体验
 
 ### 持久身份与记忆
@@ -31,6 +40,7 @@ kind: "package-reference"
 
 配置和必要记忆的选择不变时，提示词前缀保持稳定。配置或必要记忆发生变化，会改变之后的提示词组装，并可能使前缀复用失效。
 
+<a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与延期工作
 
 - 不提供自动模型回退、提供方账户切换、权限提升、邮箱或例程执行。
@@ -39,3 +49,13 @@ kind: "package-reference"
 - 会话的 agentId 元数据保存在 agents 域中，而不是修改上游会话头。
 - 记忆提交在 turn/end 完成后才被观察到；工具只报告暂存，下一次智能体提示词会等待已接纳的提交。
 - 失败的提交会被记录日志，并在重试前向受影响的会话报告一次。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文——点击展开</summary>
+
+无。
+
+</details>

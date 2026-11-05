@@ -11,10 +11,19 @@ English | [中文](README.zh.md)
 
 Registers the eight table tools: `table_create`, `table_list`, `table_schema`, `table_alter`, `table_drop`, `data_query`, `data_execute` and `data_batch`. Each call runs as the authenticated session owner: private tables stay in that account's file, shared tables are in `tables-shared.sqlite`, and each row records its author (`autor`) and a `revisao` counter usable for compare-and-set updates.
 
+## Table of Contents
+- [Dev Note](#dev-note)
+
+- [Use this package](#use-this-package)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+
+<a id="use-this-package"></a>
 ## Use this package
 
 Mount beside `tools` and the `ctx.tables` service from [`@deepseek-ai/dsh-storage-tables`](../storage-tables/README.md). The tools own admission and rendering; the service owns the database files, deadlines and ceilings. `data_query` accepts one SELECT and pages at 200 rows by default; `data_execute` and `data_batch` accept single INSERT, UPDATE or DELETE statements with parameters bound separately, never pasted into the SQL. `escopo` selects `privada` (the account's own file, the account default) or `compartilhada`; `table_list`, `table_schema`, `table_alter` and `table_drop` see both files the caller may open.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 ### Table tool schemas and results
@@ -31,6 +40,7 @@ Fixed schema cost plus one compact JSON result per call. A query returns at most
 
 Schemas are prefix-stable while their definitions and visibility are unchanged. Calls and results append after the reusable request prefix; reading a table does not change the model-visible schema.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 - The shared file is visible to every account; per-table grant lists are not implemented yet, and a SQL call joins only within one file.
@@ -38,3 +48,13 @@ Schemas are prefix-stable while their definitions and visibility are unchanged. 
 - Free-form DDL is refused: tables are created and altered only through the dedicated tools.
 - A dropped table is not recoverable through the tools.
 - Results are capped by the database and value ceilings; a value above the configured limit is rejected rather than truncated.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

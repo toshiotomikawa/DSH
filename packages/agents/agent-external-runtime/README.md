@@ -13,6 +13,14 @@ The Host plugin installs the official Claude adapter lazily. Plugin load does no
 
 Resolves explicit account harness bindings for persistent external agents.
 
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+<a id="use-this-package"></a>
 ## Use this package
 
 Mount this optional Host plugin after the persistent registry, accounts and Session owner policy. Configure `bindings` with `accountId`, `runtime` (`claude-sdk` or `codex-sdk`), absolute `configDirectory` and positive integer `revision`. Empty bindings grant no harness access, including for legacy `owner`. A binding is deployment configuration, never a model tool argument. Reload with a higher revision after changing a binding or the harness login.
@@ -23,6 +31,7 @@ Expected failures use `HarnessBindingError.code`; filesystem paths and causes ar
 
 See [persistent agents](../../../docs/subsystems/persistent-agents.md) for identity and ownership semantics.
 
+<a id="model-experience"></a>
 ## Model Experience
 
 Subscription quota is recognized only from a rejected `five_hour` or `seven_day` SDK notification. Informational limits, authentication errors and unknown failures do not select an API route. `EXTERNAL_QUOTA_EXHAUSTED` closes the external turn as failed, with no automatic retry or transfer of its input, mailbox receipt or routine settlement.
@@ -43,6 +52,7 @@ The bundled fake SDK consumes no inference tokens. A separately activated reserv
 
 No change to model input or prefix reuse.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 - This plugin publishes an external Agent through the persistent activation port. Its bundled SDK is a recording fake; only explicit reserve consent can select a native API on a later activation.
@@ -51,3 +61,13 @@ No change to model input or prefix reuse.
 - Codex reaches the same bridge on `127.0.0.1`. The ephemeral credential stays in memory and the child environment, never in the URL, history, or harness config. The bridge closes when the step or the account ends.
 - A missing plugin fails activation instead of selecting a native API. Profile UI remains a separate consumer of the saved configuration.
 - `createClaudeSdk` is the Claude adapter and is not the bundled driver. Tests inject a fake factory. Without one, a lazy import fails closed before any network call. Codex stays unavailable and partial because official hidden spawn is still open. The adapter does not read harness credentials.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>
