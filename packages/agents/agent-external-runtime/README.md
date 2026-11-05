@@ -19,7 +19,7 @@ Mount this optional Host plugin after the persistent registry, accounts and Sess
 
 `harnessBindings.resolve(sessionId, workspace)` derives the profile from durable Session metadata and requires agreement with its owner sidecar. Named accounts must still be active. Local existing directories are canonicalized without listing their content; duplicate account/runtime rows and overlapping physical directories belonging to different owners are rejected before service publication. Workspace overlap with any configured harness directory is refused. The result is a detached private Host value: do not return it to tools, log it or put it in a prompt. Symlink retargeting of a canonical directory fails with `binding_stale`.
 
-Expected failures use `HarnessBindingError.code`; filesystem paths and causes are not exposed. Configuration errors prevent publication; activation errors leave the binding unchanged. Correct the Host configuration or identity and retry explicitly. Disposal removes the service.
+Expected failures use `HarnessBindingError.code`; filesystem paths and causes are not exposed. A Host that installed no external adapter refuses the profile with `HarnessAdapterError.code` `sdk_unavailable` before publishing anything. Configuration errors prevent publication; activation errors leave the binding unchanged. Correct the Host configuration or identity and retry explicitly. Disposal removes the service.
 
 See [persistent agents](../../../docs/subsystems/persistent-agents.md) for identity and ownership semantics.
 
@@ -37,7 +37,7 @@ The external turn publishes admitted memory, mailbox, routine, and table schemas
 
 #### Token effect
 
-The bundled fake SDK consumes no inference tokens. A separately activated reserve uses the ordinary native API route and its normal token costs; saving a reserve alone does not enable it.
+The Host installs the official Claude adapter, so an external turn consumes the subscription of the account whose harness directory is bound. A separately activated reserve uses the ordinary native API route and its normal token costs; saving a reserve alone does not enable it.
 
 #### KV Cache effect
 
@@ -45,7 +45,7 @@ No change to model input or prefix reuse.
 
 ## Known Limitations and Deferred Work
 
-- This plugin publishes an external Agent through the persistent activation port. Its bundled SDK is a recording fake; only explicit reserve consent can select a native API on a later activation.
+- This plugin publishes an external Agent through the persistent activation port. The Host installs the official Claude adapter; a service without one refuses activation with `sdk_unavailable` instead of completing a turn. Only explicit reserve consent can select a native API on a later activation.
 - Directory separation does not provide operating-system isolation or establish the provider's authenticated identity. Harness login belongs to the official harness, outside this plugin.
 - Step tools are the already admitted memory, mailbox, routine, and table calls. Native file, shell, network, computer use, and other MCP servers are refused. A call with no DSH approval flow ends as `permission_required` and opens no window.
 - Codex reaches the same bridge on `127.0.0.1`. The ephemeral credential stays in memory and the child environment, never in the URL, history, or harness config. The bridge closes when the step or the account ends.
