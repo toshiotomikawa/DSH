@@ -344,3 +344,14 @@ describe('flat sidebar sections', () => {
     expect(rejected).toMatchObject({ reason: expect.objectContaining({ message: 'Agent revision conflict; read the profile again' }) })
   })
 })
+
+it('clears an SDK model explicitly while omitted patches retain it', async () => {
+  const { ctx } = await fixture()
+  const empty = await ctx.persistentAgents.create({ name: 'Default model', runtimeModel: null }, inherited)
+  expect(empty.runtimeModel).toBeUndefined()
+  const a = await ctx.persistentAgents.create({ name: 'SDK', runtime: 'claude-sdk', runtimeModel: 'sonnet' }, inherited)
+  const retained = await ctx.persistentAgents.update(a.id, a.revision, { title: 'Retained' })
+  expect(retained.runtimeModel).toBe('sonnet')
+  const cleared = await ctx.persistentAgents.update(a.id, retained.revision, { runtimeModel: null })
+  expect(cleared.runtimeModel).toBeUndefined()
+})

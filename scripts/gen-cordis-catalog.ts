@@ -642,6 +642,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   ScheduleViewResult: 'schedule.md',
   ScheduleViewRequest: 'schedule.md',
   AgentSidebarSnapshot: 'persistent-agents.md',
+  AgentRuntimeSettings: 'persistent-agents.md',
   SchedulePatch: 'schedule.md',
   ScheduleEditRequest: 'schedule.md',
   ScheduleRunRequest: 'schedule.md',

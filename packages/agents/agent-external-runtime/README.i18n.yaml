@@ -6,8 +6,8 @@
   en: 62e94c6d0cbef5c1
   zh: 1a7a088b3a12833e
 /deepseek-ai-dsh-agent-external-runtime:
-  en: 2d021204e7278482
-  zh: 2bfe27be3fbf13d6
+  en: bb408f7d5c124721
+  zh: a0dd5d47ca8016fc
 /deepseek-ai-dsh-agent-external-runtime/summary:
   en: d75263f5bcb74382
   zh: 29d4068104d28ed2
@@ -15,8 +15,8 @@
   en: 55f31e9533a616b0
   zh: edc3f2174faaa4b3
 /deepseek-ai-dsh-agent-external-runtime/model-experience:
-  en: 215e7ba838619b7b
-  zh: a311da3843709f90
+  en: 1213a78498de2e71
+  zh: 3bfab17ae7614c59
 /deepseek-ai-dsh-agent-external-runtime/model-experience/account-harness-configuration:
   en: 159a7a32c0b30efa
   zh: fd170d4055c6d279
@@ -24,11 +24,11 @@
   en: 29bc03734276697c
   zh: 08de6e02c6b34b54
 /deepseek-ai-dsh-agent-external-runtime/model-experience/account-harness-configuration/token-effect:
-  en: 99391cea02f1a1e7
-  zh: 752bfa4974a8ac0d
+  en: b378ca63fc742da7
+  zh: d9bf754c56369cbe
 /deepseek-ai-dsh-agent-external-runtime/model-experience/account-harness-configuration/kv-cache-effect:
   en: b956b7a9ade986ec
   zh: 5d6c6fbc1bbc3657
 /deepseek-ai-dsh-agent-external-runtime/known-limitations-and-deferred-work:
-  en: 737cf182fccf5e58
-  zh: efe61f9dc864cb78
+  en: e074c4d9244f598d
+  zh: 87a7cf318edecacc

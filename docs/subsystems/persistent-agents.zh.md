@@ -380,6 +380,18 @@ Thin Remote adapter; the registry owns validation, isolation and persistence.
  * @returns resolves after the registry commits.
  */
 @Remote async moveAgent(id: string, sectionId: string | null): Promise<void>
+
+/** Save an owned profile's runtime with compare-and-set; active identities must be stopped first.
+ * @param id - account-owned profile.
+ * @param revision - last observed profile revision.
+ * @param settings - runtime, optional harness model and explicit reserve consent.
+ */
+@Remote async setRuntime(id: string, revision: number, settings: AgentRuntimeSettings): Promise<void>
+
+/** Clear only an owned profile's refusal; the external service rejects live handles.
+ * @param id - account-owned profile.
+ */
+@Remote async clearQuota(id: string): Promise<void>
 ```
 
 Source: [`packages/client/ui-sidebar/src/index.ts`](../../packages/client/ui-sidebar/src/index.ts)
@@ -391,6 +403,11 @@ Source: [`packages/client/ui-sidebar/src/index.ts`](../../packages/client/ui-sid
 External plugin entry. The native loop must not implement this.
 
 ```ts cordis-catalog
+/** Explicit trusted Host recovery, after the caller authorizes the profile owner.
+ * @param input - owning context and profile; a live handle forbids recovery.
+ */
+clearQuota(input: Pick<PersistentAgentActivationInput, 'ownerCtx' | 'agentId'>): Promise<void>
+
 /**
  * Publish the external agent for one bound session.
  * @param input - owner, conversation and profile.

@@ -7,6 +7,7 @@ import { createUserMessage, ReasoningEffortId, QUOTA_EXCEEDED_CODE, ACCOUNT_QUOT
 import { PersistentAgentId } from '@deepseek-ai/dsh-agent-registry'
 import { PersistentAgentActivationService } from './activation.ts'
 
+export { assertNativeResumeHead, StoredConversationError } from './activation.ts'
 export type { ExternalAgentActivation, PersistentAgentActivation, PersistentAgentActivationInput } from './activation.ts'
 import type { MailboxDirectory, MailboxTarget } from '@deepseek-ai/dsh-agent-mailbox'
 import type { Outcome, RoutineBridge } from '@deepseek-ai/dsh-agent-routine'

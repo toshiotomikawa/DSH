@@ -180,6 +180,7 @@ export async function apply(ctx: Context): Promise<void> {
       'session/list', 'session/search', 'session/create', 'session/control',
       'agentSidebar/list', 'agentSidebar/createSection', 'agentSidebar/renameSection',
       'agentSidebar/deleteSection', 'agentSidebar/moveAgent',
+      'agentSidebar/setRuntime', 'agentSidebar/clearQuota',
     ],
   }
   const session: RemoteAccessRole<'session'> = {

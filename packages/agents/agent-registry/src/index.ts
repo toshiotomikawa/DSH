@@ -35,9 +35,11 @@ const editableSchema = z.object({
 const avatarInput = { avatarPath: z.string().optional(), avatarSeed: z.string().optional() }
 const patchSchema = editableSchema.partial().extend({
   ...avatarInput, sectionId: z.string().min(1).nullable().optional(), model: routeSchema.partial().optional(),
+  runtimeModel: z.string().trim().min(1).nullable().optional(),
 }).refine(value => value.avatarPath === undefined || value.avatarSeed === undefined, 'Choose an image or generation, not both')
 function profileFields(patch: z.infer<typeof patchSchema>) {
-  return Object.fromEntries(Object.entries(patch).filter(([key, value]) => key !== 'avatarPath' && key !== 'avatarSeed' && value !== undefined))
+  return Object.fromEntries(Object.entries(patch).filter(([key, value]) => key !== 'avatarPath' && key !== 'avatarSeed'
+    && value !== undefined && !(key === 'runtimeModel' && value === null)))
 }
 const profileSchema = editableSchema.extend({
   runtime: z.enum(['native', 'claude-sdk', 'codex-sdk']).default('native'),
@@ -163,6 +165,7 @@ export class PersistentAgents {
       avatar, revision: current.revision + 1, updatedAt: Date.now(),
     }
     if (patch.sectionId === null) delete fields.sectionId
+    if (patch.runtimeModel === null) delete fields.runtimeModel
     const next = profileSchema.parse(fields)
     await this.validateRoutes(next)
     const result = await this.domain.table('profiles').update(id, (stored) => {

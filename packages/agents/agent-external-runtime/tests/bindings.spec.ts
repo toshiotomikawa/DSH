@@ -11,6 +11,7 @@ import { createSessionTestController } from '../../../api/session-controller/tes
 import * as Owners from '../../agent-runtime/src/owners.ts'
 import * as Accounts from '../../agent-runtime/src/accounts.ts'
 import * as External from '../src/index.ts'
+import * as Claude from '../src/claude.ts'
 
 async function fixture() {
   await mkdir('.dsh-test', { recursive: true })
@@ -126,4 +127,16 @@ it('rejects invalid config, missing/file/network/relative paths, duplicates and 
   const credential = join(f.homes[0]!, 'auth.json')
   await writeFile(credential, 'synthetic credential: never read by the plugin')
   expect(await readFile(credential, 'utf8')).toContain('synthetic')
+})
+
+it('installs the lazy official Claude adapter without running a provider during plugin load', async () => {
+  const f = await fixture()
+  const sdk = { run: vi.fn() }
+  const create = vi.spyOn(Claude, 'createClaudeSdk').mockReturnValueOnce(sdk)
+  try {
+    await External.apply(f.ctx, f.config)
+    expect(f.ctx.externalAgentActivation).toHaveProperty('sdk', sdk)
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(sdk.run).not.toHaveBeenCalled()
+  } finally { create.mockRestore() }
 })

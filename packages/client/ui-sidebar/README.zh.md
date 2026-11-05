@@ -41,7 +41,9 @@ dsh Web 客户端的侧边栏让用户识别当前构建、启动新会话、将
 
 展开的侧边栏按当前账户的注册分区显示持久代理，最后列出 **未分区**。创建或重命名分区时名称不能为空且最长为 40 个字符。通过代理的选择框移动分区。删除分区需要确认；所有代理和会话都会保留，代理移至未分区。错误保持可见；刷新按钮重新读取权威列表。
 
-Host 伴随插件复用持久代理注册表，并公开 `agentSidebar` Remote 命名空间（`list`、`createSection`、`renameSection`、`deleteSection`、`moveAgent`）。账户身份来自可信调用，包括本地所有者账户；请求不接受账户 id。投影仅包含 id、名称、职位和分区 id。浏览器通过 `ctx.resources` 读取 `dsh-resource://agent-sidebar/<refresh-key>`，仅在资源和 Remote 服务可用时挂载 `sidebar.agents` 插槽。所有修改仍由注册表执行。
+Host 伴随插件复用持久代理注册表，并公开 `agentSidebar` Remote 命名空间（`list`、`createSection`、`renameSection`、`deleteSection`、`moveAgent`、`setRuntime`、`clearQuota`）。账户身份来自可信调用，包括本地所有者账户；请求不接受账户 id。投影仅包含 id、名称、职位和分区 id。浏览器通过 `ctx.resources` 读取 `dsh-resource://agent-sidebar/<refresh-key>`，仅在资源和 Remote 服务可用时挂载 `sidebar.agents` 插槽。所有修改仍由注册表执行。
+
+Runtime 编辑器可选择 Native 或 Claude Code，以及可选的官方 SDK 模型。Codex 标为未完成，此处禁止选择。保存使用配置版本并拒绝活跃代理。API 备用模型同意默认关闭；开启后，仅在干净的额度失败结束后的下一次激活中允许可能收费的 API。不会重试或转移失败回合。清除拒绝状态是账户本人明确发起的操作，活跃外部句柄会拒绝清除。浏览器不会收到登录或 harness 目录。
 
 ### 全局面板入口
 
@@ -116,6 +118,7 @@ root 作用域的 `sidebar.panellist.actions` list 有注册项时，导航区�
 -----
 
 <a id="model-experience"></a>
+
 展开的智能体区域链接到 fork 的 `/account/access` 页面，用于管理向外授权和退出。
 
 ## 模型体验

@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { AgentSidebarCommand } from '../types.ts'
+import type { AgentRuntimeSettings, AgentSidebarCommand } from '../types.ts'
 import css from './AgentSections.module.css'
 
 /** Callbacks injected by the owning sidebar plugin. */
@@ -19,6 +19,7 @@ export function AgentSections({ wide, useResource, mutate, t }: AgentSectionsPro
   const [refreshKey, setRefreshKey] = useState(0)
   const [editing, setEditing] = useState<{ id?: string; name: string } | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [runtime, setRuntime] = useState<{ id: string; revision: number; settings: AgentRuntimeSettings } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const snapshot = useResource<'agent-sidebar'>(`dsh-resource://agent-sidebar/${refreshKey}`)
@@ -31,6 +32,7 @@ export function AgentSections({ wide, useResource, mutate, t }: AgentSectionsPro
       if (!result.ok) { setError(result.error.message); return }
       setEditing(null)
       setDeleting(null)
+      setRuntime(null)
       setRefreshKey(value => 1 - value)
     } catch (cause) {
       setError(String(cause))
@@ -58,6 +60,28 @@ export function AgentSections({ wide, useResource, mutate, t }: AgentSectionsPro
       <button type="button" disabled={busy} onClick={() => { setEditing(null) }}>{t('agents.cancel')}</button>
     </form>}
     {error !== null && <p role="alert">{error}</p>}
+    {runtime !== null && <form aria-label={t('agents.runtime')} onSubmit={(event) => {
+      event.preventDefault()
+      void save({ kind: 'runtime', ...runtime })
+    }}>
+      <label>{t('agents.runtime')}<select disabled={busy} value={runtime.settings.runtime}
+        onChange={(event) => { setRuntime({ ...runtime, settings: { ...runtime.settings, runtime: event.target.value as AgentRuntimeSettings['runtime'] } }) }}>
+        <option value="native">Native</option>
+        <option value="claude-sdk">Claude Code</option>
+        <option value="codex-sdk" disabled>Codex (partial)</option>
+      </select></label>
+      <label>{t('agents.runtimeModel')}<input disabled={busy} value={runtime.settings.runtimeModel ?? ''}
+        onChange={(event) => {
+          setRuntime({ ...runtime, settings: { ...runtime.settings, runtimeModel: event.target.value.trim() || null } })
+        }} /></label>
+      <label><input type="checkbox" disabled={busy} checked={runtime.settings.automaticFallback}
+        onChange={(event) => {
+          setRuntime({ ...runtime, settings: { ...runtime.settings, automaticFallback: event.target.checked } })
+        }} />{t('agents.fallbackConsent')}</label>
+      <p>{t('agents.fallbackWarning')}</p>
+      <button disabled={busy}>{t('agents.save')}</button>
+      <button type="button" disabled={busy} onClick={() => { setRuntime(null) }}>{t('agents.cancel')}</button>
+    </form>}
     {snapshot.status === 'failed' && <p role="alert">{snapshot.failure?.message}</p>}
     {snapshot.status === 'loading' && <p role="status">{t('agents.loading')}</p>}
     {data !== undefined && <>
@@ -77,15 +101,25 @@ export function AgentSections({ wide, useResource, mutate, t }: AgentSectionsPro
           <button type="button" disabled={busy} onClick={() => { void save({ kind: 'delete', id: section.id }) }}>{t('agents.confirm')}</button>
           <button type="button" disabled={busy} onClick={() => { setDeleting(null) }}>{t('agents.cancel')}</button>
         </div>}
-        <ul className={css.list}>{data.agents.filter(agent => (agent.sectionId ?? '') === section.id).map(agent =>
-          <li key={agent.id} className={css.agent}>
+        <ul className={css.list}>{data.agents.filter(agent => (agent.sectionId ?? '') === section.id).map((agent) => {
+          const { runtime: selectedRuntime, revision } = agent
+          return <li key={agent.id} className={css.agent}>
             <span title={agent.title}>{agent.name}</span>
             <select disabled={busy} aria-label={t('agents.move', { name: agent.name })} value={agent.sectionId ?? ''}
               onChange={(event) => { void save({ kind: 'move', id: agent.id, sectionId: event.target.value || null }) }}>
               <option value="">{t('agents.ungrouped')}</option>
               {data.sections.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
             </select>
-          </li>)}</ul>
+            {selectedRuntime !== undefined && revision !== undefined && <>
+              <button type="button" disabled={busy} aria-label={t('agents.configureRuntime', { name: agent.name })}
+                onClick={() => { setRuntime({ id: agent.id, revision, settings: {
+                  runtime: selectedRuntime, runtimeModel: agent.runtimeModel ?? null, automaticFallback: agent.automaticFallback ?? false,
+                } }) }}>{t('agents.runtime')}</button>
+              <button type="button" disabled={busy} aria-label={t('agents.clearQuotaFor', { name: agent.name })}
+                onClick={() => { void save({ kind: 'clearQuota', id: agent.id }) }}>{t('agents.clearQuota')}</button>
+            </>}
+          </li>
+        })}</ul>
       </div>)}
     </>}
   </section>

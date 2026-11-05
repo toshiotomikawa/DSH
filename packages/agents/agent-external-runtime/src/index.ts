@@ -7,8 +7,11 @@ import { z } from 'zod'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { HarnessBindingError } from './errors.ts'
 import { ExternalAgentActivationService } from './driver.ts'
+import { ExternalQuotaState, quotaDomain } from './quota.ts'
+import { createClaudeSdk } from './claude.ts'
 
 export { HarnessAdapterError, HarnessBindingError } from './errors.ts'
+export { ExternalQuotaError } from './quota.ts'
 export { createClaudeSdk } from './claude.ts'
 export type { ClaudeQueryFactory, ClaudeQueryOptions, ClaudeSpawnOptions } from './claude.ts'
 export type { ExternalSdk, ExternalTurnInput } from './driver.ts'
@@ -92,7 +95,7 @@ export class HarnessBindings {
 /** Cordis plugin name. */
 export const name = 'agent-external-runtime'
 /** Identity is checked using the authoritative services, never caller-supplied owner ids. */
-export const inject = ['persistentAgents', 'sessionOwners', 'accounts']
+export const inject = ['persistentAgents', 'sessionOwners', 'accounts', 'storageDomain']
 /** Validate all directories before publishing; no SDK import, credential read or process starts here.
  * @param ctx - trusted Host context.
  * @param config - explicit deployment bindings.
@@ -110,7 +113,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const resolved = new HarnessBindings(ctx, bindings)
   if (ctx.get('harnessBindings') === undefined) {
     ctx.provide('harnessBindings', resolved)
-    ctx.provide('externalAgentActivation', new ExternalAgentActivationService())
+    const domain = await ctx.storageDomain.open(quotaDomain)
+    ctx.effect(() => () => domain.close())
+    const activation = new ExternalAgentActivationService(new ExternalQuotaState(domain), () => {
+      ctx.logger.warn('External runtime teardown failed; identity remains refused')
+    })
+    activation.sdk = createClaudeSdk()
+    ctx.effect(() => () => activation.close())
+    ctx.provide('externalAgentActivation', activation)
     return
   }
   // A later apply on the same fiber replaces the deployment copy. The first
