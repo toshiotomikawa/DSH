@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Ambiente de execução de agentes externos",
+    "description": "Resolve as associações explícitas entre contas e harnesses para agentes externos persistentes."
+  }
+}

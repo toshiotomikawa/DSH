@@ -21,7 +21,6 @@ export const PRODUCT_PACKAGE_POLICY: Readonly<Record<string, ProductPackagePolic
   'packages/agents/tool-agent-routine': { category: 'optional', reason: 'Fork-only routine tools for persistent agents.' },
   'packages/storage/storage-tables': { category: 'optional', reason: 'Fork-only shared table service, mounted by an explicit deployment patch.' },
   'packages/storage/tool-tables': { category: 'optional', reason: 'Fork-only model tools for the shared table service.' },
-  'packages/agents/agent-registry': { category: 'optional', reason: 'Fork-only durable agent profiles, enabled by an explicit deployment patch.' },
   'packages/agents/agent-memory': { category: 'optional', reason: 'Fork-only memory storage selected with the persistent-agent registry.' },
   'packages/agents/tool-agent-memory': { category: 'optional', reason: 'Fork-only memory tools and identity preset row, never mounted by upstream profiles.' },
   'packages/agents/agent-mailbox': { category: 'optional', reason: 'Fork-only durable agent messaging, mounted only with the persistent-agent registry.' },

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Laufzeit für externe Agenten",
+    "description": "Löst explizite Zuordnungen zwischen Konten und Harnesses für persistente externe Agenten auf."
+  }
+}
