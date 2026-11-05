@@ -420,6 +420,7 @@
       "@deepseek-ai/dsh-agent-runtime/accounts": ["./packages/agents/agent-runtime/src/accounts"],
       "@deepseek-ai/dsh-agent-runtime/account-auth": ["./packages/agents/agent-runtime/src/account-auth"],
       "@deepseek-ai/dsh-agent-runtime/account-tools": ["./packages/agents/agent-runtime/src/account-tools"],
+      "@deepseek-ai/dsh-agent-runtime/account-web": ["./packages/agents/agent-runtime/src/account-web"],
       "@deepseek-ai/dsh-tool-agent-memory/preset": ["./packages/agents/tool-agent-memory/src/preset.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],

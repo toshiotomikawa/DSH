@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Environnement d’exécution des agents externes",
+    "description": "Résout les associations explicites entre comptes et harnesses pour les agents externes persistants."
+  }
+}
