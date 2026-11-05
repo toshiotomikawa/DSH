@@ -11,10 +11,19 @@ kind: "package-reference"
 
 注册八个表工具：`table_create`、`table_list`、`table_schema`、`table_alter`、`table_drop`、`data_query`、`data_execute` 和 `data_batch`。每次调用都以经过认证的会话所有者身份运行：私有表保存在该账户的文件中，共享表位于 `tables-shared.sqlite`，每一行都记录其作者（`autor`）和可用于比较并设置更新的 `revisao` 计数器。
 
+## 目录
+- [开发备注](#dev-note)
+
+- [使用本包](#use-this-package)
+- [模型体验](#model-experience)
+- [已知限制与延期工作](#known-limitations-and-deferred-work)
+
+<a id="use-this-package"></a>
 ## 使用本包
 
 与 `tools` 以及来自 [`@deepseek-ai/dsh-storage-tables`](../storage-tables/README.zh.md) 的 `ctx.tables` 服务并列加载。工具负责准入和渲染；服务负责数据库文件、期限和上限。`data_query` 接受一条 SELECT，默认每页 200 行；`data_execute` 和 `data_batch` 接受单条 INSERT、UPDATE 或 DELETE 语句，参数单独绑定，绝不拼入 SQL。`escopo` 选择 `privada`（账户自己的文件，账户默认值）或 `compartilhada`；`table_list`、`table_schema`、`table_alter` 和 `table_drop` 能看到调用方可打开的两个文件。
 
+<a id="model-experience"></a>
 ## 模型体验
 
 ### 表工具的 schema 与结果
@@ -31,6 +40,7 @@ kind: "package-reference"
 
 只要定义和可见性不变，schema 的前缀就保持稳定。调用及结果追加在可复用的请求前缀之后；读取表不会改变模型可见的 schema。
 
+<a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与延期工作
 
 - 共享文件对每个账户可见；按表的授权列表尚未实现，且一次 SQL 调用只在单个文件内联接。
@@ -38,3 +48,13 @@ kind: "package-reference"
 - 自由形式的 DDL 会被拒绝：表只能通过专用工具创建和修改。
 - 被删除的表无法通过这些工具恢复。
 - 结果受数据库和值上限约束；超过配置上限的值会被拒绝，而不是被截断。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文——点击展开</summary>
+
+无。
+
+</details>

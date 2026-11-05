@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/subagent/subagent-acp/README.md
 /:
-  en: 86941ae0e2ae97a3
-  zh: ca2acb7bff6d53ab
+  en: a2f6328a16e64c04
+  zh: 3cbbbb804a2c3b53
 /deepseek-ai-dsh-subagent-acp:
   en: 552b89c7ea49f58f
   zh: 30ae54c119cb58b9

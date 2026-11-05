@@ -11,9 +11,12 @@
 /deepseek-ai-dsh-tool-agent-routine/summary:
   en: 2a6af5445ce3d68f
   zh: fd0e46970f41adbc
+/deepseek-ai-dsh-tool-agent-routine/table-of-contents:
+  en: 5f60dc51934ef9aa
+  zh: 2c7e38f41b286c6b
 /deepseek-ai-dsh-tool-agent-routine/use-this-package:
-  en: dfa9b8dd3e2c11aa
-  zh: d7d49b130da7a9fe
+  en: af755b69745245af
+  zh: d060da7adc90f0f6
 /deepseek-ai-dsh-tool-agent-routine/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -27,8 +30,11 @@
   en: 8e23b82604b8aba5
   zh: 3fc6948294607811
 /deepseek-ai-dsh-tool-agent-routine/model-experience/routine-management-and-outcomes/kv-cache-effect:
-  en: f7cc4f90f35a7877
-  zh: 01a1b6cc4440245d
+  en: 316c59dc000261c7
+  zh: 59504227b8aa4da3
 /deepseek-ai-dsh-tool-agent-routine/known-limitations-and-deferred-work:
-  en: febdefc3e5dab4f8
-  zh: 23f09eabcf9a0ac2
+  en: 2ae4c9ca707f0f28
+  zh: 2452125362fc20fa
+/deepseek-ai-dsh-tool-agent-routine/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

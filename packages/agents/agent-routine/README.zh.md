@@ -11,6 +11,14 @@ kind: "package-reference"
 
 持久保存例程定义和执行历史，串行化准入，并处理日历投递、额度等待和经过认证的本地脚本触发。
 
+## 目录
+- [开发备注](#dev-note)
+
+- [使用本包](#use-this-package)
+- [模型体验](#model-experience)
+- [已知限制与延期工作](#known-limitations-and-deferred-work)
+
+<a id="use-this-package"></a>
 ## 使用本包
 
 与 storage-domain、schedule 和 host-webserver 一起加载。对于持久智能体，先加载 agent-runtime 以提供 agentRoutineBridge。每次被准入的执行都会获得一个全新的已绑定会话；运行器立即返回准入结果，并通过 engine.settle 报告回合结果。本地触发默认使用 DSH_HOME 下的令牌文件，除非另行配置。当 scriptEnabled 为 true 时，脚本可以显式运行已暂停的例程；日历和 webhook 投递则遵守暂停。
@@ -19,6 +27,7 @@ kind: "package-reference"
 
 新例程先从受信任的智能体解析器继承 `ownerId`，然后才考虑宿主提供的所有者。没有所有者的旧智能体默认使用 `owner`；每次新执行都会复制其例程的所有权。这些元数据不引入账户认证，也不引入新的触发凭据。
 
+<a id="model-experience"></a>
 ## 模型体验
 
 ### 全新的例程执行
@@ -35,9 +44,20 @@ kind: "package-reference"
 
 身份前缀可以在多次执行之间保持稳定；运行指令和可选载荷是独立的会话内容。本包不承诺提供方侧的缓存复用。
 
+<a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与延期工作
 
 - 执行仅在进程内进行，要求宿主保持运行。
 - 可能产生外部影响的运行会因不确定性而失败，而不会自动重复这些影响。
 - 已停止的宿主无法保证准时执行；错过触发时间的策略决定之后的准入。
 - 提供方账户选择和自动模型回退不在本包范围内。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者的工作上下文——点击展开</summary>
+
+无。
+
+</details>
