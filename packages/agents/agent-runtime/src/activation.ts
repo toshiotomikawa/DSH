@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { AgentHandle } from '@deepseek-ai/dsh-agent'
 import { PersistentAgentId } from '@deepseek-ai/dsh-agent-registry'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import { isSurfaceEvent, type SessionId } from '@deepseek-ai/dsh-session'
 
 /** Caller-owned activation of one durable agent conversation. */
 export interface PersistentAgentActivationInput {
@@ -12,6 +12,38 @@ export interface PersistentAgentActivationInput {
   readonly sessionId: SessionId
   /** Persistent profile that owns the conversation. */
   readonly agentId: string
+}
+
+/** Stored history that cannot accept a native turn; a new conversation is required. */
+export class StoredConversationError extends Error {
+  /** Stable failure identity for callers that branch on it. */
+  readonly code = 'SURFACE_HEAD_MISSING'
+  constructor() {
+    super('Stored conversation has no native system head; start a new conversation')
+    this.name = 'StoredConversationError'
+  }
+}
+
+/**
+ * Refuse a native turn over stored history that never wrote the protected
+ * system head. External logs from before that head existed stay readable by
+ * their own driver, but a native step would append a `system/message` after
+ * the first user message and the next open would reject the log. Read-only.
+ * @param persistence - stored-session backend.
+ * @param sessionId - conversation that already exists.
+ * @throws StoredConversationError when the first surface event is not the system head.
+ */
+export async function assertNativeResumeHead(
+  persistence: Context['sessionPersistence'],
+  sessionId: SessionId,
+): Promise<void> {
+  const handle = await persistence.open(sessionId, 'read')
+  try {
+    const head = (await handle.read(0)).events.find(isSurfaceEvent)
+    if (head !== undefined && head.type !== 'system/message') throw new StoredConversationError()
+  } finally {
+    await handle.close()
+  }
 }
 
 /**
@@ -75,6 +107,7 @@ export class PersistentAgentActivationService implements PersistentAgentActivati
     if (persistence === undefined) throw new Error('cannot resume: session persistence is not configured (load a dsh-session-persistence backend)')
     const stored = await persistence.stat(input.sessionId)
     if (stored === undefined) return host.agents.create({ sessionId: input.sessionId, agentOptions })
+    await assertNativeResumeHead(persistence, input.sessionId)
     return host.agents.resume({ resumeSessionId: input.sessionId, agentOptions })
   }
 }

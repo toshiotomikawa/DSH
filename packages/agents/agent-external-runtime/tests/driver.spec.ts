@@ -6,7 +6,8 @@ import Typert from '@deepseek-ai/dsh-typert-registry'
 import Gateway from '@deepseek-ai/dsh-api-gateway'
 import Query from '@deepseek-ai/dsh-session-query-sqlite'
 import { appendPluginRecord, pluginRecordOf, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
-import { createUserMessage, MessageId, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { createAssistantMessage, createUserMessage, MessageId, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { PersistentAgentId } from '@deepseek-ai/dsh-agent-registry'
 import type { SessionSidecar } from '@deepseek-ai/dsh-experimental-agent-external-runtime'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { expect, it, onTestFinished, vi } from 'vitest'
@@ -56,6 +57,40 @@ function hold(service: ExternalAgentActivationService): () => void {
     if (finish === undefined) throw new Error('no parked external step')
     finish()
   }
+}
+
+async function storedEvents(ctx: Context, sessionId: SessionId) {
+  const handle = await ctx.sessionPersistence.open(sessionId, 'read')
+  try {
+    return (await handle.read(0)).events
+  } finally {
+    await handle.close()
+  }
+}
+
+/** Persist the log shape written before the external driver reserved a system head. */
+async function legacyExternalLog(
+  ctx: Context, sessionId: SessionId, agentId: PersistentAgentId, ownerId: string, cwd: string,
+): Promise<void> {
+  await ctx.persistentAgents.bind(sessionId, agentId)
+  const prepared = ctx.sessions.prepare(sessionId, { meta: { cwd } })
+  const writer = await ctx.sessionPersistence.create(prepared.header)
+  const time = Date.now()
+  await writer.append([
+    { type: 'turn/start', seq: SessionSeq(0), time, data: { turn: 1 } },
+    { type: 'step/start', seq: SessionSeq(1), time, data: { turn: 1, step: 1 } },
+    { type: 'user/message', seq: SessionSeq(2), time, surfaceOp: 'append', data: prompt('old input') },
+    { type: 'assistant/message', seq: SessionSeq(3), time, surfaceOp: 'append', data: {
+      turn: 1, step: 1, stream: [],
+      message: createAssistantMessage({ content: [{ type: 'text', text: 'external:1.1' }], source: { provider: 'external', model: 'external' } }),
+    } },
+    { type: 'step/end', seq: SessionSeq(4), time, data: { turn: 1, step: 1 } },
+    { type: 'turn/end', seq: SessionSeq(5), time, data: { turn: 1, reason: { kind: 'completed' } } },
+    { type: 'plugin:agent-external-runtime/session', seq: SessionSeq(6), time, ignorable: true, data: {
+      ownerId, agentId, sessionId, runtime: 'claude-sdk', revision: 1, sdkSessionId: `fake:${sessionId}`,
+    } } as never,
+  ])
+  await writer.close()
 }
 
 async function fixture(external = true) {
@@ -266,6 +301,46 @@ it.each(['missing', 'unsupported', 'unavailable', 'supported'] as const)('revali
     expect(handle.agent.options.reasoningEffort).toBe('low')
     expect(f.adapter.requests).toHaveLength(0)
   }
+})
+
+it('refuses a native profile over an external log that never wrote the system head', async () => {
+  const f = await fixture()
+  const native = await f.ctx.persistentAgents.create({ name: 'Native', ownerId: f.account.id, runtime: 'native' }, inherited)
+  const sessionId = SessionId(`ext-head-native-${native.id}`)
+  await legacyExternalLog(f.ctx, sessionId, native.id, f.account.id, f.workspace)
+  const before = await storedEvents(f.ctx, sessionId)
+  const resume = vi.spyOn(f.ctx.agents, 'resume')
+  await expect(f.ctx.persistentAgentActivation.createOrResume({ ownerCtx: f.ctx, sessionId, agentId: native.id }))
+    .rejects.toMatchObject({ code: 'SURFACE_HEAD_MISSING' })
+  expect(resume).not.toHaveBeenCalled()
+  expect(await storedEvents(f.ctx, sessionId)).toEqual(before)
+  expect(f.ctx.agents.get(sessionId)).toBeUndefined()
+  const empty = SessionId(`native-empty-${native.id}`)
+  await f.ctx.persistentAgents.bind(empty, native.id)
+  const prepared = f.ctx.sessions.prepare(empty, { meta: { cwd: f.workspace } })
+  const writer = await f.ctx.sessionPersistence.create(prepared.header)
+  await writer.append([{ type: 'session/end-seed', seq: SessionSeq(0), time: Date.now(), data: {} }])
+  await writer.close()
+  const handle = await f.ctx.persistentAgentActivation.createOrResume({ ownerCtx: f.ctx, sessionId: empty, agentId: native.id })
+  await handle.dispose()
+})
+
+it('refuses a native reserve over an external log that never wrote the system head', async () => {
+  const f = await fixture()
+  await f.ctx.persistentAgents.update(f.profile.id, f.profile.revision, { automaticFallback: true, reserves: [inherited] })
+  const service = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  const sessionId = SessionId(`ext-head-reserve-${f.profile.id}`)
+  await legacyExternalLog(f.ctx, sessionId, f.profile.id, f.account.id, f.workspace)
+  const before = await storedEvents(f.ctx, sessionId)
+  await service.quota.refuse(service.quota.key(f.account.id, f.profile.id), { cause: 'quota_exhausted', afterEffects: false })
+  const resume = vi.spyOn(f.ctx.agents, 'resume')
+  await expect(f.open(sessionId)).rejects.toMatchObject({ code: 'SURFACE_HEAD_MISSING' })
+  await expect(f.open(sessionId)).rejects.toMatchObject({ code: 'SURFACE_HEAD_MISSING' })
+  expect(resume).not.toHaveBeenCalled()
+  expect(f.create).not.toHaveBeenCalled()
+  expect(f.adapter.requests).toHaveLength(0)
+  expect(await storedEvents(f.ctx, sessionId)).toEqual(before)
+  expect(f.ctx.agents.get(sessionId)).toBeUndefined()
 })
 
 it('publishes an external agent without selecting or calling the native model', async () => {

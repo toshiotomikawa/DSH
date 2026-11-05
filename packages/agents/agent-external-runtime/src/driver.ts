@@ -4,6 +4,7 @@ import { agentEvents, type Agent, type AgentEventDispatch, type AgentHandle, typ
 import type { AgentCancelCause, InboxTarget } from '@deepseek-ai/dsh-agent'
 import { PersistentAgentId } from '@deepseek-ai/dsh-agent-registry'
 import type { ExternalAgentActivation, PersistentAgentActivationInput } from '@deepseek-ai/dsh-agent-runtime'
+import { assertNativeResumeHead } from '@deepseek-ai/dsh-agent-runtime'
 import { createAssistantMessage, createSystemMessage, ReasoningEffortId, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import {
@@ -143,7 +144,10 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
         if (route.reasoningEffort !== undefined && !info.reasoning?.efforts.some(value => value.id === route.reasoningEffort)) throw new Error('Unsupported reserve reasoning effort')
         const agentOptions = { provider: route.provider, model: route.model,
           ...(route.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(route.reasoningEffort) }) }
-        const stored = await required(host, 'sessionPersistence').stat(input.sessionId)
+        const persistence = required(host, 'sessionPersistence')
+        const stored = await persistence.stat(input.sessionId)
+        // Old external logs never wrote the system head; a native turn would corrupt them.
+        if (stored !== undefined) await assertNativeResumeHead(persistence, input.sessionId)
         handle = stored === undefined
           ? await host.agents.create({ sessionId: input.sessionId, agentOptions })
           : await host.agents.resume({ resumeSessionId: input.sessionId, agentOptions })

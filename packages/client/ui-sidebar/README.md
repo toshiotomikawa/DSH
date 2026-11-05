@@ -118,6 +118,7 @@ These pages cover the surfaces that fill the shell's seats and the composition m
 -----
 
 <a id="model-experience"></a>
+
 The expanded agents section links to the fork’s `/account/access` page for outgoing grants and sign-out.
 
 ## Model Experience
