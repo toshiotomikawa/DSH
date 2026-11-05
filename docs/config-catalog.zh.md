@@ -76,8 +76,8 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-agent-external-runtime`
 
-- `inject`: `persistentAgents` · `sessionOwners` · `accounts`
-- `source`: [`packages/agents/agent-external-runtime/src/index.ts:30`](../packages/agents/agent-external-runtime/src/index.ts)
+- `inject`: `persistentAgents` · `sessionOwners` · `accounts` · `storageDomain`
+- `source`: [`packages/agents/agent-external-runtime/src/index.ts:35`](../packages/agents/agent-external-runtime/src/index.ts)
 
 ```ts config-catalog
 /** Explicit Host configuration; directories are never discovered from the environment. */
@@ -1829,6 +1829,8 @@ export interface Config {
 export interface Config {
   /** Absolute path of index.html inside the dist root. */
   distIndex: string
+  /** Local absolute login path for unauthenticated browsers; absent keeps the Connection 401. */
+  loginPath?: string
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-host-frontend-static -->
