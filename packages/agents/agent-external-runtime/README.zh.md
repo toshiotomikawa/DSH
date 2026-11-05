@@ -7,6 +7,8 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
+Host 插件惰性安装官方 Claude 适配器。加载插件不会导入 SDK、读取凭据或启动进程。测试明确注入模拟 SDK；产品不会以录制用的假实现完成回合。
+
 ## 概述
 
 解析持久智能体的显式账户配置目录。

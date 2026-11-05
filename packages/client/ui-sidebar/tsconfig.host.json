@@ -18,6 +18,9 @@
     },
     {
       "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../agents/agent-runtime"
     }
   ]
 }

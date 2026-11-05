@@ -24,10 +24,11 @@ describe('agent sidebar resource and slot lifecycle', () => {
       const ok = { ok: true, value: undefined } as const
       const api = {
         list: vi.fn(async (_signal?: AbortSignal) => ({ ok: true, value: {
-          agents: [{ id: 'a', name: 'Ada', title: '' }], sections: [{ id: 's', name: 'Trabalho' }],
+          agents: [{ id: 'a', name: 'Ada', title: '', revision: 1, runtime: 'native' as const }], sections: [{ id: 's', name: 'Trabalho' }],
         } })),
         createSection: vi.fn(async () => ok), renameSection: vi.fn(async () => ok),
         deleteSection: vi.fn(async () => ok), moveAgent: vi.fn(async () => ok),
+        setRuntime: vi.fn(async () => ok), clearQuota: vi.fn(async () => ok),
       }
       const unmountRemote = vi.fn(async () => {})
       const mountRemote = vi.spyOn(runtime.remote, '$mount').mockImplementation(async () => {
@@ -59,6 +60,13 @@ describe('agent sidebar resource and slot lifecycle', () => {
       fireEvent.click(slot.view.getByLabelText('Apagar Trabalho'))
       fireEvent.click(slot.view.getByText('Apagar seção'))
       await waitFor(() => { expect(api.deleteSection).toHaveBeenCalledWith('s') })
+      await waitFor(() => { expect(slot.view.getByLabelText('Configure runtime for Ada').hasAttribute('disabled')).toBe(false) })
+      fireEvent.click(slot.view.getByLabelText('Configure runtime for Ada'))
+      fireEvent.submit(slot.view.getByRole('form', { name: 'Runtime' }))
+      await waitFor(() => { expect(api.setRuntime).toHaveBeenCalledWith('a', 1, { runtime: 'native', runtimeModel: null, automaticFallback: false }) })
+      await waitFor(() => { expect(slot.view.queryByRole('form')).toBeNull() })
+      fireEvent.click(slot.view.getByLabelText('Clear runtime refusal for Ada'))
+      await waitFor(() => { expect(api.clearQuota).toHaveBeenCalledWith('a') })
       await feature.dispose()
       expect(unmountRemote).toHaveBeenCalledTimes(1)
       expect(slot.container.textContent).toBe('')

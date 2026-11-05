@@ -644,6 +644,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'id', description: 'visible agent id.' }, { name: 'sectionId', description: 'visible section id, or null to ungroup.' }],
         returns: 'resolves after the registry commits.',
       },
+      {
+        signature: '@Remote async setRuntime(id: string, revision: number, settings: AgentRuntimeSettings): Promise<void>',
+        description: 'Save an owned profile\'s runtime with compare-and-set; active identities must be stopped first.',
+        parameters: [{ name: 'id', description: 'account-owned profile.' }, { name: 'revision', description: 'last observed profile revision.' }, { name: 'settings', description: 'runtime, optional harness model and explicit reserve consent.' }],
+      },
+      {
+        signature: '@Remote async clearQuota(id: string): Promise<void>',
+        description: 'Clear only an owned profile\'s refusal; the external service rejects live handles.',
+        parameters: [{ name: 'id', description: 'account-owned profile.' }],
+      },
     ],
   },
   {
@@ -6110,6 +6120,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AgentRoute = z.infer<typeof routeSchema>;',
   },
   {
+    name: 'AgentRuntimeSettings',
+    declaration: 'export interface AgentRuntimeSettings {\n    runtime: \'native\' | \'claude-sdk\' | \'codex-sdk\';\n    runtimeModel: string | null;\n    automaticFallback: boolean;\n}',
+  },
+  {
     name: 'AgentSection',
     declaration: 'export type AgentSection = z.infer<typeof sectionSchema>;',
   },
@@ -6123,7 +6137,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AgentSidebarSnapshot',
-    declaration: 'export interface AgentSidebarSnapshot {\n    agents: {\n        id: string;\n        name: string;\n        title: string;\n        sectionId?: string | undefined;\n    }[];\n    sections: {\n        id: string;\n        name: string;\n    }[];\n}',
+    declaration: 'export interface AgentSidebarSnapshot {\n    agents: {\n        id: string;\n        name: string;\n        title: string;\n        sectionId?: string | undefined;\n        revision?: number;\n        runtime?: AgentRuntimeSettings[\'runtime\'];\n        runtimeModel?: string | undefined;\n        automaticFallback?: boolean;\n    }[];\n    sections: {\n        id: string;\n        name: string;\n    }[];\n}',
   },
   {
     name: 'AgentStatus',

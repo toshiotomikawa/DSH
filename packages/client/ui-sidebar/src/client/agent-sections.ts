@@ -28,6 +28,8 @@ export function registerAgentSections(ctx: Context): void {
           case 'rename': return api.renameSection(command.id, command.name)
           case 'delete': return api.deleteSection(command.id)
           case 'move': return api.moveAgent(command.id, command.sectionId)
+          case 'runtime': return api.setRuntime(command.id, command.revision, command.settings)
+          case 'clearQuota': return api.clearQuota(command.id)
         }
       },
     }),

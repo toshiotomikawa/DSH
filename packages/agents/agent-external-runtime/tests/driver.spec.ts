@@ -83,7 +83,15 @@ async function fixture(external = true) {
   const config: External.Config = {
     bindings: [{ accountId: account.id, runtime: 'claude-sdk', configDirectory: home, revision: 1 }],
   }
-  if (external) await External.apply(ctx, config)
+  if (external) {
+    await External.apply(ctx, config)
+    const service = ctx.externalAgentActivation as ExternalAgentActivationService
+    service.sdk = { run: (input) => {
+      service.calls.push(input)
+      input.signal.throwIfAborted()
+      return Promise.resolve({ text: `external:${input.turn}.${input.step}` })
+    } }
+  }
   const selection = vi.spyOn(ctx.persistentAgents, 'selection')
   const create = vi.spyOn(ctx.agents, 'create')
   const profile = await ctx.persistentAgents.create({
@@ -135,6 +143,9 @@ it('uses a reserve only in a new activation, with one live identity and a closed
   expect(f.adapter.requests).toHaveLength(1)
   expect(events(second.agent).filter(event => event.type === 'turn/end')).toHaveLength(2)
   expect(events(second.agent).filter(event => event.type === 'user/message')).toHaveLength(2)
+  await second.dispose()
+  await service.clearQuota({ ownerCtx: f.ctx, agentId: f.profile.id })
+  await expect(f.open(first.agent.id)).rejects.toMatchObject({ code: 'binding_stale' })
 })
 
 it.each(['partial', 'teardown', 'abort'] as const)('refuses a reserve after %s even with consent', async (kind) => {
@@ -689,7 +700,8 @@ it('covers workspace, sidecar, codex resume, and an abort between steps', async 
   await firstCodex.dispose()
   const secondCodex = await f.ctx.persistentAgentActivation.createOrResume({ ownerCtx: f.ctx, sessionId: codexId, agentId: codex.id })
   await secondCodex.dispose()
-  service.sdk = { run: () => Promise.reject(new Error('plain')) }
+  const replacement = f.ctx.externalAgentActivation as ExternalAgentActivationService
+  replacement.sdk = { run: () => Promise.reject(new Error('plain')) }
   const failed = await f.open()
   failed.agent.followup(prompt('plain'))
   await failed.agent.whenIdle()
@@ -697,7 +709,7 @@ it('covers workspace, sidecar, codex resume, and an abort between steps', async 
     kind: 'error', error: { message: 'plain' },
   })
   await failed.dispose()
-  service.sdk = { run: () => Promise.resolve({ text: 'ok' }) }
+  replacement.sdk = { run: () => Promise.resolve({ text: 'ok' }) }
   const boundary = await f.open()
   f.ctx.on('session/event', (_session, event) => {
     if (event.type === 'step/end') boundary.agent.cancel({ kind: 'parent' })

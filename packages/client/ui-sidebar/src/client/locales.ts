@@ -17,6 +17,13 @@ const agentCopy = {
   'agents.deleteConfirm': 'Delete this section? Its agents will be ungrouped.',
   'agents.confirm': 'Delete section',
   'agents.move': 'Move {name} to section',
+  'agents.runtime': 'Runtime',
+  'agents.configureRuntime': 'Configure runtime for {name}',
+  'agents.runtimeModel': 'SDK model (empty uses its default)',
+  'agents.fallbackConsent': 'Allow the saved native API reserve on a later activation',
+  'agents.fallbackWarning': 'API use may incur charges. Quota failure never transfers or retries the current turn. Partial output, tools, abort or teardown failure keep the refusal.',
+  'agents.clearQuota': 'Clear runtime refusal',
+  'agents.clearQuotaFor': 'Clear runtime refusal for {name}',
 } as const
 
 /** `sidebar` namespace dictionaries for shell controls and global panels. */

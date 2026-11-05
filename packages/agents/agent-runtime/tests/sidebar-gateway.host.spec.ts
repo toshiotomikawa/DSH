@@ -16,7 +16,7 @@ import * as Owners from '../src/owners.ts'
 import * as Accounts from '../src/accounts.ts'
 import * as AccountAuth from '../src/account-auth.ts'
 
-it('admits only the five account sidebar actions through Gateway and keeps two authenticated accounts isolated', async () => {
+it('admits only the seven account sidebar actions through Gateway and keeps two authenticated accounts isolated', async () => {
   await mkdir('.dsh-test', { recursive: true })
   const root = await mkdtemp(join(process.cwd(), '.dsh-test/sidebar-gateway-'))
   onTestFinished(() => rm(root, { recursive: true, force: true }))
@@ -74,11 +74,17 @@ it('admits only the five account sidebar actions through Gateway and keeps two a
   await a.call('deleteSection', { id: sectionA.id })
   expect(await a.list()).toMatchObject({ agents: [{ id: a.agent.id }], sections: [] })
   expect((await b.list()).sections).toEqual([sectionB])
+  const settings = { runtime: 'claude-sdk', runtimeModel: 'sonnet', automaticFallback: false }
+  await a.call('setRuntime', { id: a.agent.id, revision: (await a.list()).agents[0]!.revision, settings })
+  expect((await a.list()).agents[0]).toMatchObject(settings)
+  await expect(b.call('setRuntime', { id: a.agent.id, revision: 1, settings })).rejects.toThrow('Unknown')
+  await expect(b.call('clearQuota', { id: a.agent.id })).rejects.toThrow('Unknown')
+  await expect(a.call('clearQuota', { id: a.agent.id })).rejects.toThrow('unavailable')
   const baseline = ctx.remoteAccess.snapshotFor(a.peer.principal)
   if (baseline.owner) throw new Error('account must not receive owner bypass')
   const global = baseline.grants.find(grant => grant.resource.kind === 'global')!
   expect([...global.actions].sort()).toEqual([
-    'agentSidebar/createSection', 'agentSidebar/deleteSection', 'agentSidebar/list', 'agentSidebar/moveAgent', 'agentSidebar/renameSection',
+    'agentSidebar/clearQuota', 'agentSidebar/createSection', 'agentSidebar/deleteSection', 'agentSidebar/list', 'agentSidebar/moveAgent', 'agentSidebar/renameSection', 'agentSidebar/setRuntime',
     'session/control', 'session/create', 'session/list', 'session/search',
   ])
   await expect(a.call('exportAll')).rejects.toThrow()

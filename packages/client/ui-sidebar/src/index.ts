@@ -3,7 +3,8 @@ import type { Context } from '@deepseek-ai/cordis'
 // Type-only: the registry's Context augmentation. The deployment composes the plugin.
 import type {} from '@deepseek-ai/dsh-agent-registry'
 import { ownerIdOf, Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type { AgentSidebarSnapshot } from './types.ts'
+import type { AgentSidebarSnapshot, AgentRuntimeSettings } from './types.ts'
+import type {} from '@deepseek-ai/dsh-agent-runtime'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { agentSidebar: AgentSidebar }
@@ -35,7 +36,8 @@ export class AgentSidebar extends TypertRemoteService {
     signal.throwIfAborted()
     const registry = this.account().persistentAgents
     return {
-      agents: registry.list().map(({ id, name, title, sectionId }) => ({ id, name, title, sectionId })),
+      agents: registry.list().map(({ id, name, title, sectionId, revision, runtime, runtimeModel, automaticFallback }) =>
+        ({ id, name, title, sectionId, revision, runtime, runtimeModel, automaticFallback })),
       sections: registry.listSections().map(({ id, name }) => ({ id, name })),
     }
   }
@@ -73,6 +75,37 @@ export class AgentSidebar extends TypertRemoteService {
     const agent = registry.list().find(profile => profile.id === id)
     if (agent === undefined) throw new Error(`Unknown persistent agent: ${id}`)
     await registry.assignSection(agent.id, sectionId)
+  }
+
+  /** Save an owned profile's runtime with compare-and-set; active identities must be stopped first.
+   * @param id - account-owned profile.
+   * @param revision - last observed profile revision.
+   * @param settings - runtime, optional harness model and explicit reserve consent.
+   */
+  @Remote
+  async setRuntime(id: string, revision: number, settings: AgentRuntimeSettings): Promise<void> {
+    const account = this.account()
+    const profile = account.persistentAgents.list().find(agent => agent.id === id)
+    if (profile === undefined) throw new Error('Unknown persistent agent')
+    if (account.agents.list().some(agent => account.persistentAgents.metadataOf(agent.id)?.agentId === id)) {
+      throw new Error('Stop this agent before changing its runtime')
+    }
+    await account.persistentAgents.update(profile.id, revision, {
+      runtime: settings.runtime, runtimeModel: settings.runtimeModel, automaticFallback: settings.automaticFallback,
+    })
+  }
+
+  /** Clear only an owned profile's refusal; the external service rejects live handles.
+   * @param id - account-owned profile.
+   */
+  @Remote
+  async clearQuota(id: string): Promise<void> {
+    const account = this.account()
+    const profile = account.persistentAgents.list().find(agent => agent.id === id)
+    if (profile === undefined) throw new Error('Unknown persistent agent')
+    const external = account.get('externalAgentActivation')
+    if (external === undefined) throw new Error('External runtime is unavailable')
+    await external.clearQuota({ ownerCtx: account, agentId: profile.id })
   }
 }
 

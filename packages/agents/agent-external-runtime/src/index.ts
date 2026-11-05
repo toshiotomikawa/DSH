@@ -8,6 +8,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import { HarnessBindingError } from './errors.ts'
 import { ExternalAgentActivationService } from './driver.ts'
 import { ExternalQuotaState, quotaDomain } from './quota.ts'
+import { createClaudeSdk } from './claude.ts'
 
 export { HarnessAdapterError, HarnessBindingError } from './errors.ts'
 export { ExternalQuotaError } from './quota.ts'
@@ -117,6 +118,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     const activation = new ExternalAgentActivationService(new ExternalQuotaState(domain), () => {
       ctx.logger.warn('External runtime teardown failed; identity remains refused')
     })
+    activation.sdk = createClaudeSdk()
     ctx.effect(() => () => activation.close())
     ctx.provide('externalAgentActivation', activation)
     return

@@ -2,7 +2,8 @@ import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import Loader, { type EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { load } from 'js-yaml'
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { harness, inherited } from '../../../agents/agent-registry/tests/harness.ts'
 import { AgentSidebar, apply } from '../src/index.ts'
 import * as Sidebar from '../src/index.ts'
@@ -53,7 +54,7 @@ describe('agent sidebar Remote adapter', () => {
     await b.agentSidebar.createSection('Private section')
     const section = a.agentSidebar.list(signal).sections[0]!
     const foreign = b.agentSidebar.list(signal).sections[0]!
-    expect(a.agentSidebar.list(signal)).toEqual({ agents: [{ id: agentA.id, name: 'Ada', title: '', sectionId: undefined }], sections: [section] })
+    expect(a.agentSidebar.list(signal)).toEqual({ agents: [{ id: agentA.id, name: 'Ada', title: '', sectionId: undefined, revision: a.persistentAgents.get(agentA.id).revision, runtime: 'native', runtimeModel: undefined, automaticFallback: false }], sections: [section] })
     await a.agentSidebar.moveAgent(agentA.id, section.id)
     expect(a.agentSidebar.list(signal).agents[0]?.sectionId).toBe(section.id)
     await a.agentSidebar.renameSection(section.id, 'Equipe')
@@ -66,7 +67,7 @@ describe('agent sidebar Remote adapter', () => {
     await a.agentSidebar.moveAgent(agentA.id, null)
     await a.agentSidebar.moveAgent(agentA.id, section.id)
     await a.agentSidebar.deleteSection(section.id)
-    expect(a.agentSidebar.list(signal)).toEqual({ agents: [{ id: agentA.id, name: 'Ada', title: '', sectionId: undefined }], sections: [] })
+    expect(a.agentSidebar.list(signal)).toEqual({ agents: [{ id: agentA.id, name: 'Ada', title: '', sectionId: undefined, revision: a.persistentAgents.get(agentA.id).revision, runtime: 'native', runtimeModel: undefined, automaticFallback: false }], sections: [] })
     expect(b.persistentAgents.get(agentB.id).name).toBe('Private')
     expect(() => ctx.agentSidebar.list(signal)).toThrow('authenticated invocation')
     const owner = ctx.extend({ invocation: { peer: { principal: { kind: 'owner' } } } as never })
@@ -74,4 +75,30 @@ describe('agent sidebar Remote adapter', () => {
     expect(() => owner.agentSidebar.list(AbortSignal.abort())).toThrow()
     expect(ctx.agentSidebar).toBeInstanceOf(AgentSidebar)
   })
+})
+
+it('saves only owned inactive runtime settings and delegates explicit refusal clearing', async () => {
+  const { ctx, account } = await fixture()
+  const a = account('a'), b = account('b')
+  const own = await a.persistentAgents.create({ name: 'A' }, inherited)
+  const foreign = await b.persistentAgents.create({ name: 'B' }, inherited)
+  const settings = { runtime: 'claude-sdk' as const, runtimeModel: 'sonnet', automaticFallback: false }
+  await a.agentSidebar.setRuntime(own.id, own.revision, settings)
+  expect(a.persistentAgents.get(own.id)).toMatchObject(settings)
+  await expect(a.agentSidebar.setRuntime(own.id, own.revision, settings)).rejects.toThrow('revision')
+  await expect(a.agentSidebar.setRuntime(foreign.id, foreign.revision, settings)).rejects.toThrow('Unknown')
+  await expect(a.agentSidebar.clearQuota(foreign.id)).rejects.toThrow('Unknown')
+  await expect(a.agentSidebar.clearQuota(own.id)).rejects.toThrow('unavailable')
+  const clearQuota = vi.fn(async () => {})
+  ctx.provide('externalAgentActivation', { clearQuota, createOrResume: vi.fn() })
+  await a.agentSidebar.clearQuota(own.id)
+  expect(clearQuota).toHaveBeenCalledTimes(1)
+  const current = a.persistentAgents.get(own.id)
+  await a.agentSidebar.setRuntime(own.id, current.revision, { ...settings, runtime: 'native', runtimeModel: null })
+  expect(a.persistentAgents.get(own.id).runtimeModel).toBeUndefined()
+  const active = await a.agents.create({ sessionId: SessionId('runtime-edit'), agentOptions: { provider: 'mock', model: 'test' } })
+  await a.persistentAgents.bind(active.agent.id, own.id)
+  try {
+    await expect(a.agentSidebar.setRuntime(own.id, a.persistentAgents.get(own.id).revision, settings)).rejects.toThrow('Stop this agent')
+  } finally { await active.dispose() }
 })

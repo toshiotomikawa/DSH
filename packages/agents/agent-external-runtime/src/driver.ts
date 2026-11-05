@@ -1,10 +1,10 @@
-/** External agent driver. The bundled SDK is fake and never calls the native model. @module */
+/** External agent driver; the Host supplies the official adapter and tests supply simulations. @module */
 import type { Context } from '@deepseek-ai/cordis'
 import { agentEvents, type Agent, type AgentEventDispatch, type AgentHandle, type AgentOptions, type AgentStatus, type CancelOptions, type Inbox, type Model } from '@deepseek-ai/dsh-agent'
 import type { AgentCancelCause, InboxTarget } from '@deepseek-ai/dsh-agent'
 import { PersistentAgentId } from '@deepseek-ai/dsh-agent-registry'
 import type { ExternalAgentActivation, PersistentAgentActivationInput } from '@deepseek-ai/dsh-agent-runtime'
-import { createAssistantMessage, ReasoningEffortId, type UserMessage } from '@deepseek-ai/dsh-llm'
+import { createAssistantMessage, createSystemMessage, ReasoningEffortId, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import {
   appendPluginRecord, interruptedTurnClosers, pluginRecordOf, SessionId, SessionLogOffset,
@@ -81,14 +81,8 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
   }
   /** Turns the fake SDK accepted. A replaced `sdk` does not have to fill this. */
   readonly calls: ExternalTurnInput[] = []
-  /** Step function. The default never imports or calls a provider SDK. */
-  sdk: ExternalSdk = {
-    run: (input) => {
-      this.calls.push(input)
-      input.signal.throwIfAborted()
-      return Promise.resolve({ text: `external:${input.turn}.${input.step}` })
-    },
-  }
+  /** Step function installed by the Host composition before admission. */
+  sdk!: ExternalSdk
 
   /**
    * Publish the external agent for one bound session.
@@ -266,6 +260,8 @@ export class ExternalAgentActivationService implements ExternalAgentActivation {
       const { ownerId, agentId } = identity
       const previous = sidecarOf(session)
       if (previous !== undefined) {
+        // A native reserve has a different conversation. Never resume a stale SDK handle over its history.
+        if (session.snapshotEvents().some(event => event.type === 'request/header')) throw new HarnessBindingError('binding_stale')
         if (previous.ownerId !== ownerId || previous.agentId !== agentId || previous.sessionId !== session.id) throw new HarnessBindingError('owner_mismatch')
         if (previous.runtime !== runtime || previous.revision !== binding.revision) throw new HarnessBindingError('binding_stale')
       } else if (resumed && hadTurn(session)) {
@@ -601,8 +597,12 @@ class ExternalAgent implements Agent {
       while (batch.length > 0 && !activity.abort.signal.aborted) {
         step += 1
         opened = true
-        for (const message of batch) this.session.append('user/message', message, { surfaceOp: 'append' })
         this.session.append('step/start', { turn, step })
+        // Native reserve turns can replace this head later without invalidating the durable surface.
+        if (turn === 1 && step === 1) this.session.append('system/message', {
+          turn, step, message: createSystemMessage(''),
+        }, { surfaceOp: 'append' })
+        for (const message of batch) this.session.append('user/message', message, { surfaceOp: 'append' })
         const bridge = await openTurnBridge({
           host: this.host, agent: this, ownerId: this.ownerId, turn, step,
           signal: activity.abort.signal, model: this.runtimeModel ?? 'external',

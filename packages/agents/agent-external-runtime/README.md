@@ -7,6 +7,8 @@ kind: "package-reference"
 
 English | [中文](README.zh.md)
 
+The Host plugin installs the official Claude adapter lazily. Plugin load does not import the SDK, read credentials or start a process. Tests explicitly inject simulated SDKs; the product never completes a turn with a recording fake.
+
 ## Summary
 
 Resolves explicit account harness bindings for persistent external agents.

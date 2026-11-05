@@ -64,6 +64,8 @@
   },
   "devDependencies": {
     "@deepseek-ai/dsh-agent-registry": "workspace:*",
+    "@deepseek-ai/dsh-agent-runtime": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-api-workspace-controller": "workspace:*",
     "@deepseek-ai/dsh-client-locale": "workspace:*",
     "@deepseek-ai/dsh-client-store": "workspace:*",
