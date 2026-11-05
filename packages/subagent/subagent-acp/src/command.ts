@@ -1,6 +1,9 @@
 /** Resolve a configured ACP command to a real Windows executable, never a `.cmd` shim. */
 import { existsSync, readFileSync } from 'node:fs'
-import { delimiter, dirname, extname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, extname, isAbsolute, join, resolve, sep } from 'node:path'
+
+/** A Windows PATH is always separated by a semicolon, whatever the host running the test. */
+const WINDOWS_PATH_DELIMITER = ';'
 
 const REAL_EXTENSIONS = ['.exe', '.com'] as const
 
@@ -15,7 +18,9 @@ function shimTarget(shim: string): string | undefined {
   const directory = dirname(shim)
   for (const match of text.matchAll(/"([^"]+\.(?:exe|com))"/giu)) {
     const expanded = (match[1] as string).replace(/%~?dp0%?/giu, directory)
-    const candidate = isAbsolute(expanded) ? expanded : resolve(directory, expanded)
+    // The shim text is Windows-shaped; turn its separators into the host's before touching disk.
+    const hostPath = sep === '\\' ? expanded : expanded.replaceAll('\\', '/')
+    const candidate = isAbsolute(hostPath) ? hostPath : resolve(directory, hostPath)
     if (existsSync(candidate)) return candidate
   }
   return undefined
@@ -42,7 +47,7 @@ export function resolveCommand(command: string, platform: NodeJS.Platform = proc
   }
   if (extension === '.exe' || extension === '.com') return command
   if (/[\\/]/u.test(command)) return command
-  const directories = path.split(delimiter).filter(entry => entry !== '')
+  const directories = path.split(WINDOWS_PATH_DELIMITER).filter(entry => entry !== '')
   for (const directory of directories) {
     for (const suffix of REAL_EXTENSIONS) {
       const candidate = join(directory, `${command}${suffix}`)
