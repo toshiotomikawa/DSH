@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   const notary = resolveMacOSNotarizationEnvironment(environment)
   const settings = resolveMacOSPackageSettings(environment)
   const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }
-  const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+  const commit = execFileSync('git', ['rev-parse', 'HEAD'], { windowsHide: true, cwd: root, encoding: 'utf8' }).trim()
   mkdirSync(output, { recursive: false })
   const secrets = Object.entries(environment).filter(([name]) => /KEY|SECRET|TOKEN|PASSWORD|APPLE_ID/iu.test(name)).map(([, value]) => value ?? '')
   const journal = createPackagingRun(join(root, 'apps/desktop/.desktop-build/packaging-runs'), {

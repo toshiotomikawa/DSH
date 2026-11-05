@@ -62,7 +62,7 @@ function runFixture(budget: string | undefined): { status: number | null; output
     if (name.startsWith('VITEST') || name.startsWith('DSH_COVERAGE_') || name === 'GITHUB_ACTIONS') Reflect.deleteProperty(env, name)
   }
   if (budget !== undefined) env[COVERAGE_TEST_TIMEOUT_ENV] = budget
-  const child = spawnSync(process.execPath, [vitestCli, 'run', '--config', configPath], {
+  const child = spawnSync(process.execPath, [vitestCli, 'run', '--config', configPath], { windowsHide: true,
     cwd: root,
     env,
     encoding: 'utf8',

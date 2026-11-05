@@ -61,7 +61,7 @@ describe('website source layout', () => {
     const files = execFileSync(
       'git',
       ['ls-files', '--cached', '--others', '--exclude-standard', '--', 'website'],
-      { cwd: repositoryRoot, encoding: 'utf8' },
+      { windowsHide: true, cwd: repositoryRoot, encoding: 'utf8' },
     ).split('\n').filter(file => file !== '' && existsSync(resolve(repositoryRoot, file)))
 
     expect(

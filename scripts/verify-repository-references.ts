@@ -59,7 +59,7 @@ export function findRepositoryReferences(
 }
 
 function readMaintainedFiles(repoRoot: string): Map<string, string> {
-  const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
+  const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { windowsHide: true,
     cwd: repoRoot,
     encoding: 'utf8',
     maxBuffer: gitOutputLimit,
@@ -75,7 +75,7 @@ function readMaintainedFiles(repoRoot: string): Map<string, string> {
 }
 
 function gitLines(repoRoot: string, args: readonly string[], maxBuffer: number, input?: string): string[] {
-  const output = execFileSync('git', args, {
+  const output = execFileSync('git', args, { windowsHide: true,
     cwd: repoRoot,
     env: { ...process.env, GIT_NO_LAZY_FETCH: '1' },
     encoding: 'utf8',

@@ -220,7 +220,7 @@ export class HarnessClient {
     if (this.closeTask !== undefined) throw new TransportClosedError('DeepSeek Harness runtime client is closed')
     if (this.child !== undefined) return
     this.userQuestionHandler = this.options.onUserQuestion
-    const child = spawn(this.runtime.command, this.runtime.args, {
+    const child = spawn(this.runtime.command, this.runtime.args, { windowsHide: true,
       cwd: this.runtime.cwd,
       env: this.runtime.environment(),
       stdio: ['pipe', 'pipe', 'pipe'],

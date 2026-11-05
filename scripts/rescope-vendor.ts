@@ -667,7 +667,7 @@ export function exactEditState(text: string, find: string, replace: string, expe
  * @returns eligible repository-relative paths, including large tracked corpora.
  */
 export function listRescopeFiles(repoRoot: string, env?: NodeJS.ProcessEnv): string[] {
-  return execFileSync('git', ['ls-files', '-z'], { cwd: repoRoot, env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
+  return execFileSync('git', ['ls-files', '-z'], { windowsHide: true, cwd: repoRoot, env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })
     .split('\0')
     .filter(file => file !== '' && !isRescopeExcluded(file))
 }

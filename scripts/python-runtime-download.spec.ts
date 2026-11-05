@@ -73,7 +73,7 @@ async function fixture() {
     }
   `)
   function run(resource?: string, extra: NodeJS.ProcessEnv = {}, args: string[] = []) {
-    const child = spawn(process.execPath, [bootstrap, ...args], {
+    const child = spawn(process.execPath, [bootstrap, ...args], { windowsHide: true,
       env: { ...process.env, DSH_RESOURCE_CACHE: cache, DSH_RUNTIME_DOWNLOAD: resource, DSH_BUNDLED_PRIMARY_RUNTIME: undefined,
         DSH_PRIMARY_RUNTIME: undefined, DSH_OFFICE_SIDECAR: undefined, DSH_BUNDLED_OFFICE_CLI: undefined, ...extra },
       stdio: ['pipe', 'pipe', 'pipe'],

@@ -1185,7 +1185,7 @@ describe('fail-fast scheduling', () => {
         // Detached, so the grandchild leads its own process group: the gate
         // group signal cannot reach it, and only the descendant enumeration in
         // treeKill does — the shape of a nested run-gates' leaf gates.
-        "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true })",
+        "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, windowsHide: true })",
         "process.stdout.write('grandchild:' + grandchild.pid + '\\n')",
         'setInterval(() => {}, 1000)',
       ].join(';')
@@ -1284,7 +1284,7 @@ describe('fail-fast scheduling', () => {
         // Detached with inherited stdio: the grandchild leads its own process
         // group (the gate group signal misses it) and holds the gate's
         // stdout write end (so `close` stays pending past the child exit).
-        "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'inherit' })",
+        "const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, windowsHide: true, stdio: 'inherit' })",
         "process.stdout.write('grandchild:' + grandchild.pid + '\\n')",
         // Outlive the first descendant-sampler tick with margin so the cache
         // holds the grandchild even on a loaded runner, then exit normally
@@ -1318,7 +1318,7 @@ describe('fail-fast scheduling', () => {
         // then exits after 7 seconds — after the first sampler tick, before
         // the second. From then on the grandchild is reparented and
         // unreachable by parent id.
-        "const wrapper = spawn(process.execPath, ['-e', \"const { spawn } = require('node:child_process'); const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, stdio: 'inherit' }); process.stdout.write('grandchild:' + grandchild.pid + '\\\\n'); setTimeout(() => process.exit(0), 7000)\"], { stdio: 'inherit' })",
+        "const wrapper = spawn(process.execPath, ['-e', \"const { spawn } = require('node:child_process'); const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { detached: true, windowsHide: true, stdio: 'inherit' }); process.stdout.write('grandchild:' + grandchild.pid + '\\\\n'); setTimeout(() => process.exit(0), 7000)\"], { stdio: 'inherit' })",
         "wrapper.on('exit', () => process.stdout.write('wrapper-exited\\n'))",
         // Keep the root child alive past the abort with a heartbeat so the
         // test can abort while it is still running.

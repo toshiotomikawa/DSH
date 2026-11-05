@@ -56,7 +56,7 @@ export async function extractHelper(archive: string, directory: string): Promise
  * @param environment - isolated client environment, including any test-owned SSH wrapper.
  */
 export async function runArtifactDriver(config: string, report: string, sandbox: string, environment: NodeJS.ProcessEnv): Promise<void> {
-  const child = spawn(process.execPath, ['--import', 'tsx/esm', join(fixtures, 'driver.ts'), config, report, sandbox], {
+  const child = spawn(process.execPath, ['--import', 'tsx/esm', join(fixtures, 'driver.ts'), config, report, sandbox], { windowsHide: true,
     cwd: root, stdio: ['ignore', 'pipe', 'pipe'], env: environment,
   })
   let output = ''

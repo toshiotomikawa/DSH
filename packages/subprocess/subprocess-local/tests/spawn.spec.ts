@@ -283,6 +283,7 @@ describe('spawnSubprocess', () => {
       const { writeFileSync } = require('node:fs')
       const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
         detached: true,
+        windowsHide: true,
         stdio: ['ignore', 1, 2],
       })
       writeFileSync(${JSON.stringify(pidFile)}, String(helper.pid))
@@ -1255,6 +1256,7 @@ describe('coverage seams', () => {
       const { writeFileSync } = require('node:fs')
       const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
         detached: true,
+        windowsHide: true,
         stdio: ['ignore', 1, 2],
       })
       writeFileSync(${JSON.stringify(pidFile)}, String(helper.pid))

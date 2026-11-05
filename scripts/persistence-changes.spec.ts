@@ -841,7 +841,7 @@ describe('persistence changes current-tree commands', () => {
     ].join('\n')
     writeFileSync(join(session, 'types.ts'), source)
     const script = resolve(import.meta.dirname, 'persistence-changes.ts')
-    const cli = (...args: string[]): ReturnType<typeof spawnSync> => spawnSync(process.execPath, ['--import', import.meta.resolve('tsx/esm'), script, '--root', root, ...args], {
+    const cli = (...args: string[]): ReturnType<typeof spawnSync> => spawnSync(process.execPath, ['--import', import.meta.resolve('tsx/esm'), script, '--root', root, ...args], { windowsHide: true,
       cwd: root, encoding: 'utf8', timeout: 120_000,
     })
     const prose = proseFile(root)

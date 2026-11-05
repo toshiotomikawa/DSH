@@ -220,7 +220,7 @@ async function collectInstrumentedFiles(
 /** Wait for `vitest list` to write its JSON file, or throw with exit code and stderr. */
 function runListCommand(command: string, args: string[], root: string): Promise<void> {
   return new Promise((resolveList, rejectList) => {
-    const child = spawn(command, args, { cwd: root, env: process.env, stdio: ['ignore', 'ignore', 'pipe'] })
+    const child = spawn(command, args, { windowsHide: true, cwd: root, env: process.env, stdio: ['ignore', 'ignore', 'pipe'] })
     let errorOutput = ''
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk: string) => { errorOutput += chunk })
@@ -700,7 +700,7 @@ function runCoverageCommand(command: CoverageCommand): Promise<CoverageCommandRe
       if (value === undefined) Reflect.deleteProperty(env, name)
       else env[name] = value
     }
-    const child = spawn(command.command, command.args, {
+    const child = spawn(command.command, command.args, { windowsHide: true,
       cwd: command.cwd,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],

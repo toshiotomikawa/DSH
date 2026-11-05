@@ -26,7 +26,7 @@ async function manifest(path: string): Promise<Manifest> { return JSON.parse(awa
 async function run(command: string, args: string[]): Promise<void> {
   console.log(`ssh-helper build: ${[command, ...args].join(' ')}`)
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio: 'inherit', env: { ...process.env, CI: 'true' } })
+    const child = spawn(command, args, { windowsHide: true, cwd: root, stdio: 'inherit', env: { ...process.env, CI: 'true' } })
     child.once('error', reject)
     child.once('close', (code, signal) => {
       if (code === 0 && signal === null) resolve()
@@ -154,8 +154,8 @@ export async function buildSshHelper(argv: string[]): Promise<void> {
     if (hello.kind !== 'executable' || hello.executable !== executable) throw new Error('Packaged SSH helper did not report its physical executable')
     const metadata = artifactManifestSchema.parse({
       format: 1, version: definition.version, target,
-      commit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
-      dirty: execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim() !== '',
+      commit: execFileSync('git', ['rev-parse', 'HEAD'], { windowsHide: true, cwd: root, encoding: 'utf8' }).trim(),
+      dirty: execFileSync('git', ['status', '--porcelain'], { windowsHide: true, cwd: root, encoding: 'utf8' }).trim() !== '',
       protocol: hello.protocol, nodeVersion: hello.nodeVersion,
       files: await Promise.all((await payloadFiles(product)).map(async path => ({
         path, sha256: await fileDigest(join(product, path)), mode: (await lstat(join(product, path))).mode & 0o777,

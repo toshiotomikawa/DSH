@@ -13,7 +13,7 @@ const COMMIT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u
 
 function sourceAt(root: string, sourceRef: string, path: string): string {
   try {
-    return execFileSync('git', ['show', `${sourceRef}:${path}`], {
+    return execFileSync('git', ['show', `${sourceRef}:${path}`], { windowsHide: true,
       cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, GIT_NO_LAZY_FETCH: '1' },
     })
@@ -70,7 +70,7 @@ export function verifyV3EventVocabulary(
   if (!COMMIT_ID.test(sourceRef)) throw new Error('--source-ref requires a full immutable commit id, not a branch, tag, or abbreviated id')
   let objectType: string
   try {
-    objectType = execFileSync('git', ['cat-file', '-t', sourceRef], {
+    objectType = execFileSync('git', ['cat-file', '-t', sourceRef], { windowsHide: true,
       cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, GIT_NO_LAZY_FETCH: '1' },
     }).trim()

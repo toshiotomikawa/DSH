@@ -118,7 +118,7 @@ describe('Node compatibility self-hosted routing', () => {
     try {
       const env = { PATH: process.env.PATH, RUNNER_TEMP: root, RUNNER_TOOL_CACHE: join(root, 'persistent') }
       const probe = (options: Record<string, string | undefined>) => {
-        const child = spawnSync(process.execPath, ['-p', 'process.env.RUNNER_TOOL_CACHE'], {
+        const child = spawnSync(process.execPath, ['-p', 'process.env.RUNNER_TOOL_CACHE'], { windowsHide: true,
           cwd: resolve(import.meta.dirname, '..'), env: options, encoding: 'utf8', timeout: 10_000,
         })
         expect(child.error).toBeUndefined()
@@ -149,7 +149,7 @@ describe('Node compatibility self-hosted routing', () => {
       ['/shared/toolcache/node/24.9.0/x64/bin/node', 1],
       ['/runner temp/node-compat-toolcache-other/node', 1],
     ] as const) {
-      const child = spawnSync('bash', ['-e', '-u', '-o', 'pipefail', '-c', 'node() { printf "%s" "$TEST_EXECUTABLE"; }; ' + step.run!], {
+      const child = spawnSync('bash', ['-e', '-u', '-o', 'pipefail', '-c', 'node() { printf "%s" "$TEST_EXECUTABLE"; }; ' + step.run!], { windowsHide: true,
         env: { PATH: process.env.PATH, RUNNER_TEMP: '/runner temp', TEST_EXECUTABLE: executable }, encoding: 'utf8', timeout: 10_000,
       })
       expect(child.error).toBeUndefined()
@@ -169,7 +169,7 @@ describe('Node compatibility self-hosted routing', () => {
       const outputs = ['runner-a', 'runner-b'].map((runner) => {
         const envFile = join(root, runner + '.env')
         const temp = join(root, runner)
-        const child = spawnSync('bash', ['-e', '-u', '-o', 'pipefail', '-c', step.run!], {
+        const child = spawnSync('bash', ['-e', '-u', '-o', 'pipefail', '-c', step.run!], { windowsHide: true,
           env: { PATH: process.env.PATH, HOME: join(root, 'shared home'), RUNNER_TEMP: temp, GITHUB_ENV: envFile },
           encoding: 'utf8', timeout: 10_000,
         })

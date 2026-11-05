@@ -67,7 +67,7 @@ export interface Config {
 
 /** Probe whether `bwrap` can create the profile; the provider caches the bounded result. */
 function defaultProbeBwrap(timeoutMs: number): boolean {
-  const probe = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], {
+  const probe = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], { windowsHide: true,
     timeout: timeoutMs,
     stdio: 'ignore',
   })
@@ -84,7 +84,7 @@ function defaultProbeBwrap(timeoutMs: number): boolean {
  * every macOS; if it ever disappears, this probe is what fails closed.
  */
 function defaultProbeSeatbelt(seatbeltExec: string, timeoutMs: number): boolean {
-  const probe = spawnSync(seatbeltExec, [...seatbeltProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], {
+  const probe = spawnSync(seatbeltExec, [...seatbeltProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], { windowsHide: true,
     timeout: timeoutMs,
     stdio: 'ignore',
   })
@@ -105,7 +105,7 @@ function defaultProbeWindowsAcl(runnerInvocation: string[], timeoutMs: number): 
     ...runnerInvocation.slice(1),
     '--workspace', tmpdir(), '--temp', tmpdir(), '--mode', 'read-only',
     '--', 'cmd', '/c', 'exit', '0',
-  ], {
+  ], { windowsHide: true,
     timeout: timeoutMs,
     stdio: 'ignore',
   })

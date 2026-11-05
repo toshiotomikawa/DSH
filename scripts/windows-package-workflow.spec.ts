@@ -39,7 +39,7 @@ it.skipIf(process.platform !== 'win32')('resets only the allocated checkout with
     symlinkSync(external, resolve(workspace, 'node_modules'), 'junction')
     const script = resolve(directory, 'reset.ps1')
     writeFileSync(script, job.steps.find(step => step.name === 'Reset packaging checkout')!.run!)
-    const run = (target: string) => execFileSync('pwsh', ['-NoProfile', '-File', script], {
+    const run = (target: string) => execFileSync('pwsh', ['-NoProfile', '-File', script], { windowsHide: true,
       cwd: directory,
       env: { ...process.env, RUNNER_WORKSPACE: parent, GITHUB_WORKSPACE: target },
       stdio: 'pipe',
@@ -139,7 +139,7 @@ it.skipIf(process.platform !== 'win32')('keeps the dependency store stable acros
     writeFileSync(script, "$ErrorActionPreference = 'Stop'\n" + step.run!)
     const outputs = ['first', 'second'].map((run) => {
       const environmentFile = resolve(directory, run + '.env')
-      execFileSync('pwsh', ['-NoProfile', '-File', script], {
+      execFileSync('pwsh', ['-NoProfile', '-File', script], { windowsHide: true,
         env: { ...process.env, GITHUB_WORKSPACE: workspace,
           PACKAGE_CACHE_NAMESPACE: '', DSH_DESKTOP_PACKAGE_CACHE_DIR: packageCache,
           PNPM_HOME: resolve(directory, run, 'pnpm'), GITHUB_ENV: environmentFile },
@@ -153,7 +153,7 @@ it.skipIf(process.platform !== 'win32')('keeps the dependency store stable acros
     const runNamespace = (namespace: string) => {
       const output = resolve(directory, 'namespace.env')
       rmSync(output, { force: true })
-      execFileSync('pwsh', ['-NoProfile', '-File', script], {
+      execFileSync('pwsh', ['-NoProfile', '-File', script], { windowsHide: true,
         env: { ...process.env, GITHUB_WORKSPACE: workspace,
           PACKAGE_CACHE_NAMESPACE: namespace, DSH_DESKTOP_PACKAGE_CACHE_DIR: packageCache, GITHUB_ENV: output },
         stdio: 'pipe',
@@ -199,12 +199,12 @@ it.skipIf(process.platform !== 'win32')('stages helpers that remain usable when 
     const stage = resolve(directory, 'stage.ps1')
     writeFileSync(stage, job.steps.find(step => step.name === 'Stage workflow helpers')!.run!)
     const env = { ...process.env, RUNNER_TEMP: temporary, GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', GITHUB_ENV: resolve(directory, 'env') }
-    execFileSync('pwsh', ['-NoProfile', '-File', stage], { cwd: source, env, stdio: 'pipe' })
+    execFileSync('pwsh', ['-NoProfile', '-File', stage], { windowsHide: true, cwd: source, env, stdio: 'pipe' })
     rmSync(scripts, { recursive: true })
     const helper = resolve(temporary, 'packaging-helpers-123-1/windows-packaging-priority.ps1')
-    expect(execFileSync('pwsh', ['-NoProfile', '-File', helper, '-InspectOnly'], { cwd: source, stdio: 'pipe' }).toString())
+    expect(execFileSync('pwsh', ['-NoProfile', '-File', helper, '-InspectOnly'], { windowsHide: true, cwd: source, stdio: 'pipe' }).toString())
       .toContain('packaging-process-priority')
-    expect(() => execFileSync('pwsh', ['-NoProfile', '-File', stage], {
+    expect(() => execFileSync('pwsh', ['-NoProfile', '-File', stage], { windowsHide: true,
       cwd: source, env: { ...env, GITHUB_RUN_ATTEMPT: '2' }, stdio: 'pipe',
     })).toThrow()
   } finally {

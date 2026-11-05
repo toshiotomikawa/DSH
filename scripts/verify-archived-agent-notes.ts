@@ -59,7 +59,7 @@ for (const kind of AGENT_NOTE_CLASSES) {
 errors.push(...validateArchiveArtifacts(artifacts))
 
 function runGit(args: string[]): string {
-  const result = spawnSync('git', args, { cwd: repoRoot, encoding: 'utf8' })
+  const result = spawnSync('git', args, { windowsHide: true, cwd: repoRoot, encoding: 'utf8' })
   if (result.error !== undefined) throw result.error
   if (result.status !== 0) throw new Error(result.stderr.trim() || `git exited with status ${result.status}`)
   return result.stdout

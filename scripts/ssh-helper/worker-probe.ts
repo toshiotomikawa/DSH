@@ -21,7 +21,7 @@ export async function probeRestrictedWorker(
   executable: string, workspace: string, home: string, checkout: string, hostNode: string,
 ): Promise<void> {
   const profile = `(version 1)(allow default)${[checkout, hostNode].map(path => `(deny file-read* (subpath ${JSON.stringify(path)}))(deny process-exec (subpath ${JSON.stringify(path)}))`).join('')}`
-  const child = spawn('/usr/bin/sandbox-exec', ['-p', profile, executable, '1048576'], {
+  const child = spawn('/usr/bin/sandbox-exec', ['-p', profile, executable, '1048576'], { windowsHide: true,
     cwd: workspace, env: { HOME: home, TMPDIR: home, PATH: '/usr/bin:/bin', DSH_PTC_RUNTIME_NODE: '1', [SUBPROCESS_CONTROL_ENV]: 'pipe', NODE_OPTIONS: '--disable-sigusr1' },
     stdio: ['ignore', 'pipe', 'pipe', 'ignore', 'ignore', 'ignore', 'ignore', 'pipe'],
   })

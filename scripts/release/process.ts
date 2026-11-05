@@ -30,7 +30,7 @@ export interface CommandResult {
  * @returns The exit status and captured streams.
  */
 export function attempt(command: string, args: readonly string[], options: RunOptions = {}): CommandResult {
-  const result = spawnSync(command, [...args], { cwd: options.cwd, env: options.env, encoding: 'utf8' })
+  const result = spawnSync(command, [...args], { windowsHide: true, cwd: options.cwd, env: options.env, encoding: 'utf8' })
   if (result.error !== undefined) throw result.error
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
@@ -44,7 +44,7 @@ export function attempt(command: string, args: readonly string[], options: RunOp
  * @returns The exit status and captured streams.
  */
 export function attemptEchoed(command: string, args: readonly string[], options: RunOptions = {}): CommandResult {
-  const result = spawnSync(command, [...args], {
+  const result = spawnSync(command, [...args], { windowsHide: true,
     cwd: options.cwd,
     env: options.env,
     encoding: 'utf8',
@@ -82,7 +82,7 @@ export function capture(command: string, args: readonly string[], options: RunOp
  */
 export function runConcurrent(command: string, args: readonly string[], options: RunOptions = {}): Promise<void> {
   return new Promise((resolveRun, rejectRun) => {
-    const child = spawn(command, [...args], { cwd: options.cwd, env: options.env, stdio: 'inherit' })
+    const child = spawn(command, [...args], { windowsHide: true, cwd: options.cwd, env: options.env, stdio: 'inherit' })
     child.once('error', rejectRun)
     child.once('close', (status, signal) => {
       if (status === 0) resolveRun()

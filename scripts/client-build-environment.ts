@@ -52,7 +52,7 @@ export type ClientBuildEnvironment = Readonly<Record<string, string>>
  */
 export function repositoryCommitHash(root: string, environment: NodeJS.ProcessEnv = process.env): string {
   const explicit = environment[CLIENT_COMMIT_HASH_VARIABLE]
-  const value = explicit ?? execFileSync('git', ['rev-parse', 'HEAD'], {
+  const value = explicit ?? execFileSync('git', ['rev-parse', 'HEAD'], { windowsHide: true,
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
@@ -90,14 +90,14 @@ export function repositoryVersion(root: string): string {
  * @returns true or false inside a Git worktree; undefined without Git metadata.
  */
 export function repositoryGitDirty(root: string): boolean | undefined {
-  const probe = spawnSync('git', ['rev-parse', '--is-inside-work-tree'], {
+  const probe = spawnSync('git', ['rev-parse', '--is-inside-work-tree'], { windowsHide: true,
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
   })
   if (probe.error !== undefined || probe.status !== 0 || probe.stdout.trim() !== 'true') return undefined
 
-  const status = spawnSync('git', ['status', '--porcelain=v1', '--untracked-files=normal'], {
+  const status = spawnSync('git', ['status', '--porcelain=v1', '--untracked-files=normal'], { windowsHide: true,
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

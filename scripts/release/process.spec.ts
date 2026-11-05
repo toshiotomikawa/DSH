@@ -24,7 +24,7 @@ async function packedTarball(name: string, version: string): Promise<string> {
   await writeFile(join(contents, 'package.json'), JSON.stringify({ name, version }))
   await writeFile(join(contents, 'index.js'), '')
   const archive = join(directory, `${name.replaceAll('/', '-').replace('@', '')}-${version}.tgz`)
-  execFileSync('tar', ['-czf', basename(archive), 'package'], { cwd: dirname(archive) })
+  execFileSync('tar', ['-czf', basename(archive), 'package'], { windowsHide: true, cwd: dirname(archive) })
   return archive
 }
 

@@ -21,7 +21,7 @@ function write(root: string, file: string, contents: string): void {
 }
 
 function git(root: string, ...args: string[]): void {
-  execFileSync('git', args, { cwd: root, stdio: 'pipe' })
+  execFileSync('git', args, { windowsHide: true, cwd: root, stdio: 'pipe' })
 }
 
 function fixture(): string {

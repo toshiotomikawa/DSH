@@ -24,7 +24,7 @@ function isUnknownArray(value: unknown): value is unknown[] {
 }
 
 function runRepositoryOxlint(args: readonly string[], env: NodeJS.ProcessEnv = {}) {
-  return spawnSync(process.execPath, [tsxCli, 'scripts/run-oxlint.ts', ...args], {
+  return spawnSync(process.execPath, [tsxCli, 'scripts/run-oxlint.ts', ...args], { windowsHide: true,
     cwd: repositoryRoot,
     encoding: 'utf8',
     env: { ...process.env, NO_COLOR: '1', ...env },
@@ -32,7 +32,7 @@ function runRepositoryOxlint(args: readonly string[], env: NodeJS.ProcessEnv = {
 }
 
 function runOxlint(args: readonly string[], env: NodeJS.ProcessEnv = {}) {
-  return spawnSync(process.execPath, [oxlintCli, ...args], {
+  return spawnSync(process.execPath, [oxlintCli, ...args], { windowsHide: true,
     cwd: repositoryRoot,
     encoding: 'utf8',
     env: { ...process.env, NO_COLOR: '1', ...env },

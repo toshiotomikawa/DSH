@@ -15,7 +15,7 @@ afterEach(() => {
 })
 
 function run(env: NodeJS.ProcessEnv, ...args: string[]) {
-  return spawnSync(process.execPath, ['--import', 'tsx/esm', script, ...args], {
+  return spawnSync(process.execPath, ['--import', 'tsx/esm', script, ...args], { windowsHide: true,
     cwd: root,
     encoding: 'utf8',
     env: isolatedPnpmEnvironment(env),

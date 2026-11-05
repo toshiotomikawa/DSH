@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process'
  * @throws Error when Git cannot start or exits unsuccessfully.
  */
 function runGit(root: string, args: string[], operation: string): Buffer {
-  const result = spawnSync('git', ['-C', root, ...args], { maxBuffer: 1 << 26 })
+  const result = spawnSync('git', ['-C', root, ...args], { windowsHide: true, maxBuffer: 1 << 26 })
   if (result.error) {
     throw new Error(`${operation} failed: ${result.error.message}`, { cause: result.error })
   }

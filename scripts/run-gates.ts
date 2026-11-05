@@ -421,6 +421,7 @@ function sharedHygieneGates(): Gate[] {
     pnpmScript('plugin-record-callers', 'verify-plugin-record-callers', { label: 'plugin record callers' }),
     pnpmScript('no-unknown-casts', 'verify-no-unknown-casts', { label: 'no new unknown casts' }),
     pnpmScript('no-top-level-await', 'verify-no-top-level-await', { label: 'no module-scope await' }),
+    pnpmScript('windows-hide', 'verify-windows-hide', { label: 'hidden child consoles' }),
   ]
 }
 
@@ -1190,7 +1191,7 @@ export async function runGate(gate: Gate, signal?: AbortSignal): Promise<GateRes
     exitCode: number | null
     signalCode: NodeJS.Signals | null
   }>((resolveExit) => {
-    const child = spawn(gate.command, gate.args, {
+    const child = spawn(gate.command, gate.args, { windowsHide: true,
       cwd: root,
       env: { ...process.env, ...gate.env },
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -1219,7 +1220,7 @@ export async function runGate(gate: Gate, signal?: AbortSignal): Promise<GateRes
       if (pid === undefined) return
       if (process.platform === 'win32') {
         for (const args of taskkillArgs(pid, descendants)) {
-          spawnSync('taskkill', args, { stdio: 'ignore' })
+          spawnSync('taskkill', args, { windowsHide: true, stdio: 'ignore' })
         }
         return
       }
@@ -1528,9 +1529,9 @@ function descendantPids(root: number): number[] {
     // parent column, so this walk still finds the whole tree. A hung
     // PowerShell (WMI/CIM service trouble) must not stall the abort path
     // indefinitely, so the enumeration is bounded.
-    ps = spawnSync('powershell', processTableArgs('win32'), { encoding: 'utf8', timeout: 10000 })
+    ps = spawnSync('powershell', processTableArgs('win32'), { windowsHide: true, encoding: 'utf8', timeout: 10000 })
   } else {
-    ps = spawnSync('ps', processTableArgs('posix'), { encoding: 'utf8' })
+    ps = spawnSync('ps', processTableArgs('posix'), { windowsHide: true, encoding: 'utf8' })
   }
   if (ps.error !== undefined) return []
   return collectDescendants(root, parsePidPpidLines(ps.stdout))
@@ -1572,7 +1573,7 @@ function descendantPidsAsync(root: number, platform: NodeJS.Platform): { promise
   const [command, args] = platform === 'win32'
     ? ['powershell', processTableArgs('win32')]
     : ['ps', processTableArgs('posix')]
-  const child = spawn(command, args, {
+  const child = spawn(command, args, { windowsHide: true,
     stdio: ['ignore', 'pipe', 'ignore'],
     timeout: platform === 'win32' ? 10000 : undefined,
   })

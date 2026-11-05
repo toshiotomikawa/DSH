@@ -23,7 +23,7 @@ function git(root: string, args: readonly string[], environment: NodeJS.ProcessE
   return execFileSync('git', [
     '-c', 'user.name=V3 vocabulary fixture', '-c', 'user.email=v3-fixture@example.invalid',
     '-c', 'commit.gpgsign=false', '-c', `core.hooksPath=${join(root, 'empty-hooks')}`, ...args,
-  ], { cwd: root, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+  ], { windowsHide: true, cwd: root, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 }
 
 function fixture(options: { writer?: string; events?: string } = {}): { root: string; sourceRef: string } {

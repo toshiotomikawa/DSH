@@ -286,7 +286,7 @@ export function smokePrimaryRuntime(root: string, environment: NodeJS.ProcessEnv
     }
     if (!lstatSync(join(dirname(entries.python), interpreter)).isFile()) throw new Error('primary runtime: versioned Python must be a regular file')
   }
-  const options = { stdio: 'inherit', timeout: 120_000, env: environment } as const
+  const options = { windowsHide: true, stdio: 'inherit', timeout: 120_000, env: environment } as const
   execFileSync(entries.python, ['-I', '-B', '-c', 'import decimal, xml.parsers.expat, lzma, uuid, numpy, pandas; assert numpy.arange(4).sum() == 6; assert pandas.DataFrame({"n": [1, 2]}).n.sum() == 3'], options)
   execFileSync(entries.python, ['-I', '-B', join(import.meta.dirname, 'smoke.py'), JSON.stringify(manifest.pythonPackages),
     manifest.python], options)

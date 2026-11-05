@@ -26,7 +26,7 @@ describe('repository build CLI', () => {
     const result = spawnSync(
       process.execPath,
       ['--no-experimental-strip-types', '--import', 'tsx/esm', resolve(root, 'scripts/build.ts'), '--spec-sentinel'],
-      { cwd: root, encoding: 'utf8' },
+      { windowsHide: true, cwd: root, encoding: 'utf8' },
     )
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain('build: Node.js TypeScript type stripping is unavailable')
@@ -36,7 +36,7 @@ describe('repository build CLI', () => {
     const result = spawnSync(
       process.execPath,
       ['--import', 'tsx/esm', resolve(root, 'scripts/build.ts'), '--artifacts-only'],
-      { cwd: root, encoding: 'utf8' },
+      { windowsHide: true, cwd: root, encoding: 'utf8' },
     )
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain("Unknown option '--artifacts-only'")

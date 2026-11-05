@@ -55,7 +55,7 @@ export function memoryScopeCommand(machine: MemoryPressureMachine, command: read
 function run(root: string, command: readonly string[]): number {
   const [file, ...args] = command
   if (file === undefined) throw new Error('run-memory-pressure-bench: empty command')
-  const result = spawnSync(file, args, { cwd: root, stdio: 'inherit' })
+  const result = spawnSync(file, args, { windowsHide: true, cwd: root, stdio: 'inherit' })
   if (result.error !== undefined) throw result.error
   return result.status ?? 1
 }

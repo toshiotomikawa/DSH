@@ -17,7 +17,7 @@ async function docker(...args: string[]): Promise<string> {
 }
 
 async function sshdReady(container: string): Promise<void> {
-  const logs = spawn('docker', ['logs', '--follow', container], { stdio: ['ignore', 'pipe', 'pipe'] })
+  const logs = spawn('docker', ['logs', '--follow', container], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
   let text = ''
   const ready = Promise.withResolvers<void>()
   const closed = new Promise<void>((resolve) => { logs.once('close', () => { resolve(); ready.reject(new Error(`sshd exited before readiness: ${text}`)) }) })

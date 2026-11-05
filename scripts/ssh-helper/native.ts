@@ -54,16 +54,16 @@ export async function verifyNativePayload(directory: string, target: SshHelperTa
     if (!elf && !macho) continue
     if (linux !== elf) throw new Error(`Native file does not belong to ${target}: ${path}`)
     if (elf) {
-      const elfHeader = execFileSync('readelf', ['--file-header', filename], { encoding: 'utf8' })
+      const elfHeader = execFileSync('readelf', ['--file-header', filename], { windowsHide: true, encoding: 'utf8' })
       const expected = arch === 'arm64' ? /Machine:\s+AArch64/ : /Machine:\s+Advanced Micro Devices X86-64/
       if (!expected.test(elfHeader)) throw new Error(`ELF architecture differs from ${target}: ${path}`)
-      const versions = execFileSync('readelf', ['--version-info', filename], { encoding: 'utf8' })
+      const versions = execFileSync('readelf', ['--version-info', filename], { windowsHide: true, encoding: 'utf8' })
       for (const match of versions.matchAll(/\bGLIBC_(\d+(?:\.\d+)+)/g)) {
         if (newer(match[1] as string, [2, 28])) throw new Error(`${path} requires GLIBC_${match[1]}, exceeding 2.28`)
       }
     } else {
-      execFileSync('lipo', [filename, '-verify_arch', arch === 'arm64' ? 'arm64' : 'x86_64'], { stdio: 'pipe' })
-      const loads = execFileSync('otool', ['-l', filename], { encoding: 'utf8' })
+      execFileSync('lipo', [filename, '-verify_arch', arch === 'arm64' ? 'arm64' : 'x86_64'], { windowsHide: true, stdio: 'pipe' })
+      const loads = execFileSync('otool', ['-l', filename], { windowsHide: true, encoding: 'utf8' })
       const versions = macosDeploymentVersions(loads)
       if (versions.length === 0) throw new Error(`Mach-O has no deployment version: ${path}`)
       if (versions.some(version => newer(version, [14, 0]))) throw new Error(`${path} requires macOS newer than 14.0`)

@@ -113,6 +113,7 @@ function readShell(
       // closed so prompts in rc files read EOF instead of waiting.
       child = spawn(shell, ['-ilc', DUMP], {
         cwd, env: { ...base, ...PROBE_ENVIRONMENT }, stdio: ['ignore', 'pipe', 'ignore'], detached: true,
+        windowsHide: true,
       })
     } catch (error) {
       resolve(String(error))

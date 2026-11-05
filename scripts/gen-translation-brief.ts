@@ -56,7 +56,7 @@ function isExcluded(file: string): boolean {
 }
 
 function git(args: string[], allowedExitCodes: number[] = [0]): string {
-  const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 1 << 26 })
+  const result = spawnSync('git', ['-C', root, ...args], { windowsHide: true, encoding: 'utf8', maxBuffer: 1 << 26 })
   if (result.error) throw result.error
   if (!allowedExitCodes.includes(result.status ?? -1)) {
     throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`)

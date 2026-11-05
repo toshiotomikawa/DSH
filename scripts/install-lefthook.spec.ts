@@ -40,7 +40,7 @@ afterEach(() => {
 })
 
 function commandResult(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv): CommandResult {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', env })
+  const result = spawnSync(command, args, { windowsHide: true, cwd, encoding: 'utf8', env })
   return { status: result.status, stderr: result.stderr, stdout: result.stdout }
 }
 
@@ -193,7 +193,7 @@ function runInstaller(
   nodeArgs: string[] = [],
 ): Promise<CommandResult> {
   return new Promise((resolveResult, reject) => {
-    const child = spawn(process.execPath, [...nodeArgs, installer], {
+    const child = spawn(process.execPath, [...nodeArgs, installer], { windowsHide: true,
       cwd: root,
       env: { ...fixture.env, ...extraEnv },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -564,7 +564,7 @@ syncBuiltinESMExports()
   it('leaves stale installer locks for explicit recovery', async () => {
     const fixture = createFixture()
     const lockPath = installLockPath(fixture)
-    const completed = spawnSync(process.execPath, ['-e', ''])
+    const completed = spawnSync(process.execPath, ['-e', ''], { windowsHide: true })
     expect(completed.status).toBe(0)
     const staleRecord = `${String(completed.pid)} 00000000-0000-4000-8000-000000000000\n`
     writeFileSync(lockPath, staleRecord)
